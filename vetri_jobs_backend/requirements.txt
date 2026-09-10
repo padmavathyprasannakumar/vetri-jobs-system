@@ -33,3 +33,5 @@ dj-database-url==2.3.0
 cloudinary==1.41.0
 
 django-cloudinary-storage==0.3.0
+
+PyPDF2==3.0.1
