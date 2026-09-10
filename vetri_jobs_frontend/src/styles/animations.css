@@ -1,0 +1,272 @@
+/* =====================================================
+   VETRI JOBS - GLOBAL ANIMATIONS & MICRO-INTERACTIONS
+   Loaded once, applies site-wide. Rather than editing every
+   page, this targets the class-name conventions already
+   used consistently across the whole project (every page
+   container ends in "-page", every card-style block
+   contains "card", every button contains "btn"), so cards
+   lift on hover, buttons feel responsive, and pages fade in
+   on every screen - student, company, placement, admin,
+   public - without needing per-page changes.
+===================================================== */
+
+
+/* ---------------- KEYFRAMES ---------------- */
+
+@keyframes vj-fade-in-up {
+
+    from{
+
+        opacity: 0;
+
+        transform: translateY(14px);
+    }
+
+    to{
+
+        opacity: 1;
+
+        transform: translateY(0);
+    }
+}
+
+@keyframes vj-fade-in {
+
+    from{ opacity: 0; }
+
+    to{ opacity: 1; }
+}
+
+@keyframes vj-float{
+
+    0%, 100%{ transform: translateY(0px) rotate(0deg); }
+
+    50%{ transform: translateY(-10px) rotate(2deg); }
+}
+
+@keyframes vj-float-reverse{
+
+    0%, 100%{ transform: translateY(0px) rotate(0deg); }
+
+    50%{ transform: translateY(10px) rotate(-2deg); }
+}
+
+@keyframes vj-pulse-ring{
+
+    0%{
+
+        box-shadow: 0 0 0 0 rgba(37,99,235,.45);
+    }
+
+    70%{
+
+        box-shadow: 0 0 0 14px rgba(37,99,235,0);
+    }
+
+    100%{
+
+        box-shadow: 0 0 0 0 rgba(37,99,235,0);
+    }
+}
+
+@keyframes vj-shimmer{
+
+    0%{ background-position: -400px 0; }
+
+    100%{ background-position: 400px 0; }
+}
+
+@keyframes vj-spin{
+
+    to{ transform: rotate(360deg); }
+}
+
+
+/* ---------------- PAGE ENTRANCE ---------------- */
+/* Every page container in this app is named "*-page" -
+   this alone covers Student/Company/Placement/Admin/public. */
+
+[class*="-page"],
+[class*="-dashboard"]{
+
+    animation: vj-fade-in-up .45s ease both;
+}
+
+
+/* ---------------- CARD HOVER-LIFT ---------------- */
+/* Matches the ~120+ elements across the project whose
+   className contains "card" (stat cards, job cards,
+   candidate cards, resume cards, drive cards, etc). */
+
+[class*="card"]{
+
+    transition:
+        transform .25s cubic-bezier(.2,.8,.2,1),
+        box-shadow .25s ease;
+}
+
+[class*="card"]:hover{
+
+    transform: translateY(-5px);
+
+    box-shadow: 0 16px 36px rgba(15,23,42,.12);
+}
+
+/* Table/list rows and small icon badges get a lighter touch
+   so nested elements inside a card don't fight the parent's
+   own lift on hover. */
+
+[class*="-row"]:not(table):not(tr){
+
+    transition: transform .2s ease, box-shadow .2s ease;
+}
+
+
+/* ---------------- 3D TILT (stat + KPI cards) ---------------- */
+/* A subtle perspective tilt for the small square stat/KPI
+   cards used across every dashboard (student, company,
+   placement, admin) - anything ending in "-stat-card" or
+   containing "stat-icon"/"kpi". */
+
+[class*="stat-card"],
+[class*="kpi-card"],
+[class*="-card"]{
+
+    perspective: 800px;
+
+    transform-style: preserve-3d;
+}
+
+[class*="stat-card"]:hover,
+[class*="kpi-card"]:hover,
+[class*="-card"]:hover{
+
+    /* Kept to a plain lift (no rotateX/rotateY) - the 3D tilt
+       previously here could shift a card's child buttons just
+       enough that clicks near the edge of a tilted card landed
+       on the wrong coordinates (this is what was causing "View
+       Details" and similar buttons to feel unresponsive). */
+
+    transform: translateY(-6px);
+
+    box-shadow: 0 20px 40px rgba(15,23,42,.16);
+}
+
+
+/* Explicit opt-outs: some cards/buttons should never get the
+   hover lift at all - interview schedule rows (a hover effect
+   here doesn't make sense since each row isn't a single click
+   target) and the logout button (it's a destructive action,
+   not something to visually "invite" via a hover lift). */
+
+.interview-card,
+.interview-history-row,
+.today-interview-row,
+.logout-btn{
+
+    transform: none !important;
+
+    box-shadow: inherit !important;
+
+    animation: none !important;
+}
+
+.interview-card:hover,
+.interview-history-row:hover,
+.today-interview-row:hover,
+.logout-btn:hover{
+
+    transform: none !important;
+
+    box-shadow: inherit !important;
+}
+
+[class*="stat-icon"]{
+
+    transition: transform .3s ease;
+}
+
+[class*="card"]:hover [class*="stat-icon"]{
+
+    transform: scale(1.12) rotate(-6deg);
+}
+
+
+/* ---------------- BUTTONS ---------------- */
+
+[class*="btn"]{
+
+    transition:
+        transform .18s ease,
+        box-shadow .18s ease,
+        filter .18s ease;
+}
+
+[class*="btn"]:hover:not(:disabled){
+
+    transform: translateY(-2px);
+
+    filter: brightness(1.04);
+}
+
+[class*="btn"]:active:not(:disabled){
+
+    transform: translateY(0);
+}
+
+
+/* ---------------- FLOATING DECORATIVE ICONS ---------------- */
+/* Used on login/register hero panels for a "modern 3D"
+   feel without shipping raster images. */
+
+.vj-float-icon{
+
+    animation: vj-float 5s ease-in-out infinite;
+
+    filter: drop-shadow(0 12px 20px rgba(0,0,0,.15));
+}
+
+.vj-float-icon.reverse{
+
+    animation-name: vj-float-reverse;
+
+    animation-duration: 6s;
+}
+
+.vj-float-icon.slow{
+
+    animation-duration: 7.5s;
+}
+
+
+/* ---------------- LOADING SHIMMER (optional utility) ---------------- */
+
+.vj-shimmer{
+
+    background: linear-gradient(
+        90deg,
+        #eef2f7 0px,
+        #f8fafc 40px,
+        #eef2f7 80px
+    );
+
+    background-size: 800px 100%;
+
+    animation: vj-shimmer 1.6s linear infinite;
+}
+
+
+/* ---------------- REDUCED MOTION ---------------- */
+
+@media (prefers-reduced-motion: reduce){
+
+    [class*="-page"],
+    [class*="card"],
+    [class*="btn"],
+    .vj-float-icon{
+
+        animation: none !important;
+
+        transition: none !important;
+    }
+}

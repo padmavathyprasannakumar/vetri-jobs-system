@@ -1,0 +1,537 @@
+.candidate-pipeline-page{
+
+    padding: 30px 35px 60px;
+
+    background: #f8fafc;
+
+    min-height: 100vh;
+}
+
+.cp-loading{
+
+    padding: 100px 20px;
+
+    text-align: center;
+
+    color: #94a3b8;
+}
+
+.cp-header{
+
+    display: flex;
+
+    align-items: center;
+
+    gap: 16px;
+
+    margin-bottom: 22px;
+}
+
+.cp-header-icon{
+
+    width: 52px;
+
+    height: 52px;
+
+    border-radius: 16px;
+
+    background: #eef2ff;
+
+    color: #4338ca;
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    font-size: 22px;
+
+    flex-shrink: 0;
+}
+
+.cp-header h1{
+
+    margin: 0 0 3px;
+
+    font-size: 22px;
+
+    color: #0f172a;
+}
+
+.cp-header p{
+
+    margin: 0;
+
+    color: #64748b;
+
+    font-size: 13.5px;
+}
+
+.cp-stat-cards{
+
+    display: grid;
+
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+
+    gap: 16px;
+
+    margin-bottom: 24px;
+}
+
+.cp-stat-cards .cp-stat-card{
+
+    background: white !important;
+
+    border-radius: 16px;
+
+    border: 1px solid #eef2f7;
+
+    box-shadow: 0 4px 16px rgba(15,23,42,.05);
+
+    padding: 18px;
+
+    display: flex;
+
+    align-items: center;
+
+    gap: 14px;
+}
+
+.cp-stat-icon{
+
+    width: 42px;
+
+    height: 42px;
+
+    border-radius: 12px;
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    font-size: 17px;
+
+    flex-shrink: 0;
+}
+
+.cp-stat-card.blue .cp-stat-icon{ background:#e0e7ff; color:#4338ca; }
+.cp-stat-card.pink .cp-stat-icon{ background:#fce7f3; color:#db2777; }
+.cp-stat-card.orange .cp-stat-icon{ background:#fef3c7; color:#d97706; }
+.cp-stat-card.yellow .cp-stat-icon{ background:#fef9c3; color:#ca8a04; }
+.cp-stat-card.green .cp-stat-icon{ background:#dcfce7; color:#16a34a; }
+
+.cp-stat-card h3{
+
+    margin: 0;
+
+    font-size: 20px;
+
+    color: #0f172a;
+}
+
+.cp-stat-card p{
+
+    margin: 2px 0 0;
+
+    font-size: 12px;
+
+    color: #64748b;
+}
+
+.cp-columns{
+
+    display: grid;
+
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+
+    gap: 18px;
+
+    margin-bottom: 24px;
+}
+
+.cp-column{
+
+    border-radius: 16px;
+
+    padding: 16px;
+
+    display: flex;
+
+    flex-direction: column;
+}
+
+.cp-column.blue{ background:#eef2ff; }
+.cp-column.yellow{ background:#fefce8; }
+.cp-column.purple{ background:#f5f3ff; }
+.cp-column.green{ background:#f0fdf4; }
+
+.cp-column-header{
+
+    display: flex;
+
+    justify-content: space-between;
+
+    align-items: center;
+
+    margin-bottom: 14px;
+}
+
+.cp-column-header h4{
+
+    margin: 0;
+
+    font-size: 14px;
+
+    color: #0f172a;
+}
+
+.cp-column-header span{
+
+    background: white;
+
+    padding: 3px 10px;
+
+    border-radius: 20px;
+
+    font-size: 12px;
+
+    font-weight: 700;
+
+    color: #475569;
+}
+
+.cp-column-body{
+
+    display: flex;
+
+    flex-direction: column;
+
+    gap: 10px;
+
+    flex: 1;
+
+    margin-bottom: 12px;
+
+    max-height: 520px;
+
+    overflow-y: auto;
+}
+
+.cp-candidate-card{
+
+    background: white;
+
+    border-radius: 12px;
+
+    padding: 12px;
+
+    display: flex;
+
+    align-items: flex-start;
+
+    gap: 10px;
+}
+
+.cp-candidate-avatar{
+
+    width: 32px;
+
+    height: 32px;
+
+    border-radius: 50%;
+
+    background: #eef2f7;
+
+    color: #475569;
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    font-weight: 700;
+
+    font-size: 13px;
+
+    flex-shrink: 0;
+}
+
+.cp-candidate-card strong{
+
+    display: block;
+
+    font-size: 12.5px;
+
+    color: #0f172a;
+}
+
+.cp-candidate-card p{
+
+    margin: 2px 0 0;
+
+    font-size: 11px;
+
+    color: #94a3b8;
+}
+
+.cp-candidate-company{
+
+    color: #64748b !important;
+}
+
+.cp-column-empty{
+
+    text-align: center;
+
+    color: #94a3b8;
+
+    font-size: 12px;
+
+    padding: 20px 0;
+}
+
+.cp-view-all-btn{
+
+    background: none;
+
+    border: none;
+
+    color: #4338ca;
+
+    font-size: 12.5px;
+
+    font-weight: 600;
+
+    cursor: pointer;
+
+    text-align: left;
+
+    padding: 0;
+}
+
+.cp-bottom-row{
+
+    display: grid;
+
+    grid-template-columns: 1fr 1fr 1fr;
+
+    gap: 18px;
+}
+
+.cp-panel{
+
+    background: white;
+
+    border-radius: 16px;
+
+    border: 1px solid #eef2f7;
+
+    box-shadow: 0 4px 16px rgba(15,23,42,.05);
+
+    padding: 20px;
+}
+
+.cp-panel h2{
+
+    margin: 0 0 18px;
+
+    font-size: 15px;
+
+    color: #0f172a;
+}
+
+.cp-bar-chart{
+
+    display: flex;
+
+    align-items: flex-end;
+
+    gap: 12px;
+
+    height: 160px;
+}
+
+.cp-bar-col{
+
+    flex: 1;
+
+    display: flex;
+
+    flex-direction: column;
+
+    align-items: center;
+
+    gap: 6px;
+
+    height: 100%;
+}
+
+.cp-bar-value{
+
+    font-size: 11px;
+
+    font-weight: 700;
+
+    color: #475569;
+}
+
+.cp-bar-track{
+
+    flex: 1;
+
+    width: 100%;
+
+    display: flex;
+
+    align-items: flex-end;
+
+    background: #f8fafc;
+
+    border-radius: 6px;
+
+    overflow: hidden;
+}
+
+.cp-bar-fill{
+
+    width: 100%;
+
+    background: linear-gradient(180deg, #60a5fa, #4338ca);
+
+    border-radius: 6px 6px 0 0;
+
+    min-height: 3px;
+}
+
+.cp-bar-label{
+
+    font-size: 10px;
+
+    color: #94a3b8;
+
+    text-align: center;
+}
+
+.cp-funnel{
+
+    display: flex;
+
+    flex-direction: column;
+
+    gap: 10px;
+}
+
+.cp-funnel-row{
+
+    display: flex;
+
+    align-items: center;
+
+    gap: 10px;
+}
+
+.cp-funnel-bar-wrap{
+
+    flex: 1;
+}
+
+.cp-funnel-bar{
+
+    background: linear-gradient(90deg, #4338ca, #7c3aed);
+
+    color: white;
+
+    padding: 10px 14px;
+
+    border-radius: 8px;
+
+    font-size: 12.5px;
+
+    font-weight: 700;
+
+    min-width: 40px;
+}
+
+.cp-funnel-label{
+
+    width: 90px;
+
+    font-size: 12px;
+
+    color: #475569;
+
+    flex-shrink: 0;
+}
+
+.cp-funnel-pct{
+
+    width: 36px;
+
+    font-size: 12px;
+
+    font-weight: 700;
+
+    color: #0f172a;
+
+    flex-shrink: 0;
+
+    text-align: right;
+}
+
+.cp-top-table{
+
+    width: 100%;
+
+    border-collapse: collapse;
+
+    font-size: 12.5px;
+}
+
+.cp-top-table th{
+
+    text-align: left;
+
+    padding: 8px 6px;
+
+    font-size: 10.5px;
+
+    color: #94a3b8;
+
+    text-transform: uppercase;
+
+    border-bottom: 1px solid #eef2f7;
+}
+
+.cp-top-table td{
+
+    padding: 9px 6px;
+
+    border-bottom: 1px solid #f8fafc;
+
+    color: #334155;
+}
+
+.cp-stage-pill{
+
+    background: #eef2ff;
+
+    color: #4338ca;
+
+    padding: 3px 9px;
+
+    border-radius: 20px;
+
+    font-size: 10.5px;
+
+    font-weight: 700;
+}
+
+
+@media(max-width: 1100px){
+
+    .cp-bottom-row{ grid-template-columns: 1fr; }
+}

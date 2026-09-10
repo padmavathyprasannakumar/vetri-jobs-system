@@ -1,0 +1,206 @@
+.app-footer{
+
+    background: #4338ca;
+
+    color: white;
+
+    padding: 40px 48px 0;
+
+    margin-top: auto;
+}
+
+.app-footer-top{
+
+    display: grid;
+
+    grid-template-columns: 1.3fr 1fr 1.4fr 1fr;
+
+    gap: 24px;
+
+    max-width: 1280px;
+
+    margin: 0 auto;
+
+    padding-bottom: 32px;
+}
+
+.app-footer-section h3{
+
+    margin: 0 0 16px;
+
+    font-size: 16px;
+
+    font-weight: 700;
+
+    color: white;
+}
+
+.app-footer-section a{
+
+    display: block;
+
+    color: rgba(255,255,255,.85);
+
+    text-decoration: none;
+
+    font-size: 14px;
+
+    font-weight: 600;
+
+    margin-bottom: 12px;
+
+    transition: color .15s;
+}
+
+.app-footer-section a:hover{
+    color: white;
+    text-decoration: underline;
+}
+
+/* BRAND */
+
+.app-footer-logo{
+
+    display: flex;
+
+    align-items: center;
+
+    gap: 12px;
+
+    cursor: default;
+
+    margin-left: 0;
+}
+
+.app-footer-logo-circle{
+
+    width: 46px;
+
+    height: 46px;
+
+    border-radius: 50%;
+
+    background: white;
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    overflow: hidden;
+
+    flex-shrink: 0;
+}
+
+.app-footer-logo h2{
+
+    margin: 0;
+
+    font-size: 19px;
+
+    font-weight: 800;
+
+    color: white;
+}
+
+/* CONTACT */
+
+.app-footer-address{
+
+    display: flex;
+
+    align-items: flex-start;
+
+    gap: 10px;
+
+    font-size: 14px;
+
+    font-weight: 600;
+
+    line-height: 1.6;
+
+    color: rgba(255,255,255,.9);
+}
+
+.app-footer-address svg{
+
+    margin-top: 3px;
+
+    flex-shrink: 0;
+
+    color: white;
+}
+
+/* SOCIALS */
+
+.app-footer-socials{
+
+    display: flex;
+
+    gap: 12px;
+}
+
+.app-footer-socials a{
+
+    width: 38px;
+
+    height: 38px;
+
+    border-radius: 50%;
+
+    border: 1.5px solid rgba(255,255,255,.5);
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    color: white;
+
+    font-size: 16px;
+
+    transition: .2s;
+}
+
+.app-footer-socials a:hover{
+
+    background: white;
+
+    color: #4338ca;
+}
+
+/* BOTTOM */
+
+.app-footer-bottom{
+
+    border-top: 1px solid rgba(255,255,255,.2);
+
+    text-align: center;
+
+    padding: 18px 0;
+
+    font-size: 13px;
+
+    color: rgba(255,255,255,.75);
+}
+
+@media(max-width: 880px){
+
+    .app-footer-top{
+
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+@media(max-width: 540px){
+
+    .app-footer{
+        padding: 32px 24px 0;
+    }
+
+    .app-footer-top{
+        grid-template-columns: 1fr;
+    }
+}

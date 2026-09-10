@@ -1,0 +1,925 @@
+/* =====================================================
+   STUDENT PROFILE
+   Vetri Jobs
+===================================================== */
+
+
+.student-profile{
+
+    background:#f8fafc;
+
+    min-height:100vh;
+
+    padding:35px;
+
+    font-family:
+    "Poppins",
+    sans-serif;
+
+}
+
+
+
+
+
+
+/* ==========================
+LOADING
+========================== */
+
+
+.profile-loading{
+
+
+height:400px;
+
+display:flex;
+
+flex-direction:column;
+
+justify-content:center;
+
+align-items:center;
+
+color:#64748b;
+
+
+}
+
+
+
+.loader{
+
+
+width:45px;
+
+height:45px;
+
+border-radius:50%;
+
+border:5px solid #e0e7ff;
+
+border-top-color:#4338ca;
+
+animation:rotate 1s linear infinite;
+
+
+}
+
+
+
+@keyframes rotate{
+
+
+100%{
+
+transform:rotate(360deg);
+
+}
+
+}
+
+
+
+
+
+
+
+
+
+/* ==========================
+HEADER
+========================== */
+
+
+.profile-header{
+
+
+background:
+
+linear-gradient(
+135deg,
+#4338ca,
+#1e40af
+);
+
+
+color:white;
+
+padding:35px;
+
+border-radius:25px;
+
+display:flex;
+
+align-items:center;
+
+gap:25px;
+
+margin-bottom:30px;
+
+
+}
+
+
+
+.profile-avatar{
+
+
+height:90px;
+
+width:90px;
+
+background:white;
+
+color:#4338ca;
+
+border-radius:50%;
+
+display:flex;
+
+align-items:center;
+
+justify-content:center;
+
+font-size:45px;
+
+
+}
+
+
+
+.profile-header h1{
+
+
+font-size:35px;
+
+margin:0 0 10px;
+
+
+}
+
+
+
+.profile-header p{
+
+
+opacity:.9;
+
+}
+
+
+
+
+
+
+
+
+
+/* ==========================
+MESSAGE
+========================== */
+
+
+.profile-message{
+
+
+background:#dcfce7;
+
+color:#15803d;
+
+padding:15px 20px;
+
+border-radius:12px;
+
+margin-bottom:25px;
+
+font-weight:600;
+
+
+}
+
+
+
+
+
+
+
+
+
+/* ==========================
+COMPLETION
+========================== */
+
+
+.completion-card{
+
+
+background:white;
+
+border-radius:22px;
+
+padding:30px;
+
+display:flex;
+
+justify-content:space-between;
+
+align-items:center;
+
+box-shadow:
+
+0 8px 25px rgba(0,0,0,.06);
+
+
+margin-bottom:30px;
+
+
+}
+
+
+
+.completion-card h3{
+
+
+margin:0;
+
+font-size:24px;
+
+color:#0f172a;
+
+
+}
+
+
+
+.completion-card p{
+
+
+color:#64748b;
+
+
+}
+
+
+
+
+.completion-circle{
+
+
+height:90px;
+
+width:90px;
+
+border-radius:50%;
+
+background:#e0e7ff;
+
+color:#4338ca;
+
+display:flex;
+
+align-items:center;
+
+justify-content:center;
+
+font-size:25px;
+
+font-weight:700;
+
+
+}
+
+
+
+
+
+
+
+
+
+/* ==========================
+PROFILE CARD
+========================== */
+
+
+.profile-card{
+
+
+background:white;
+
+border-radius:22px;
+
+padding:30px;
+
+margin-bottom:30px;
+
+
+box-shadow:
+
+0 8px 25px rgba(0,0,0,.06);
+
+
+}
+
+
+
+.profile-card h2{
+
+
+font-size:24px;
+
+color:#0f172a;
+
+display:flex;
+
+align-items:center;
+
+gap:10px;
+
+margin-bottom:25px;
+
+
+}
+
+
+
+.profile-card h2 svg{
+
+
+color:#4338ca;
+
+
+}
+
+
+
+
+
+
+
+
+
+/* ==========================
+FORM
+========================== */
+
+
+.form-grid{
+
+
+display:grid;
+
+grid-template-columns:
+
+repeat(2,1fr);
+
+gap:25px;
+
+
+}
+
+
+
+
+
+.form-group{
+
+
+display:flex;
+
+flex-direction:column;
+
+gap:8px;
+
+
+}
+
+
+
+.form-group label{
+
+
+font-weight:600;
+
+color:#334155;
+
+
+}
+
+
+
+
+
+.form-group input,
+
+
+.profile-card textarea{
+
+
+border:1px solid #cbd5e1;
+
+padding:14px;
+
+border-radius:12px;
+
+font-size:15px;
+
+outline:none;
+
+transition:.3s;
+
+font-family:inherit;
+
+
+}
+
+
+
+.form-group input:focus,
+
+
+.profile-card textarea:focus{
+
+
+border-color:#4338ca;
+
+box-shadow:
+
+0 0 0 3px #e0e7ff;
+
+
+}
+
+
+
+
+
+
+
+
+.input-icon{
+
+
+display:flex;
+
+align-items:center;
+
+gap:10px;
+
+border:1px solid #cbd5e1;
+
+border-radius:12px;
+
+padding:0 15px;
+
+
+}
+
+
+
+.input-icon svg{
+
+
+color:#4338ca;
+
+
+}
+
+
+
+.input-icon input{
+
+
+border:none;
+
+flex:1;
+
+padding:14px 0;
+
+}
+
+
+.input-icon input:focus{
+
+
+box-shadow:none;
+
+}
+
+
+
+
+
+
+
+
+textarea{
+
+
+width:100%;
+
+height:120px;
+
+resize:none;
+
+margin-bottom:20px;
+
+
+}
+
+
+
+
+
+
+
+
+
+/* ==========================
+RESUME
+========================== */
+
+
+.resume-area{
+
+
+display:flex;
+
+gap:20px;
+
+align-items:center;
+
+
+}
+
+
+
+.resume-area input{
+
+
+background:#f8fafc;
+
+padding:15px;
+
+
+}
+
+
+
+.resume-area button,
+
+
+.save-profile{
+
+
+background:#4338ca;
+
+color:white;
+
+border:none;
+
+padding:14px 25px;
+
+border-radius:12px;
+
+cursor:pointer;
+
+font-weight:600;
+
+display:flex;
+
+align-items:center;
+
+gap:10px;
+
+
+}
+
+
+
+.resume-area button:hover,
+
+
+.save-profile:hover{
+
+
+background:#3730a3;
+
+
+}
+
+
+
+
+
+
+
+.resume-preview{
+
+
+margin-top:20px;
+
+background:#eef2ff;
+
+padding:15px;
+
+border-radius:12px;
+
+
+}
+
+
+
+.resume-preview a{
+
+
+color:#4338ca;
+
+font-weight:600;
+
+text-decoration:none;
+
+
+}
+
+
+
+
+
+
+
+
+/* ==========================
+SAVE BUTTON
+========================== */
+
+
+.save-profile{
+
+
+margin:auto;
+
+font-size:16px;
+
+padding:15px 40px;
+
+
+}
+
+
+
+
+
+
+
+
+
+/* ==========================
+RESPONSIVE
+========================== */
+
+
+@media(max-width:900px){
+
+
+
+.student-profile{
+
+
+padding:20px;
+
+
+}
+
+
+
+.profile-header{
+
+
+flex-direction:column;
+
+text-align:center;
+
+
+}
+
+
+
+.form-grid{
+
+
+grid-template-columns:1fr;
+
+
+}
+
+
+
+.completion-card{
+
+
+flex-direction:column;
+
+gap:20px;
+
+text-align:center;
+
+
+}
+
+
+
+.resume-area{
+
+
+flex-direction:column;
+
+align-items:stretch;
+
+
+}
+
+
+}
+
+.section-field-label{
+
+    display: block;
+
+    font-weight: 600;
+
+    color: #334155;
+
+    font-size: 13px;
+
+    margin: 14px 0 6px;
+}
+
+
+.profile-header-illustration{
+
+    margin-left: auto;
+
+    max-height: 110px;
+
+    max-width: 160px;
+
+    border-radius: 16px;
+
+    object-fit: cover;
+
+    box-shadow: 0 10px 28px rgba(0,0,0,.25);
+
+    flex-shrink: 0;
+}
+
+@media(max-width: 700px){
+
+    .profile-header-illustration{ display: none; }
+}
+
+
+/* ===================== VIEW / EDIT MODE ===================== */
+
+.profile-fieldset{
+
+    border: none;
+
+    padding: 0;
+
+    margin: 0;
+
+    min-width: 0;
+}
+
+.profile-fieldset:disabled{
+
+    opacity: .85;
+}
+
+.profile-fieldset:disabled input,
+.profile-fieldset:disabled select,
+.profile-fieldset:disabled textarea{
+
+    background: #f8fafc;
+
+    cursor: not-allowed;
+}
+
+.edit-profile-btn{
+
+    margin-left: auto;
+
+    background: white;
+
+    color: #4338ca;
+
+    border: none;
+
+    padding: 11px 22px;
+
+    border-radius: 10px;
+
+    font-weight: 700;
+
+    font-size: 13.5px;
+
+    display: flex;
+
+    align-items: center;
+
+    gap: 8px;
+
+    cursor: pointer;
+
+    flex-shrink: 0;
+}
+
+.edit-profile-btn:hover{
+
+    background: #f0f7ff;
+}
+
+.profile-save-row{
+
+    display: flex;
+
+    justify-content: flex-end;
+
+    gap: 12px;
+
+    margin-top: 10px;
+}
+
+.cancel-btn{
+
+    background: #f1f5f9;
+
+    color: #475569;
+
+    border: none;
+
+    padding: 13px 26px;
+
+    border-radius: 10px;
+
+    font-weight: 600;
+
+    font-size: 14px;
+
+    cursor: pointer;
+}
+
+.cancel-btn:hover{
+
+    background: #e2e8f0;
+}
+
+
+/* ===================== PHONE COUNTRY CODE ===================== */
+
+.phone-input-with-code{
+
+    display: flex;
+
+    align-items: center;
+
+    gap: 8px;
+}
+
+.phone-country-code{
+
+    background: #f1f5f9;
+
+    color: #475569;
+
+    font-weight: 600;
+
+    font-size: 13px;
+
+    padding: 4px 8px;
+
+    border-radius: 6px;
+
+    flex-shrink: 0;
+}
+
+.phone-country-code-select{
+
+    background: #f1f5f9;
+    color: #475569;
+    font-weight: 600;
+    font-size: 13px;
+    padding: 4px 6px;
+    border-radius: 6px;
+    border: none;
+    flex-shrink: 0;
+    cursor: pointer;
+    max-width: 90px;
+}
+
+.phone-country-code-select:focus{
+
+    outline: 2px solid #4338ca;
+}

@@ -1,0 +1,651 @@
+.student-interviews-page{
+
+    background: #f8fafc;
+
+    min-height: 100vh;
+
+    padding: 35px;
+
+    font-family: 'Poppins', sans-serif;
+
+}
+
+.jobs-loading{
+
+    min-height: 60vh;
+
+    display: flex;
+
+    flex-direction: column;
+
+    align-items: center;
+
+    justify-content: center;
+
+    gap: 14px;
+
+    color: #64748b;
+
+}
+
+
+/* ===================== HEADER ===================== */
+
+.interviews-header h1{
+
+    margin: 0 0 6px;
+
+    font-size: 26px;
+
+    color: #0f172a;
+
+}
+
+.interviews-header p{
+
+    margin: 0;
+
+    color: #64748b;
+
+    font-size: 14.5px;
+
+}
+
+
+.interviews-error{
+
+    background: #fee2e2;
+
+    color: #b91c1c;
+
+    padding: 12px 18px;
+
+    border-radius: 12px;
+
+    font-size: 13.5px;
+
+    font-weight: 600;
+
+    margin: 16px 0;
+
+}
+
+
+/* ===================== TABS ===================== */
+
+.interview-tabs{
+
+    display: flex;
+
+    gap: 28px;
+
+    border-bottom: 1px solid #e2e8f0;
+
+    margin: 24px 0;
+
+}
+
+.interview-tab{
+
+    background: none;
+
+    border: none;
+
+    padding: 10px 2px;
+
+    font-size: 14px;
+
+    font-weight: 600;
+
+    color: #94a3b8;
+
+    cursor: pointer;
+
+    border-bottom: 2px solid transparent;
+
+    margin-bottom: -1px;
+
+}
+
+.interview-tab.active{
+
+    color: #4338ca;
+
+    border-bottom-color: #4338ca;
+
+}
+
+
+/* ===================== TIP BANNER ===================== */
+
+.interview-tip-banner{
+
+    background: #eef2ff;
+
+    border-radius: 16px;
+
+    padding: 20px 24px;
+
+    display: flex;
+
+    align-items: center;
+
+    gap: 16px;
+
+    margin-bottom: 24px;
+
+}
+
+.interview-tip-icon{
+
+    width: 46px;
+
+    height: 46px;
+
+    border-radius: 12px;
+
+    background: #e0e7ff;
+
+    color: #4338ca;
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    font-size: 18px;
+
+    flex-shrink: 0;
+
+}
+
+.interview-tip-banner h3{
+
+    margin: 0 0 3px;
+
+    font-size: 14.5px;
+
+    color: #0f172a;
+
+}
+
+.interview-tip-banner p{
+
+    margin: 0;
+
+    font-size: 13px;
+
+    color: #64748b;
+
+}
+
+
+/* ===================== INTERVIEW LIST ===================== */
+
+.interview-list{
+
+    display: flex;
+
+    flex-direction: column;
+
+    gap: 16px;
+
+}
+
+.interview-card{
+
+    background: white;
+
+    border-radius: 16px;
+
+    border: 1px solid #eef2f7;
+
+    box-shadow: 0 4px 16px rgba(15,23,42,.05);
+
+    padding: 20px 24px;
+
+    display: flex;
+
+    align-items: center;
+
+    gap: 18px;
+
+}
+
+.interview-card-icon{
+
+    width: 50px;
+
+    height: 50px;
+
+    border-radius: 14px;
+
+    background: #eef2ff;
+
+    color: #4f46e5;
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    font-size: 18px;
+
+    flex-shrink: 0;
+
+}
+
+.interview-card-body{
+
+    flex: 1;
+
+    min-width: 0;
+
+}
+
+.interview-card-body h3{
+
+    margin: 0 0 3px;
+
+    font-size: 16px;
+
+    color: #0f172a;
+
+}
+
+.interview-card-body p{
+
+    margin: 0 0 10px;
+
+    color: #64748b;
+
+    font-size: 13.5px;
+
+}
+
+.interview-card-meta{
+
+    display: flex;
+
+    flex-wrap: wrap;
+
+    gap: 16px;
+
+    color: #64748b;
+
+    font-size: 12.5px;
+
+}
+
+.interview-card-meta span{
+
+    display: flex;
+
+    align-items: center;
+
+    gap: 6px;
+
+}
+
+.interview-status-pill{
+
+    padding: 6px 14px;
+
+    border-radius: 20px;
+
+    font-size: 12px;
+
+    font-weight: 700;
+
+    text-transform: capitalize;
+
+    display: flex;
+
+    align-items: center;
+
+    gap: 6px;
+
+    flex-shrink: 0;
+
+}
+
+.interview-status-pill.scheduled,
+.interview-status-pill.rescheduled{
+
+    background: #dcfce7;
+
+    color: #15803d;
+
+}
+
+.interview-status-pill.completed{
+
+    background: #e0e7ff;
+
+    color: #3730a3;
+
+}
+
+.interview-status-pill.cancelled{
+
+    background: #fee2e2;
+
+    color: #b91c1c;
+
+}
+
+
+/* ===================== EMPTY STATE ===================== */
+
+.interview-empty-state{
+
+    background: white;
+
+    border-radius: 18px;
+
+    border: 1px solid #eef2f7;
+
+    box-shadow: 0 4px 16px rgba(15,23,42,.05);
+
+    padding: 70px 20px;
+
+    text-align: center;
+
+}
+
+.interview-empty-icon{
+
+    width: 100px;
+
+    height: 100px;
+
+    border-radius: 50%;
+
+    background: #eef2ff;
+
+    color: #4338ca;
+
+    font-size: 40px;
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    margin: 0 auto 24px;
+
+}
+
+.interview-empty-state h2{
+
+    margin: 0 0 8px;
+
+    font-size: 20px;
+
+    color: #0f172a;
+
+}
+
+.interview-empty-state p{
+
+    margin: 0 0 24px;
+
+    color: #94a3b8;
+
+    font-size: 14px;
+
+}
+
+.interview-empty-state button{
+
+    background: #4338ca;
+
+    color: white;
+
+    border: none;
+
+    padding: 13px 28px;
+
+    border-radius: 10px;
+
+    font-weight: 600;
+
+    font-size: 14px;
+
+    cursor: pointer;
+
+}
+
+.interview-empty-state button:hover{
+
+    background: #3730a3;
+
+}
+
+
+@media(max-width: 700px){
+
+    .student-interviews-page{ padding: 20px; }
+
+    .interview-card{ flex-direction: column; align-items: flex-start; }
+
+    .interview-tabs{ gap: 16px; overflow-x: auto; }
+
+}
+
+
+/* ===================== REDESIGNED INTERVIEW CARD ===================== */
+
+.interview-card{
+
+    align-items: center;
+}
+
+.interview-card-side{
+
+    display: flex;
+
+    flex-direction: column;
+
+    align-items: flex-end;
+
+    gap: 12px;
+
+    flex-shrink: 0;
+}
+
+.interview-card-actions{
+
+    display: flex;
+
+    gap: 8px;
+}
+
+.interview-join-btn,
+.interview-view-btn{
+
+    padding: 9px 16px;
+
+    border-radius: 9px;
+
+    font-size: 12.5px;
+
+    font-weight: 700;
+
+    text-decoration: none;
+
+    border: none;
+
+    cursor: pointer;
+
+    white-space: nowrap;
+}
+
+.interview-join-btn{
+
+    background: #4338ca;
+
+    color: white;
+}
+
+.interview-join-btn:hover{
+
+    background: #3730a3;
+}
+
+.interview-join-btn:disabled{
+
+    background: #cbd5e1;
+
+    cursor: not-allowed;
+}
+
+.interview-view-btn{
+
+    background: #eef2ff;
+
+    color: #4338ca;
+}
+
+.interview-view-btn:hover{
+
+    background: #e0e7ff;
+}
+
+
+/* ===================== INTERVIEW PREPARATION ===================== */
+
+.interview-prep-card{
+
+    background: white;
+
+    border-radius: 18px;
+
+    border: 1px solid #eef2f7;
+
+    box-shadow: 0 4px 16px rgba(15,23,42,.05);
+
+    padding: 24px;
+
+    margin-top: 20px;
+}
+
+.interview-prep-card h2{
+
+    margin: 0 0 18px;
+
+    font-size: 16px;
+
+    color: #0f172a;
+}
+
+.interview-prep-row{
+
+    display: flex;
+
+    align-items: center;
+
+    gap: 16px;
+
+    padding: 14px 0;
+
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.interview-prep-row:last-child{
+
+    border-bottom: none;
+
+    padding-bottom: 0;
+}
+
+.interview-prep-icon{
+
+    width: 42px;
+
+    height: 42px;
+
+    border-radius: 12px;
+
+    background: #eef2ff;
+
+    color: #4338ca;
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    font-size: 17px;
+
+    flex-shrink: 0;
+}
+
+.interview-prep-text{
+
+    flex: 1;
+
+    min-width: 0;
+}
+
+.interview-prep-text h4{
+
+    margin: 0 0 2px;
+
+    font-size: 13.5px;
+
+    color: #0f172a;
+}
+
+.interview-prep-text p{
+
+    margin: 0;
+
+    font-size: 12px;
+
+    color: #94a3b8;
+}
+
+.interview-prep-btn{
+
+    background: #4338ca;
+
+    color: white;
+
+    border: none;
+
+    padding: 10px 18px;
+
+    border-radius: 9px;
+
+    font-size: 12.5px;
+
+    font-weight: 700;
+
+    cursor: pointer;
+
+    flex-shrink: 0;
+
+    white-space: nowrap;
+}
+
+.interview-prep-btn:hover{
+
+    background: #3730a3;
+}
+
+
+@media(max-width: 700px){
+
+    .interview-card{ flex-wrap: wrap; }
+
+    .interview-card-side{ width: 100%; align-items: flex-start; }
+
+    .interview-prep-row{ flex-wrap: wrap; }
+
+    .interview-prep-btn{ width: 100%; }
+}

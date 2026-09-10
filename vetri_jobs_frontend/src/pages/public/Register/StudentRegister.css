@@ -1,0 +1,861 @@
+.student-register-page{
+
+
+min-height:90vh;
+
+display:flex;
+
+justify-content:center;
+
+align-items:center;
+
+background:#f4f7ff;
+
+padding:40px;
+
+
+}
+
+
+
+
+
+.student-register-card{
+
+
+width:1150px;
+
+display:flex;
+
+background:white;
+
+border-radius:25px;
+
+overflow:hidden;
+
+box-shadow:0 20px 45px rgba(0,0,0,.15);
+
+
+}
+
+
+
+
+
+
+
+/* LEFT */
+
+
+.student-register-left{
+
+
+width:45%;
+
+background:linear-gradient(
+
+135deg,
+
+#17458f,
+
+#2f75d8
+
+);
+
+
+color:white;
+
+padding:55px;
+
+display:flex;
+
+flex-direction:column;
+
+gap:20px;
+
+overflow-y:auto;
+
+
+}
+
+
+
+
+
+.student-brand{
+
+
+display:flex;
+
+align-items:center;
+
+gap:15px;
+
+
+}
+
+
+
+.student-brand svg{
+
+
+font-size:40px;
+
+
+}
+
+
+
+.student-brand h2{
+
+
+margin:0;
+
+font-size:30px;
+
+
+}
+
+
+
+
+.student-register-left h1{
+
+
+font-size:45px;
+
+margin-top:60px;
+
+
+}
+
+
+
+
+
+.student-register-left p{
+
+
+font-size:18px;
+
+line-height:1.6;
+
+
+}
+
+
+
+
+
+.career-box{
+
+
+margin-top:50px;
+
+background:white;
+
+color:#17458f;
+
+padding:30px;
+
+border-radius:20px;
+
+text-align:center;
+
+
+}
+
+
+
+
+
+.career-box:first-letter{
+
+
+font-size:50px;
+
+
+}
+
+
+
+
+
+
+
+
+
+/* RIGHT */
+
+
+.student-register-right{
+
+
+width:55%;
+
+padding:45px;
+
+
+}
+
+
+
+
+
+.student-register-right h2{
+
+
+font-size:32px;
+
+margin-bottom:10px;
+
+
+}
+
+
+
+.student-register-right>p{
+
+
+color:#777;
+
+margin-bottom:30px;
+
+
+}
+
+
+
+
+
+label{
+
+
+font-weight:600;
+
+display:block;
+
+margin-bottom:7px;
+
+}
+
+
+
+
+
+.input-box{
+
+
+display:flex;
+
+align-items:center;
+
+gap:12px;
+
+border:1px solid #ddd;
+
+padding:13px 15px;
+
+border-radius:12px;
+
+margin-bottom:18px;
+
+
+}
+
+
+
+.input-box svg{
+
+
+color:#2463c5;
+
+
+}
+
+
+
+
+
+.input-box input,
+.input-box select{
+
+
+border:none;
+
+outline:none;
+
+width:100%;
+
+font-size:15px;
+
+background:transparent;
+
+color:#1e293b;
+
+font-family:inherit;
+
+appearance:none;
+
+-webkit-appearance:none;
+
+-moz-appearance:none;
+
+
+}
+
+
+.input-box{
+
+position:relative;
+
+}
+
+.input-box:has(select)::after{
+
+content:"▾";
+
+position:absolute;
+
+right:16px;
+
+top:50%;
+
+transform:translateY(-50%);
+
+color:#94a3b8;
+
+pointer-events:none;
+
+font-size:12px;
+
+}
+
+
+
+
+
+.input-box span{
+
+
+cursor:pointer;
+
+color:#555;
+
+
+}
+
+
+
+
+
+
+.two-column{
+
+
+display:grid;
+
+grid-template-columns:1fr 1fr;
+
+gap:20px;
+
+
+}
+
+
+
+
+
+
+
+
+.register-button{
+
+
+width:100%;
+
+border:none;
+
+background:#2463c5;
+
+color:white;
+
+padding:15px;
+
+border-radius:12px;
+
+font-size:17px;
+
+font-weight:600;
+
+display:flex;
+
+justify-content:center;
+
+align-items:center;
+
+gap:10px;
+
+cursor:pointer;
+
+
+}
+
+
+
+.register-button:hover{
+
+
+background:#17458f;
+
+
+}
+
+
+
+
+
+
+
+.error-box{
+
+
+background:#ffe5e5;
+
+color:#d00000;
+
+padding:12px;
+
+border-radius:10px;
+
+margin-bottom:15px;
+
+
+}
+
+
+
+
+
+.success-box{
+
+
+background:#ddffe4;
+
+color:#087f23;
+
+padding:12px;
+
+border-radius:10px;
+
+margin-bottom:15px;
+
+
+}
+
+
+
+
+
+
+.login-link{
+
+
+text-align:center;
+
+margin-top:25px;
+
+
+}
+
+
+
+.login-link span{
+
+
+color:#2463c5;
+
+font-weight:bold;
+
+cursor:pointer;
+
+margin-left:5px;
+
+
+}
+
+
+
+
+
+
+
+
+@media(max-width:900px){
+
+
+.student-register-card{
+
+
+flex-direction:column;
+
+
+}
+
+
+
+.student-register-left,
+
+.student-register-right{
+
+
+width:100%;
+
+
+}
+
+
+
+.two-column{
+
+
+grid-template-columns:1fr;
+
+
+}
+
+
+}
+
+
+.student-register-right{
+
+overflow-y:auto;
+
+max-height:90vh;
+
+padding-right:10px;
+
+}
+
+
+
+.input-box input{
+
+width:100%;
+
+}
+
+
+@media(max-width:900px){
+
+.two-column{
+
+grid-template-columns:1fr;
+
+}
+
+}
+
+/* ===================== HERO PANEL (shared pattern with Login) ===================== */
+
+.student-login-topbar{
+
+    display:flex;
+
+    align-items:center;
+
+    gap:14px;
+}
+
+.student-login-logo-badge{
+
+    width:44px;
+
+    height:44px;
+
+    border-radius:13px;
+
+    background:rgba(255,255,255,.15);
+
+    display:flex;
+
+    align-items:center;
+
+    justify-content:center;
+
+    font-size:18px;
+
+    overflow:hidden;
+
+    flex-shrink:0;
+}
+
+.student-login-logo-badge img{
+
+    width:100%;
+
+    height:100%;
+
+    object-fit:cover;
+}
+
+.student-login-topbar h2{
+
+    margin:0;
+
+    font-size:15px;
+}
+
+.student-login-topbar span{
+
+    font-size:11.5px;
+
+    opacity:.8;
+}
+
+.student-login-headline{
+
+    font-size:32px;
+
+    font-weight:800;
+
+    line-height:1.15;
+
+    margin:0;
+}
+
+.student-login-headline .accent{
+
+    color:#7dd3fc;
+}
+
+.student-login-sub{
+
+    font-size:13.5px;
+
+    opacity:.9;
+
+    line-height:1.6;
+
+    max-width:400px;
+
+    margin:0;
+}
+
+.student-login-features{
+
+    display:flex;
+
+    flex-direction:column;
+
+    gap:10px;
+}
+
+.student-login-feature{
+
+    display:flex;
+
+    align-items:flex-start;
+
+    gap:12px;
+
+    background:rgba(255,255,255,.08);
+
+    border-radius:12px;
+
+    padding:11px 14px;
+}
+
+.feature-icon{
+
+    width:34px;
+
+    height:34px;
+
+    border-radius:9px;
+
+    background:white;
+
+    display:flex;
+
+    align-items:center;
+
+    justify-content:center;
+
+    font-size:15px;
+
+    flex-shrink:0;
+}
+
+.student-login-feature h4{
+
+    margin:0 0 2px;
+
+    font-size:13px;
+}
+
+.student-login-feature p{
+
+    margin:0;
+
+    font-size:11.5px;
+
+    opacity:.8;
+}
+
+.student-login-illustration{
+
+    display:flex;
+
+    align-items:center;
+
+    justify-content:center;
+
+    flex:1;
+
+    min-height:80px;
+
+    position:relative;
+}
+
+.student-login-illustration.large{
+
+    min-height:220px;
+
+    flex:2;
+}
+
+.floating-chip{
+
+    position:absolute;
+
+    width:44px;
+
+    height:44px;
+
+    border-radius:13px;
+
+    background:white;
+
+    font-size:18px;
+
+    display:flex;
+
+    align-items:center;
+
+    justify-content:center;
+
+    box-shadow:0 12px 28px rgba(0,0,0,.22);
+}
+
+.floating-chip.chip-1{ top:8%; right:6%; }
+.floating-chip.chip-2{ bottom:10%; left:4%; }
+
+.student-login-hero-img{
+
+    max-width:100%;
+
+    max-height:280px;
+
+    border-radius:16px;
+
+    object-fit:cover;
+
+    box-shadow:0 16px 40px rgba(0,0,0,.25);
+}
+
+.student-login-bot{
+
+    width:130px;
+
+    height:150px;
+
+    display:flex;
+
+    flex-direction:column;
+
+    align-items:center;
+
+    gap:8px;
+}
+
+.bot-head{
+
+    width:95px;
+
+    height:85px;
+
+    background:white;
+
+    border-radius:30px;
+
+    display:flex;
+
+    align-items:center;
+
+    justify-content:center;
+
+    box-shadow:0 14px 34px rgba(0,0,0,.25);
+}
+
+.bot-face{
+
+    color:#17458f;
+
+    font-weight:800;
+
+    font-size:22px;
+}
+
+.bot-body{
+
+    width:60px;
+
+    height:52px;
+
+    background:rgba(255,255,255,.9);
+
+    color:#17458f;
+
+    border-radius:16px;
+
+    display:flex;
+
+    align-items:center;
+
+    justify-content:center;
+
+    font-weight:800;
+
+    font-size:12px;
+}
+
+
+@media(max-width:900px){
+
+    .student-login-headline{ font-size:24px; }
+
+    .student-login-illustration{ display:none; }
+}
+
+
+.phone-country-code-select{
+
+    background: #f1f5f9;
+    color: #475569;
+    font-weight: 600;
+    font-size: 13px;
+    padding: 4px 6px;
+    border-radius: 6px;
+    border: none;
+    flex-shrink: 0;
+    cursor: pointer;
+    max-width: 90px;
+    margin-right: 6px;
+}
+
+.phone-country-code-select:focus{
+
+    outline: 2px solid #2563eb;
+}

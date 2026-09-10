@@ -1,0 +1,369 @@
+.notification-wrapper {
+
+
+    position:relative;
+
+
+}
+
+
+
+
+
+
+
+/* ===========================
+   BELL BUTTON
+=========================== */
+
+
+.notification-button {
+
+
+    position:relative;
+
+
+    width:42px;
+
+
+    height:42px;
+
+
+    border:none;
+
+
+    background:#f1f5f9;
+
+
+    border-radius:50%;
+
+
+    cursor:pointer;
+
+
+    font-size:20px;
+
+
+    color:#334155;
+
+
+    display:flex;
+
+
+    justify-content:center;
+
+
+    align-items:center;
+
+
+}
+
+
+
+
+
+
+
+.notification-button:hover {
+
+
+    background:#e2e8f0;
+
+
+}
+
+
+
+
+
+
+
+
+
+/* ===========================
+   COUNT
+=========================== */
+
+
+.notification-count {
+
+
+    position:absolute;
+
+
+    top:-5px;
+
+
+    right:-5px;
+
+
+    background:#dc2626;
+
+
+    color:white;
+
+
+    width:20px;
+
+
+    height:20px;
+
+
+    border-radius:50%;
+
+
+    font-size:12px;
+
+
+    display:flex;
+
+
+    align-items:center;
+
+
+    justify-content:center;
+
+
+    font-weight:700;
+
+
+}
+
+
+
+
+
+
+
+
+
+/* ===========================
+   DROPDOWN
+=========================== */
+
+
+.notification-dropdown {
+
+
+    position:absolute;
+
+
+    right:0;
+
+
+    top:55px;
+
+
+    width:350px;
+
+
+    background:white;
+
+
+    border-radius:15px;
+
+
+    box-shadow:
+
+
+    0 10px 30px rgba(0,0,0,.15);
+
+
+    overflow:hidden;
+
+
+    z-index:999;
+
+
+}
+
+
+
+
+
+
+
+
+
+.notification-header {
+
+
+    padding:18px;
+
+
+    border-bottom:1px solid #eee;
+
+
+}
+
+
+
+.notification-header h3 {
+
+
+    margin:0;
+
+
+    font-size:18px;
+
+
+}
+
+
+
+
+
+
+
+
+
+/* ===========================
+   ITEM
+=========================== */
+
+
+.notification-item {
+
+
+    padding:15px;
+
+
+    border-bottom:1px solid #f1f5f9;
+
+
+    cursor:pointer;
+
+
+    background:#eff6ff;
+
+
+}
+
+
+
+.notification-item:hover {
+
+
+    background:#dbeafe;
+
+
+}
+
+
+
+
+
+.notification-item.read {
+
+
+    background:white;
+
+
+}
+
+
+
+
+
+
+
+.notification-item h4 {
+
+
+    margin:0 0 5px;
+
+
+    font-size:15px;
+
+
+    color:#111827;
+
+
+}
+
+
+
+.notification-item p {
+
+
+    margin:0;
+
+
+    color:#64748b;
+
+
+    font-size:14px;
+
+
+}
+
+
+
+.notification-item small {
+
+
+    color:#94a3b8;
+
+
+    font-size:12px;
+
+
+}
+
+
+
+
+
+
+
+.notification-empty {
+
+
+    padding:30px;
+
+
+    text-align:center;
+
+
+    color:#64748b;
+
+
+}
+
+
+
+
+
+
+
+
+
+/* ===========================
+   MOBILE
+=========================== */
+
+
+@media(max-width:600px){
+
+
+
+    .notification-dropdown {
+
+
+        position:fixed;
+
+
+        right:15px;
+
+
+        left:15px;
+
+
+        width:auto;
+
+
+    }
+
+
+
+}

@@ -1,0 +1,903 @@
+/* =====================================================
+   STUDENT LAYOUT
+   Vetri Jobs - Student Portal
+===================================================== */
+
+*{
+    box-sizing:border-box;
+}
+
+html,
+body,
+#root{
+
+    width:100%;
+
+    min-height:100%;
+
+    margin:0;
+
+    padding:0;
+
+    overflow-x:hidden;
+
+    font-family:"Poppins",sans-serif;
+
+    background:#f8fafc;
+
+}
+
+
+.student-layout{
+
+    display:flex;
+
+    width:100%;
+
+    min-height:100vh;
+
+    background:#f8fafc;
+
+    overflow-x:hidden;
+
+}
+
+
+
+/* =====================================================
+   SIDEBAR
+===================================================== */
+
+
+.student-sidebar{
+
+
+    width:270px;
+
+    min-width:270px;
+
+    height:100vh;
+
+
+    background:#ffffff;
+
+
+    border-right:1px solid #e2e8f0;
+
+
+    padding:24px 20px;
+
+
+    position:fixed;
+
+
+    left:0;
+
+
+    top:0;
+
+
+    bottom:0;
+
+
+    z-index:1000;
+
+
+    display:flex;
+
+
+    flex-direction:column;
+
+
+    overflow-y:auto;
+
+
+    transition:transform .3s ease;
+
+}
+
+
+
+.student-sidebar::-webkit-scrollbar{
+
+    width:5px;
+
+}
+
+
+.student-sidebar::-webkit-scrollbar-thumb{
+
+    background:#cbd5e1;
+
+    border-radius:10px;
+
+}
+
+
+
+/* =====================================================
+   BRAND
+===================================================== */
+
+
+.student-brand{
+
+    display:flex;
+
+    align-items:center;
+
+    gap:14px;
+
+    padding-bottom:24px;
+
+    border-bottom:1px solid #f1f5f9;
+
+    margin-bottom:28px;
+
+    margin-left:6px;
+
+}
+
+
+
+.brand-circle{
+
+overflow:hidden;
+
+    width:58px;
+
+    height:58px;
+
+    border-radius:16px;
+
+    background:linear-gradient(
+        135deg,
+        #4338ca,
+        #3730a3
+    );
+
+    color:white;
+
+    display:flex;
+
+    align-items:center;
+
+    justify-content:center;
+
+    font-size:24px;
+
+    font-weight:700;
+
+}
+
+
+
+.student-brand h2{
+
+    margin:0;
+
+    font-size:22px;
+
+    font-weight:700;
+
+    letter-spacing:.2px;
+
+    color:#0f172a;
+
+}
+
+
+
+.student-brand p{
+
+    margin:4px 0 0;
+
+    color:#64748b;
+
+    font-size:13px;
+
+}
+
+
+
+/* =====================================================
+   NAVIGATION
+===================================================== */
+
+
+.student-navigation{
+
+    display:flex;
+
+    flex-direction:column;
+
+    gap:4px;
+
+    flex:1;
+
+}
+
+
+.student-link{
+
+
+    text-decoration:none;
+
+    color:#475569;
+
+
+    padding:11px 18px;
+
+
+    border-radius:14px;
+
+
+    display:flex;
+
+
+    align-items:center;
+
+
+    gap:14px;
+
+
+    font-size:15px;
+
+
+    font-weight:500;
+
+
+    width:100%;
+
+
+    transition:.25s ease;
+
+}
+
+
+
+.student-link span{
+
+
+    width:22px;
+
+    display:flex;
+
+    justify-content:center;
+
+}
+
+
+
+.student-link:hover{
+
+
+    background:#eef2ff;
+
+    color:#4338ca;
+
+}
+
+
+
+.student-link.active{
+
+
+    background:#4338ca;
+
+    color:white;
+
+
+    box-shadow:
+
+    0 10px 20px rgba(37,99,235,.22);
+
+}
+
+
+
+
+/* =====================================================
+   FOOTER
+===================================================== */
+
+
+.sidebar-footer{
+
+
+    margin-top:auto;
+
+    padding:20px 10px 4px;
+
+    border-top:1px solid #e2e8f0;
+
+}
+
+
+.sidebar-footer p{
+
+
+    margin:0 0 6px;
+
+    color:#4338ca;
+
+    font-weight:700;
+
+}
+
+
+.sidebar-footer small{
+
+    color:#64748b;
+
+}
+
+
+
+/* =====================================================
+   MAIN AREA
+===================================================== */
+
+
+.student-main{
+
+
+    margin-left:270px;
+
+
+    flex:1;
+
+
+    width:auto;
+
+
+    min-height:100vh;
+
+
+    display:flex;
+
+
+    flex-direction:column;
+
+
+    overflow-x:hidden;
+
+
+}
+
+
+
+
+
+/* =====================================================
+   HEADER
+===================================================== */
+
+
+.student-header{
+
+    width:100%;
+
+    height:86px;
+
+    background:white;
+
+    border-bottom:1px solid #e2e8f0;
+
+    display:flex;
+
+    align-items:center;
+
+    padding:0 35px;
+
+    position:sticky;
+
+    top:0;
+
+    z-index:900;
+
+}
+
+
+/*
+   Inner wrapper keeps the header controls aligned with the
+   same left-shifted column as the page content below,
+   instead of being pinned to the far right of the viewport.
+*/
+
+.student-header-inner{
+
+    width:100%;
+
+    max-width:100%;
+
+    margin:0;
+
+    display:flex;
+
+    align-items:center;
+
+    /* .menu-btn is hidden on desktop, so "space-between" would
+       collapse to a single flex child and stick to the left -
+       flex-end keeps the profile/logout block pinned right
+       whenever the hamburger isn't shown. The mobile media
+       query below switches this back to space-between once
+       the hamburger reappears. */
+    justify-content:flex-end;
+
+}
+
+
+
+
+.menu-btn{
+
+
+    display:none;
+
+
+}
+
+
+
+
+
+.header-actions{
+
+
+    display:flex;
+
+
+    align-items:center;
+
+
+    gap:20px;
+
+}
+
+
+
+
+.student-profile-mini{
+
+
+    display:flex;
+
+
+    align-items:center;
+
+
+    gap:12px;
+
+}
+
+
+
+
+.student-profile-mini svg{
+
+
+    font-size:40px;
+
+    color:#4338ca;
+
+}
+
+
+
+
+.student-profile-mini h4{
+
+
+    margin:0;
+
+    color:#0f172a;
+
+}
+
+
+
+
+.student-profile-mini p{
+
+
+    margin:3px 0;
+
+    color:#64748b;
+
+}
+
+
+
+
+
+.logout-btn{
+
+
+    border:none;
+
+
+    background:#fee2e2;
+
+
+    color:#dc2626;
+
+
+    padding:12px 22px;
+
+
+    border-radius:12px;
+
+
+    display:flex;
+
+
+    align-items:center;
+
+
+    gap:8px;
+
+
+    font-weight:600;
+
+
+    cursor:pointer;
+
+}
+
+
+.logout-btn:hover,
+.logout-btn:focus{
+
+    background:#fee2e2;
+
+    color:#dc2626;
+
+    transform:none;
+
+    box-shadow:none;
+
+    outline:none;
+
+}
+
+
+
+/* =====================================================
+   CONTENT
+===================================================== */
+
+
+.student-content{
+
+
+    width:100%;
+
+
+    flex:1;
+
+
+    padding:30px;
+
+
+    overflow-x:hidden;
+
+
+}
+
+
+/*
+   Content column is left-aligned (not centered) so it sits
+   just after the sidebar instead of floating in the middle
+   of the viewport and leaving an empty panel on the right.
+*/
+
+
+/*
+   Content column fills the full width available next to the
+   sidebar. No max-width cap and no auto-centering, so nothing
+   is left aligned to the middle and no empty strip is left on
+   the right of the screen on wide monitors.
+*/
+
+
+.student-content > *{
+
+    width:100%;
+
+    max-width:100%;
+
+    margin:0;
+
+}
+
+
+/* =====================================================
+   OVERLAY
+===================================================== */
+
+
+.sidebar-overlay{
+
+
+    display:none;
+
+}
+
+
+
+
+
+/* =====================================================
+   LARGE SCREEN
+===================================================== */
+
+
+@media(max-width:1200px){
+
+
+.student-sidebar{
+
+    width:240px;
+
+    min-width:240px;
+
+}
+
+
+.student-main{
+
+    margin-left:240px;
+
+}
+
+
+}
+
+
+
+/* =====================================================
+   TABLET
+===================================================== */
+
+
+@media(max-width:900px){
+
+
+.student-sidebar{
+
+
+    transform:translateX(-100%);
+
+
+}
+
+
+.student-sidebar.open{
+
+
+    transform:translateX(0);
+
+
+}
+
+
+
+.student-main{
+
+
+    margin-left:0;
+
+
+}
+
+
+
+.menu-btn{
+
+
+    display:flex;
+
+
+}
+
+
+
+.student-header-inner{
+
+    justify-content:space-between;
+
+}
+
+
+.sidebar-overlay{
+
+
+    display:block;
+
+
+    position:fixed;
+
+
+    inset:0;
+
+
+    background:rgba(15,23,42,.45);
+
+
+    z-index:950;
+
+
+}
+
+
+
+.student-content{
+
+
+    padding:20px;
+
+
+}
+
+
+
+}
+
+
+
+
+
+/* =====================================================
+   MOBILE
+===================================================== */
+
+
+@media(max-width:600px){
+
+
+.student-header{
+
+
+    height:74px;
+
+
+    padding:12px 15px;
+
+
+}
+
+
+
+.student-profile-mini h4,
+
+.student-profile-mini p{
+
+
+    display:none;
+
+
+}
+
+
+
+.student-profile-mini svg{
+
+
+    font-size:34px;
+
+
+}
+
+
+
+.logout-btn{
+
+
+    padding:10px 14px;
+
+
+}
+
+
+
+.student-content{
+
+
+    padding:15px;
+
+
+}
+
+
+
+}
+
+
+
+
+@media(max-width:420px){
+
+
+.logout-btn{
+
+
+    padding:10px;
+
+
+}
+
+
+
+}   
+
+/* ===================== HEADER NOTIFICATION BELL ===================== */
+
+.header-bell-btn{
+
+    position: relative;
+
+    background: #f1f5f9;
+
+    border: none;
+
+    width: 42px;
+
+    height: 42px;
+
+    border-radius: 12px;
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    color: #475569;
+
+    font-size: 17px;
+
+    cursor: pointer;
+
+    margin-right: 6px;
+
+    transition: background .15s ease;
+}
+
+.header-bell-btn:hover{
+
+    background: #e2e8f0;
+}
+
+.header-bell-badge{
+
+    position: absolute;
+
+    top: -4px;
+
+    right: -4px;
+
+    background: #ef4444;
+
+    color: white;
+
+    font-size: 10px;
+
+    font-weight: 700;
+
+    min-width: 18px;
+
+    height: 18px;
+
+    border-radius: 50%;
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    padding: 0 4px;
+
+    box-shadow: 0 2px 6px rgba(0,0,0,.25);
+}

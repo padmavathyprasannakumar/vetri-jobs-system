@@ -1,0 +1,33 @@
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.Python
+venv/
+env/
+.venv/
+
+# Django
+db.sqlite3
+db.sqlite3-journal
+*.log
+media/
+staticfiles/
+
+# Uploaded resumes (real user data)
+resumes/
+
+# Node (if any tooling lives alongside Django)
+node_modules/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

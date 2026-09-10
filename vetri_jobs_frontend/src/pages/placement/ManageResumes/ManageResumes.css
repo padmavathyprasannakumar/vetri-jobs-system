@@ -1,0 +1,252 @@
+.manage-resumes-page{
+
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.mr-header{
+
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    background: linear-gradient(135deg, #7c3aed, #4338ca);
+    padding: 28px 32px;
+    border-radius: 20px;
+    color: white;
+}
+
+.mr-header-icon{
+
+    width: 54px;
+    height: 54px;
+    border-radius: 16px;
+    background: rgba(255,255,255,.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+}
+
+.mr-header h1{
+    margin: 0 0 4px;
+    font-size: 24px;
+}
+
+.mr-header p{
+    margin: 0;
+    opacity: .85;
+    font-size: 14px;
+}
+
+.mr-stats{
+
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 18px;
+}
+
+.mr-stats .mr-stat-card{
+
+    background: white !important;
+    border-radius: 16px;
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.05);
+}
+
+.mr-stat-icon{
+
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+}
+
+.mr-stat-card.blue .mr-stat-icon{ background:#e0e7ff; color:#4338ca; }
+.mr-stat-card.green .mr-stat-icon{ background:#dcfce7; color:#16a34a; }
+.mr-stat-card.orange .mr-stat-icon{ background:#fef3c7; color:#b45309; }
+.mr-stat-card.purple .mr-stat-icon{ background:#ede9fe; color:#7c3aed; }
+
+.mr-stat-card p{
+    margin: 0 0 4px;
+    font-size: 12.5px;
+    color: #64748b;
+    font-weight: 600;
+}
+
+.mr-stat-card h3{
+    margin: 0;
+    font-size: 22px;
+    color: #0f172a;
+}
+
+.mr-search-bar{
+
+    background: white;
+    border-radius: 14px;
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.05);
+    color: #94a3b8;
+}
+
+.mr-search-bar input{
+
+    border: none;
+    outline: none;
+    flex: 1;
+    font-size: 14px;
+    color: #0f172a;
+}
+
+.mr-table-wrap{
+
+    background: white;
+    border-radius: 16px;
+    overflow-x: auto;
+    box-shadow: 0 2px 10px rgba(0,0,0,.05);
+}
+
+.mr-table{
+
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.mr-table th{
+
+    text-align: left;
+    padding: 14px 18px;
+    font-size: 12.5px;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: .3px;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.mr-table td{
+
+    padding: 14px 18px;
+    border-bottom: 1px solid #f8fafc;
+    font-size: 14px;
+    color: #334155;
+}
+
+.mr-student-cell{
+
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.mr-avatar{
+
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: #eef2ff;
+    color: #4338ca;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.mr-student-cell strong{
+    display: block;
+    color: #0f172a;
+}
+
+.mr-student-cell p{
+    margin: 2px 0 0;
+    font-size: 12.5px;
+    color: #94a3b8;
+}
+
+.mr-verified-pill{
+
+    padding: 4px 11px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.mr-verified-pill.yes{
+    background: #dcfce7;
+    color: #16a34a;
+}
+
+.mr-verified-pill.no{
+    background: #fef3c7;
+    color: #b45309;
+}
+
+.mr-score-pill{
+
+    padding: 4px 11px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 700;
+    background: #ede9fe;
+    color: #7c3aed;
+}
+
+.mr-score-pill.dim{
+    background: #f1f5f9;
+    color: #94a3b8;
+}
+
+.mr-view-link{
+
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: #4338ca;
+    font-weight: 600;
+    font-size: 13px;
+    text-decoration: none;
+}
+
+.mr-view-link:hover{
+    text-decoration: underline;
+}
+
+.mr-no-resume{
+    color: #94a3b8;
+    font-size: 13px;
+    font-style: italic;
+}
+
+.mr-empty{
+
+    text-align: center;
+    color: #94a3b8;
+    padding: 30px 0 !important;
+}
+
+@media(max-width: 900px){
+
+    .mr-stats{
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media(max-width: 600px){
+
+    .mr-stats{
+        grid-template-columns: 1fr;
+    }
+
+    .mr-header{
+        flex-wrap: wrap;
+    }
+}

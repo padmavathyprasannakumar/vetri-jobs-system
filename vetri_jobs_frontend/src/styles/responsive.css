@@ -1,0 +1,199 @@
+/* =====================================================
+   VETRI JOBS - GLOBAL RESPONSIVE FIXES
+   Bootstrap (bootstrap.min.css + bootstrap-icons) is already
+   loaded globally in main.jsx, so every page can already use
+   .container / .row / .col-* / .d-none / .d-md-block etc.
+   This file uses Bootstrap's own breakpoints (576 / 768 / 992
+   / 1200px) to make the class-name conventions already used
+   everywhere in this project (stat grids, form grids, tables,
+   cards, modals) collapse properly at every screen size,
+   without needing to edit each page individually.
+===================================================== */
+
+
+/* ---------------- BASE / MOBILE FIRST ---------------- */
+
+html{
+
+    -webkit-text-size-adjust: 100%;
+}
+
+img, svg{
+
+    max-width: 100%;
+
+    height: auto;
+}
+
+/* Any wrapper named "*-page" or "*-dashboard" gets sane
+   mobile padding instead of whatever desktop value each
+   page's own CSS set. */
+
+@media(max-width: 576px){
+
+    [class*="-page"],
+    [class*="-dashboard"]{
+
+        padding: 16px !important;
+    }
+}
+
+
+/* ---------------- STAT / KPI GRIDS ---------------- */
+/* Covers every "*-stats" grid across Student/Company/
+   Placement/Admin dashboards (interviews-stats,
+   candidates-stats, analytics-stats, dashboard-stat-grid,
+   etc.) */
+
+@media(max-width: 992px){
+
+    [class*="-stats"],
+    [class*="stat-grid"]{
+
+        grid-template-columns: repeat(2, 1fr) !important;
+    }
+}
+
+@media(max-width: 576px){
+
+    [class*="-stats"],
+    [class*="stat-grid"]{
+
+        grid-template-columns: 1fr !important;
+    }
+}
+
+
+/* ---------------- FORM GRIDS ---------------- */
+/* Covers "form-grid" used on Profile/Create Job/Register
+   forms across the whole app. */
+
+@media(max-width: 700px){
+
+    [class*="form-grid"]{
+
+        grid-template-columns: 1fr !important;
+    }
+}
+
+
+/* ---------------- CARD/CONTENT GRIDS ---------------- */
+/* Broad 3-column -> 2 -> 1 collapse for job/candidate/drive
+   listing grids that use CSS grid with multiple columns. */
+
+@media(max-width: 992px){
+
+    [class*="-grid"]:not([class*="form-grid"]){
+
+        grid-template-columns: repeat(2, 1fr) !important;
+    }
+}
+
+@media(max-width: 700px){
+
+    [class*="-grid"]:not([class*="form-grid"]){
+
+        grid-template-columns: 1fr !important;
+    }
+
+    [class*="-layout"]{
+
+        grid-template-columns: 1fr !important;
+    }
+
+    [class*="-row"][class*="charts"],
+    [class*="charts-row"],
+    [class*="body-row"]{
+
+        grid-template-columns: 1fr !important;
+    }
+}
+
+
+/* ---------------- TABLES ---------------- */
+/* Any table on a small screen scrolls horizontally inside
+   its card instead of squashing/overflowing the page. */
+
+@media(max-width: 768px){
+
+    table{
+
+        display: block;
+
+        overflow-x: auto;
+
+        -webkit-overflow-scrolling: touch;
+
+        white-space: nowrap;
+    }
+}
+
+
+/* ---------------- MODALS ---------------- */
+/* Covers every "*-modal" overlay (apply modal, candidate
+   profile modal, interview scheduling modal, etc). */
+
+@media(max-width: 576px){
+
+    [class$="-modal"],
+    [class*="modal-overlay"] > [class*="modal"]{
+
+        max-width: 94vw !important;
+
+        max-height: 90vh !important;
+
+        padding: 20px !important;
+    }
+}
+
+
+/* ---------------- SIDEBAR + CONTENT OFFSET ---------------- */
+/* Extra safety net alongside each layout's own media query -
+   guarantees the main content never stays pushed right once
+   the sidebar collapses to an overlay on mobile. */
+
+@media(max-width: 900px){
+
+    [class$="-content"]{
+
+        margin-left: 0 !important;
+    }
+}
+
+
+/* ---------------- TEXT / HEADERS ---------------- */
+
+@media(max-width: 576px){
+
+    h1{ font-size: 22px !important; }
+
+    h2{ font-size: 18px !important; }
+}
+
+
+/* ---------------- TOUCH TARGETS ---------------- */
+/* Buttons/links stay comfortably tappable on phones. */
+
+@media(max-width: 576px){
+
+    [class*="btn"]{
+
+        min-height: 40px;
+    }
+}
+
+
+/* ---------------- UTILITY CLASSES ---------------- */
+/* Small helpers in the spirit of Bootstrap's d-none/d-md-block,
+   for anywhere in the app that wants to hide/show content by
+   breakpoint without pulling in extra markup. */
+
+@media(max-width: 768px){
+
+    .vj-hide-mobile{ display: none !important; }
+}
+
+@media(min-width: 769px){
+
+    .vj-show-mobile-only{ display: none !important; }
+}

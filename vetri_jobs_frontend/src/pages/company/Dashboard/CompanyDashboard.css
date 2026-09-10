@@ -1,0 +1,862 @@
+.company-dashboard{
+
+    padding:30px 35px 60px;
+
+    background:#f8fafc;
+
+    min-height:100vh;
+
+    font-family:'Poppins',sans-serif;
+
+    display:flex;
+
+    flex-direction:column;
+
+    gap:24px;
+
+}
+
+
+.company-loading,
+.company-error{
+
+    min-height:60vh;
+
+    display:flex;
+
+    flex-direction:column;
+
+    align-items:center;
+
+    justify-content:center;
+
+    gap:14px;
+
+    color:#64748b;
+
+}
+
+
+.company-error{
+
+    color:#dc2626;
+
+    font-weight:600;
+
+}
+
+
+/* ===================== HEADER ===================== */
+
+.cd-header h1{
+
+    font-size:26px;
+
+    font-weight:700;
+
+    color:#0f172a;
+
+    margin:0 0 6px;
+
+    display:flex;
+
+    align-items:center;
+
+    gap:10px;
+
+}
+
+.cd-header .wave{
+
+    font-size:22px;
+
+}
+
+.cd-header p{
+
+    color:#64748b;
+
+    font-size:14.5px;
+
+    margin:0;
+
+}
+
+
+/* ===================== STAT CARDS ===================== */
+
+.cd-stats{
+
+    display:grid;
+
+    grid-template-columns:repeat(4,1fr);
+
+    gap:20px;
+
+}
+
+.cd-stat-card{
+
+    background:white;
+
+    border-radius:16px;
+
+    padding:20px 22px;
+
+    display:flex;
+
+    align-items:center;
+
+    gap:16px;
+
+    box-shadow:0 4px 16px rgba(15,23,42,.05);
+
+    border:1px solid #eef2f7;
+
+}
+
+.cd-stat-icon{
+
+    width:52px;
+
+    height:52px;
+
+    border-radius:14px;
+
+    display:flex;
+
+    align-items:center;
+
+    justify-content:center;
+
+    font-size:20px;
+
+    flex-shrink:0;
+
+}
+
+.cd-stat-icon.green{ background:#dcfce7; color:#16a34a; }
+.cd-stat-icon.blue{ background:#e0e7ff; color:#4338ca; }
+.cd-stat-icon.purple{ background:#ede9fe; color:#7c3aed; }
+.cd-stat-icon.orange{ background:#ffedd5; color:#ea580c; }
+.cd-stat-icon.teal{ background:#ccfbf1; color:#0d9488; }
+
+.cd-stat-card p{
+
+    margin:0 0 4px;
+
+    color:#64748b;
+
+    font-size:13.5px;
+
+}
+
+.cd-stat-card h3{
+
+    margin:0;
+
+    font-size:26px;
+
+    font-weight:700;
+
+    color:#0f172a;
+
+}
+
+
+/* ===================== PANELS ===================== */
+
+.cd-panel{
+
+    background:white;
+
+    border-radius:18px;
+
+    padding:24px 26px;
+
+    box-shadow:0 4px 16px rgba(15,23,42,.05);
+
+    border:1px solid #eef2f7;
+
+}
+
+.cd-panel-header{
+
+    display:flex;
+
+    align-items:center;
+
+    justify-content:space-between;
+
+    margin-bottom:18px;
+
+    gap:12px;
+
+    flex-wrap:wrap;
+
+}
+
+.cd-panel-header h2{
+
+    margin:0;
+
+    font-size:17px;
+
+    font-weight:700;
+
+    color:#0f172a;
+
+}
+
+.cd-panel-sub{
+
+    font-size:13px;
+
+    color:#94a3b8;
+
+}
+
+.cd-panel-header button{
+
+    background:#eef2ff;
+
+    color:#4338ca;
+
+    border:none;
+
+    padding:8px 14px;
+
+    border-radius:10px;
+
+    font-size:13px;
+
+    font-weight:600;
+
+    display:flex;
+
+    align-items:center;
+
+    gap:6px;
+
+    cursor:pointer;
+
+    transition:.2s;
+
+}
+
+.cd-panel-header button:hover{
+
+    background:#e0e7ff;
+
+}
+
+
+.cd-empty{
+
+    text-align:center;
+
+    color:#94a3b8;
+
+    padding:40px 0;
+
+    font-size:14px;
+
+}
+
+
+/* ===================== CHARTS ROW ===================== */
+
+.cd-charts-row{
+
+    display:grid;
+
+    grid-template-columns:1.6fr 1fr;
+
+    gap:20px;
+
+    align-items:stretch;
+
+}
+
+
+.cd-donut-body{
+
+    display:flex;
+
+    flex-direction:column;
+
+    align-items:center;
+
+    gap:6px;
+
+}
+
+.cd-donut-legend{
+
+    width:100%;
+
+}
+
+.cd-legend-row{
+
+    display:flex;
+
+    align-items:center;
+
+    gap:10px;
+
+    padding:6px 0;
+
+    font-size:13.5px;
+
+    color:#334155;
+
+}
+
+.cd-legend-dot{
+
+    width:10px;
+
+    height:10px;
+
+    border-radius:50%;
+
+    flex-shrink:0;
+
+}
+
+.cd-legend-label{
+
+    flex:1;
+
+}
+
+.cd-legend-value{
+
+    font-weight:600;
+
+    color:#0f172a;
+
+}
+
+.cd-legend-total{
+
+    display:flex;
+
+    justify-content:space-between;
+
+    margin-top:10px;
+
+    padding-top:10px;
+
+    border-top:1px solid #eef2f7;
+
+    font-size:14px;
+
+    font-weight:700;
+
+    color:#0f172a;
+
+}
+
+
+/* ===================== TABLES ROW ===================== */
+
+.cd-tables-row{
+
+    display:grid;
+
+    grid-template-columns:1.4fr 1fr;
+
+    gap:20px;
+
+    align-items:stretch;
+
+}
+
+
+.cd-jobs-table{
+
+    width:100%;
+
+    border-collapse:collapse;
+
+}
+
+.cd-jobs-table th{
+
+    text-align:left;
+
+    font-size:12.5px;
+
+    color:#94a3b8;
+
+    text-transform:uppercase;
+
+    letter-spacing:.03em;
+
+    padding:0 8px 12px;
+
+    border-bottom:1px solid #eef2f7;
+
+}
+
+.cd-jobs-table td{
+
+    padding:14px 8px;
+
+    font-size:14px;
+
+    color:#0f172a;
+
+    border-bottom:1px solid #f1f5f9;
+
+}
+
+.cd-jobs-table tr:last-child td{
+
+    border-bottom:none;
+
+}
+
+
+.cd-status-pill{
+
+    display:inline-block;
+
+    padding:4px 12px;
+
+    border-radius:20px;
+
+    font-size:12px;
+
+    font-weight:600;
+
+}
+
+.pill-green{ background:#dcfce7; color:#15803d; }
+.pill-grey{ background:#f1f5f9; color:#64748b; }
+
+.badge-blue{ background:#e0e7ff; color:#3730a3; }
+.badge-orange{ background:#ffedd5; color:#c2410c; }
+.badge-green{ background:#dcfce7; color:#15803d; }
+.badge-red{ background:#fee2e2; color:#b91c1c; }
+.badge-grey{ background:#f1f5f9; color:#64748b; }
+
+
+.cd-applicant-list{
+
+    display:flex;
+
+    flex-direction:column;
+
+    gap:14px;
+
+}
+
+.cd-applicant-row{
+
+    display:flex;
+
+    align-items:center;
+
+    gap:12px;
+
+}
+
+.cd-applicant-avatar{
+
+    width:40px;
+
+    height:40px;
+
+    border-radius:50%;
+
+    background:#eef2ff;
+
+    color:#4f46e5;
+
+    display:flex;
+
+    align-items:center;
+
+    justify-content:center;
+
+    font-weight:700;
+
+    flex-shrink:0;
+
+}
+
+.cd-applicant-info{
+
+    flex:1;
+
+    min-width:0;
+
+}
+
+.cd-applicant-info h4{
+
+    margin:0;
+
+    font-size:14px;
+
+    color:#0f172a;
+
+    font-weight:600;
+
+    white-space:nowrap;
+
+    overflow:hidden;
+
+    text-overflow:ellipsis;
+
+}
+
+.cd-applicant-info p{
+
+    margin:2px 0 0;
+
+    font-size:12.5px;
+
+    color:#94a3b8;
+
+    white-space:nowrap;
+
+    overflow:hidden;
+
+    text-overflow:ellipsis;
+
+}
+
+.cd-applicant-meta{
+
+    display:flex;
+
+    flex-direction:column;
+
+    align-items:flex-end;
+
+    gap:6px;
+
+    flex-shrink:0;
+
+}
+
+.cd-applicant-meta small{
+
+    color:#94a3b8;
+
+    font-size:11.5px;
+
+}
+
+
+/* ===================== QUICK ACTIONS ===================== */
+
+.cd-actions-grid{
+
+    display:grid;
+
+    grid-template-columns:repeat(5,1fr);
+
+    gap:16px;
+
+}
+
+.cd-actions-grid button{
+
+    background:#f8fafc;
+
+    border:1px solid #eef2f7;
+
+    border-radius:14px;
+
+    padding:18px 16px;
+
+    display:flex;
+
+    align-items:center;
+
+    gap:12px;
+
+    text-align:left;
+
+    cursor:pointer;
+
+    transition:.2s;
+
+}
+
+.cd-actions-grid button:hover{
+
+    background:#f1f5f9;
+
+    transform:translateY(-2px);
+
+}
+
+.cd-action-icon{
+
+    width:42px;
+
+    height:42px;
+
+    border-radius:12px;
+
+    display:flex;
+
+    align-items:center;
+
+    justify-content:center;
+
+    font-size:17px;
+
+    flex-shrink:0;
+
+}
+
+.cd-action-icon.green{ background:#dcfce7; color:#16a34a; }
+.cd-action-icon.blue{ background:#e0e7ff; color:#4338ca; }
+.cd-action-icon.purple{ background:#ede9fe; color:#7c3aed; }
+.cd-action-icon.orange{ background:#ffedd5; color:#ea580c; }
+.cd-action-icon.teal{ background:#ccfbf1; color:#0d9488; }
+
+.cd-actions-grid h4{
+
+    margin:0;
+
+    font-size:13.5px;
+
+    color:#0f172a;
+
+    font-weight:600;
+
+}
+
+.cd-actions-grid p{
+
+    margin:2px 0 0;
+
+    font-size:11.5px;
+
+    color:#94a3b8;
+
+}
+
+
+/* ===================== RESPONSIVE ===================== */
+
+@media(max-width:1200px){
+
+    .cd-stats{ grid-template-columns:repeat(2,1fr); }
+
+    .cd-charts-row,
+    .cd-tables-row{ grid-template-columns:1fr; }
+
+    .cd-actions-grid{ grid-template-columns:repeat(3,1fr); }
+
+}
+
+@media(max-width:700px){
+
+    .company-dashboard{ padding:20px; }
+
+    .cd-stats{ grid-template-columns:1fr; }
+
+    .cd-actions-grid{ grid-template-columns:repeat(2,1fr); }
+
+}
+
+
+/* ===================== AI RECOMMENDED CANDIDATES ===================== */
+
+.cd-recommended-list{
+
+    display: flex;
+
+    flex-direction: column;
+
+    gap: 14px;
+}
+
+.cd-recommended-card{
+
+    display: flex;
+
+    align-items: center;
+
+    gap: 14px;
+
+    padding: 14px;
+
+    border-radius: 14px;
+
+    background: #f8fafc;
+
+    border: 1px solid #eef2f7;
+}
+
+.cd-recommended-avatar{
+
+    width: 44px;
+
+    height: 44px;
+
+    border-radius: 50%;
+
+    background: linear-gradient(135deg, #4338ca, #6366f1);
+
+    color: white;
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    font-weight: 700;
+
+    font-size: 16px;
+
+    flex-shrink: 0;
+}
+
+.cd-recommended-info{
+
+    flex: 1;
+
+    min-width: 0;
+}
+
+.cd-recommended-info h4{
+
+    margin: 0 0 2px;
+
+    font-size: 13.5px;
+
+    color: #0f172a;
+}
+
+.cd-recommended-info p{
+
+    margin: 0 0 8px;
+
+    font-size: 12px;
+
+    color: #64748b;
+}
+
+.cd-recommended-skills{
+
+    display: flex;
+
+    flex-wrap: wrap;
+
+    gap: 6px;
+}
+
+.cd-recommended-skills span{
+
+    background: #eef2ff;
+
+    color: #4338ca;
+
+    font-size: 10.5px;
+
+    font-weight: 600;
+
+    padding: 3px 9px;
+
+    border-radius: 20px;
+}
+
+.cd-recommended-side{
+
+    display: flex;
+
+    flex-direction: column;
+
+    align-items: flex-end;
+
+    gap: 8px;
+
+    flex-shrink: 0;
+}
+
+.cd-match-badge{
+
+    background: #dcfce7;
+
+    color: #16a34a;
+
+    font-size: 11px;
+
+    font-weight: 700;
+
+    padding: 4px 11px;
+
+    border-radius: 20px;
+
+    white-space: nowrap;
+}
+
+.cd-recommended-actions{
+
+    display: flex;
+
+    gap: 6px;
+}
+
+.cd-recommended-view-btn,
+.cd-recommended-schedule-btn{
+
+    border: none;
+
+    padding: 7px 12px;
+
+    border-radius: 8px;
+
+    font-size: 11px;
+
+    font-weight: 700;
+
+    cursor: pointer;
+
+    white-space: nowrap;
+}
+
+.cd-recommended-view-btn{
+
+    background: white;
+
+    color: #4338ca;
+
+    border: 1px solid #e0e7ff;
+}
+
+.cd-recommended-schedule-btn{
+
+    background: #4338ca;
+
+    color: white;
+}
+
+.cd-recommended-schedule-btn:hover{
+
+    background: #3730a3;
+}
+
+
+@media(max-width: 700px){
+
+    .cd-recommended-card{ flex-wrap: wrap; }
+
+    .cd-recommended-side{ width: 100%; align-items: flex-start; }
+
+    .cd-recommended-actions{ width: 100%; }
+
+    .cd-recommended-view-btn,
+    .cd-recommended-schedule-btn{ flex: 1; }
+}

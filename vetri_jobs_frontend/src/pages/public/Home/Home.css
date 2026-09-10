@@ -1,0 +1,749 @@
+.home2-page{
+
+    background: #f5f8ff;
+    min-height: 100vh;
+    padding: 28px 5vw 40px;
+    box-sizing: border-box;
+    font-family: "Poppins", sans-serif;
+    overflow-x: hidden;
+}
+
+.home2-hero{
+
+    max-width: 1180px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 30px;
+    align-items: start;
+}
+
+/* ===================== LEFT ===================== */
+
+.home2-left{
+
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.home2-badge{
+
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #eef2ff;
+    color: #4338ca;
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+    width: fit-content;
+    margin-bottom: 12px;
+}
+
+.home2-left h1{
+
+    margin: 0 0 10px;
+    font-size: 32px;
+    line-height: 1.15;
+    color: #0f172a;
+    font-weight: 800;
+}
+
+.home2-highlight{
+
+    color: #2563eb;
+}
+
+.home2-subtext{
+
+    margin: 0 0 18px;
+    font-size: 13px;
+    color: #64748b;
+    line-height: 1.6;
+    max-width: 460px;
+}
+
+.home2-illustration{
+
+    position: relative;
+    display: flex;
+    justify-content: center;
+    margin-bottom: 20px;
+    padding: 8px 44px;
+}
+
+.home2-illustration img{
+
+    width: 200px;
+    height: 200px;
+    border-radius: 20px;
+    object-fit: cover;
+    display: block;
+}
+
+.home2-illustration-fallback{
+
+    width: 160px;
+    height: 160px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #2563eb, #7c3aed);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 65px;
+}
+
+.home2-floating-badge{
+
+    position: absolute;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: white;
+    border-radius: 14px;
+    padding: 8px 12px;
+    box-shadow: 0 8px 22px rgba(15,23,42,.12);
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+.home2-badge-score{
+
+    top: 0;
+    right: 0;
+}
+
+.home2-badge-match{
+
+    top: 66px;
+    right: -10px;
+}
+
+.home2-badge-ready{
+
+    bottom: 20px;
+    right: 14px;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.home2-floating-badge strong{
+
+    display: block;
+    font-size: 10px;
+    color: #94a3b8;
+    font-weight: 600;
+}
+
+.home2-floating-badge span{
+
+    font-size: 13px;
+    font-weight: 800;
+    color: #0f172a;
+}
+
+.home2-badge-ring{
+
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 2.5px solid #16a34a;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 8px;
+    font-weight: 800;
+    color: #16a34a;
+    flex-shrink: 0;
+}
+
+.home2-badge-target{
+
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #fce7f3;
+    color: #db2777;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    flex-shrink: 0;
+}
+
+.home2-badge-check{
+
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: #2563eb;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    flex-shrink: 0;
+}
+
+.home2-decorative-text{
+
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%) rotate(-6deg);
+    font-family: cursive;
+    font-style: italic;
+    font-weight: 700;
+    font-size: 14px;
+    color: #2563eb;
+    opacity: .55;
+    line-height: 1.3;
+}
+
+.home2-features{
+
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 18px;
+}
+
+.home2-feature-item{
+
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+}
+
+.home2-feature-icon{
+
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    background: #eff6ff;
+    color: #2563eb;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    flex-shrink: 0;
+}
+
+.home2-feature-item strong{
+
+    display: block;
+    font-size: 12px;
+    color: #0f172a;
+    margin-bottom: 1px;
+}
+
+.home2-feature-item p{
+
+    margin: 0;
+    font-size: 10.5px;
+    color: #94a3b8;
+}
+
+.home2-stats{
+
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    padding-top: 14px;
+    border-top: 1px solid #e2e8f0;
+}
+
+.home2-stat h3{
+
+    margin: 0 0 1px;
+    font-size: 17px;
+    color: #0f172a;
+    font-weight: 800;
+}
+
+.home2-stat p{
+
+    margin: 0;
+    font-size: 10px;
+    color: #94a3b8;
+    font-weight: 600;
+}
+
+/* ===================== RIGHT (LOGIN CARD) ===================== */
+
+.home2-right{
+
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    margin-top: 70px;
+}
+
+.home2-login-card{
+
+    background: white;
+    border-radius: 18px;
+    padding: 48px 32px;
+    width: 100%;
+    max-width: 390px;
+    box-shadow: 0 16px 40px rgba(15,23,42,.08);
+    box-sizing: border-box;
+}
+
+.home2-login-card h2{
+
+    margin: 0 0 3px;
+    font-size: 18px;
+    color: #0f172a;
+}
+
+.home2-login-sub{
+
+    margin: 0 0 16px;
+    font-size: 11.5px;
+    color: #64748b;
+}
+
+.home2-tabs{
+
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 6px;
+    background: #f1f5f9;
+    padding: 4px;
+    border-radius: 10px;
+    margin-bottom: 26px;
+}
+
+.home2-tabs button{
+
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    border: none;
+    background: transparent;
+    color: #64748b;
+    padding: 7px 4px;
+    border-radius: 8px;
+    font-size: 9.5px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: .15s;
+}
+
+.home2-tabs button.active{
+
+    background: #2563eb;
+    color: white;
+    box-shadow: 0 3px 8px rgba(37,99,235,.3);
+}
+
+.home2-input{
+
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid #e2e8f0;
+    border-radius: 9px;
+    padding: 9px 12px;
+    margin-bottom: 20px;
+    background: #f9fafc;
+}
+
+.home2-input:focus-within{
+
+    border-color: #2563eb;
+    background: white;
+}
+
+.home2-input input{
+
+    border: none;
+    outline: none;
+    background: transparent;
+    flex: 1;
+    font-size: 12px;
+    min-width: 0;
+}
+
+.home2-eye{
+
+    border: none;
+    background: none;
+    cursor: pointer;
+    color: #94a3b8;
+    display: flex;
+}
+
+.home2-row{
+
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+    font-size: 11px;
+}
+
+.home2-remember{
+
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    color: #334155;
+    cursor: pointer;
+}
+
+.home2-remember input{
+
+    width: 12px;
+    height: 12px;
+}
+
+.home2-row a{
+
+    color: #2563eb;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.home2-forgot-link{
+
+    border: none;
+    background: none;
+    color: #2563eb;
+    font-weight: 600;
+    font-size: 11px;
+    cursor: pointer;
+    padding: 0;
+}
+
+.home2-forgot-link:hover{
+
+    text-decoration: underline;
+}
+
+.home2-row a:hover{
+
+    text-decoration: underline;
+}
+
+.home2-error{
+
+    background: #fee2e2;
+    color: #991b1b;
+    padding: 8px 12px;
+    border-radius: 9px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-bottom: 12px;
+}
+
+.home2-submit{
+
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: #2563eb;
+    color: white;
+    border: none;
+    padding: 11px;
+    border-radius: 10px;
+    font-weight: 700;
+    font-size: 12.5px;
+    cursor: pointer;
+    transition: .2s;
+}
+
+.home2-submit:hover:not(:disabled){
+
+    background: #1d4ed8;
+}
+
+.home2-submit:disabled{
+
+    opacity: .6;
+    cursor: not-allowed;
+}
+
+.home2-register{
+
+    text-align: center;
+    margin: 14px 0 0;
+    font-size: 11px;
+    color: #64748b;
+}
+
+.home2-register a{
+
+    color: #2563eb;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.home2-register a:hover{
+
+    text-decoration: underline;
+}
+
+/* ===================== RESPONSIVE ===================== */
+
+@media(max-width: 1000px){
+
+    .home2-hero{
+
+        grid-template-columns: 1fr;
+    }
+
+    .home2-login-card{
+
+        max-width: 400px;
+        margin: 0 auto;
+    }
+}
+
+@media(max-width: 600px){
+
+    .home2-left h1{
+
+        font-size: 26px;
+    }
+
+    .home2-features{
+
+        grid-template-columns: 1fr;
+    }
+
+    .home2-stats{
+
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+    }
+
+    .home2-floating-badge,
+    .home2-decorative-text{
+
+        display: none;
+    }
+}
+
+
+/* ===================== CHECK APPLICATION STATUS ===================== */
+
+.home2-status-link{
+
+    display: block;
+    margin: 10px auto 0;
+    border: none;
+    background: none;
+    color: #64748b;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: underline;
+    text-align: center;
+    width: 100%;
+}
+
+.home2-status-link:hover{
+
+    color: #2563eb;
+}
+
+.home2-status-overlay{
+
+    position: fixed;
+    inset: 0;
+    background: rgba(15,23,42,.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    z-index: 1000;
+}
+
+.home2-status-modal{
+
+    background: white;
+    width: 100%;
+    max-width: 420px;
+    border-radius: 20px;
+    padding: 28px;
+    box-shadow: 0 25px 60px rgba(0,0,0,.25);
+}
+
+.home2-status-header{
+
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.home2-status-header h2{
+
+    margin: 0;
+    font-size: 19px;
+    color: #0f172a;
+}
+
+.home2-status-header button{
+
+    border: none;
+    background: #f1f5f9;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: #64748b;
+}
+
+.home2-status-sub{
+
+    margin: 8px 0 20px;
+    font-size: 13px;
+    color: #64748b;
+    line-height: 1.6;
+}
+
+.home2-status-modal label{
+
+    display: block;
+    font-size: 13px;
+    font-weight: 700;
+    color: #334155;
+    margin: 14px 0 6px;
+}
+
+.home2-status-input{
+
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 11px 14px;
+    background: #f9fafc;
+}
+
+.home2-status-input:focus-within{
+
+    border-color: #2563eb;
+    background: white;
+}
+
+.home2-status-input svg{
+
+    color: #94a3b8;
+    font-size: 14px;
+}
+
+.home2-status-input input{
+
+    border: none;
+    outline: none;
+    background: transparent;
+    flex: 1;
+    font-size: 13.5px;
+}
+
+.home2-status-error{
+
+    background: #fee2e2;
+    color: #991b1b;
+    padding: 10px 14px;
+    border-radius: 10px;
+    font-size: 12.5px;
+    font-weight: 600;
+    margin-top: 16px;
+}
+
+.home2-status-submit{
+
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: #2563eb;
+    color: white;
+    border: none;
+    padding: 14px;
+    border-radius: 12px;
+    font-weight: 700;
+    font-size: 14px;
+    cursor: pointer;
+    margin-top: 20px;
+    transition: .2s;
+}
+
+.home2-status-submit:hover:not(:disabled){
+
+    background: #1d4ed8;
+}
+
+.home2-status-submit:disabled{
+
+    opacity: .6;
+    cursor: not-allowed;
+}
+
+.home2-status-result{
+
+    text-align: center;
+}
+
+.home2-status-pill{
+
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 18px;
+    border-radius: 20px;
+    font-weight: 700;
+    font-size: 13.5px;
+    margin: 10px 0 14px;
+}
+
+.home2-status-pill.approved{
+
+    background: #dcfce7;
+    color: #16a34a;
+}
+
+.home2-status-pill.pending{
+
+    background: #fef3c7;
+    color: #b45309;
+}
+
+.home2-status-pill.rejected{
+
+    background: #fee2e2;
+    color: #dc2626;
+}
+
+.home2-status-name{
+
+    font-size: 15px;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 0 0 6px;
+}
+
+.home2-status-reason{
+
+    font-size: 13px;
+    color: #64748b;
+    background: #f8fafc;
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin: 0 0 16px;
+}

@@ -1,0 +1,39 @@
+.dashboard-footer{
+
+    padding: 18px 35px;
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: space-between;
+
+    flex-wrap: wrap;
+
+    gap: 8px;
+
+    color: #94a3b8;
+
+    font-size: 12.5px;
+
+    border-top: 1px solid #eef2f7;
+
+    background: #f8fafc;
+}
+
+.dashboard-footer-tagline{
+
+    color: #cbd5e1;
+}
+
+@media(max-width: 600px){
+
+    .dashboard-footer{
+
+        padding: 14px 20px;
+
+        justify-content: center;
+
+        text-align: center;
+    }
+}
