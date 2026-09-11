@@ -1062,21 +1062,12 @@ from .models import SiteBranding
 @admin.register(SiteBranding)
 class SiteBrandingAdmin(admin.ModelAdmin):
 
-    list_display = ("site_name", "tagline", "logo_preview", "updated_at")
+   list_display = ("site_name", "tagline", "updated_at")
 
-    readonly_fields = (
-        "logo_preview_large",
-        "login_hero_preview",
-        "register_hero_preview",
-        "company_login_hero_preview",
-        "company_register_hero_preview",
-        "placement_login_hero_preview",
-        "admin_login_hero_preview",
-        "dashboard_assistant_preview",
-        "chatbot_avatar_preview",
-        "profile_hero_preview",
-        "homepage_hero_preview",
-        "updated_at",
+     list_display = (
+        "site_name",
+        "tagline",
+        "updated_at"
     )
 
     fieldsets = (
