@@ -1089,6 +1089,12 @@ STORAGES = {
     },
 }
 
+# django-cloudinary-storage's own `collectstatic` override still checks
+# this legacy pre-Django-4.2 setting directly and crashes with an
+# AttributeError if it's missing. STORAGES above is what Django itself
+# actually uses; this is just kept around so that package doesn't break.
+STATICFILES_STORAGE = STORAGES["staticfiles"]["BACKEND"]
+
 
 STATICFILES_DIRS = [
 
@@ -1146,3 +1152,4 @@ CORS_ALLOW_CREDENTIALS = True
 GROQ_API_KEY = os.getenv(
     "GROQ_API_KEY"
 )
+   
