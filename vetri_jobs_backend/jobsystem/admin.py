@@ -1053,9 +1053,6 @@ class PlacementQueryAdmin(admin.ModelAdmin):
 # =====================================================
 
 from django.utils.html import format_html
-
-from django.utils.safestring import mark_safe
-
 from .models import SiteBranding
 
 
@@ -1073,6 +1070,7 @@ class SiteBrandingAdmin(admin.ModelAdmin):
     )
 
     fieldsets = (
+
         ("General", {
             "fields": (
                 "site_name",
@@ -1124,6 +1122,35 @@ class SiteBrandingAdmin(admin.ModelAdmin):
             ),
         }),
 
+        ("Placement Admin Login", {
+            "fields": (
+                "placement_login_hero_image",
+                "placement_login_headline",
+                "placement_login_subheadline",
+            ),
+        }),
+
+        ("Super Admin Login", {
+            "fields": (
+                "admin_login_hero_image",
+                "admin_login_headline",
+                "admin_login_subheadline",
+            ),
+        }),
+
+        ("AI Assistant", {
+            "fields": (
+                "dashboard_assistant_image",
+                "chatbot_avatar_image",
+            ),
+        }),
+
+        ("Profile Page", {
+            "fields": (
+                "profile_hero_image",
+            ),
+        }),
+
         ("Meta", {
             "fields": (
                 "updated_at",
@@ -1131,6 +1158,16 @@ class SiteBrandingAdmin(admin.ModelAdmin):
         }),
     )
 
+
+    def has_add_permission(self, request):
+
+        # Allow only one SiteBranding record
+        return not SiteBranding.objects.exists()
+
+
+    def has_delete_permission(self, request, obj=None):
+
+        return False
     def logo_preview(self, obj):
 
         if obj.logo:
