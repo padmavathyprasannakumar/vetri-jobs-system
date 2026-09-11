@@ -14,35 +14,33 @@ class Command(BaseCommand):
         username = os.environ.get("DJANGO_ADMIN_USERNAME")
         password = os.environ.get("DJANGO_ADMIN_PASSWORD")
 
-        # Check username OR email existing
-        user = User.objects.filter(username=username).first()
 
-        if not user:
-            user = User.objects.filter(email=email).first()
+        # Remove duplicate email users except target user
+        User.objects.filter(email=email).exclude(
+            username=username
+        ).delete()
 
-        if user:
-            user.username = username
-            user.email = email
-            user.set_password(password)
-            user.is_staff = True
-            user.is_superuser = True
-            user.save()
 
+        user, created = User.objects.get_or_create(
+            username=username,
+            defaults={
+                "email": email
+            }
+        )
+
+
+        user.email = email
+        user.set_password(password)
+        user.is_staff = True
+        user.is_superuser = True
+        user.save()
+
+
+        if created:
             self.stdout.write(
-                self.style.SUCCESS(
-                    "Admin user updated successfully"
-                )
+                "Admin created successfully"
             )
-
         else:
-            User.objects.create_superuser(
-                username=username,
-                email=email,
-                password=password
-            )
-
             self.stdout.write(
-                self.style.SUCCESS(
-                    "New admin user created successfully"
-                )
+                "Admin updated successfully"
             )
