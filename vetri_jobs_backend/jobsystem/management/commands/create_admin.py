@@ -10,28 +10,30 @@ class Command(BaseCommand):
 
         User = get_user_model()
 
-        email = os.environ.get("DJANGO_ADMIN_EMAIL")
-        username = os.environ.get("DJANGO_ADMIN_USERNAME")
-        password = os.environ.get("DJANGO_ADMIN_PASSWORD")
+        email = os.getenv("DJANGO_ADMIN_EMAIL")
+        username = os.getenv("DJANGO_ADMIN_USERNAME")
+        password = os.getenv("DJANGO_ADMIN_PASSWORD")
 
-        if not email or not password:
-            self.stdout.write("Admin environment variables missing")
-            return
+        user = User.objects.filter(username=username).first()
 
-        user, created = User.objects.get_or_create(
-            email=email,
-            defaults={
-                "username": username
-            }
-        )
+        if user:
+            user.email = email
+            user.set_password(password)
+            user.is_staff = True
+            user.is_superuser = True
+            user.save()
 
-        user.username = username
-        user.email = email
-        user.set_password(password)
-        user.is_staff = True
-        user.is_superuser = True
-        user.save()
+            self.stdout.write(
+                "Existing admin updated successfully"
+            )
 
-        self.stdout.write(
-            "Admin account created/updated successfully"
-        )
+        else:
+            User.objects.create_superuser(
+                username=username,
+                email=email,
+                password=password
+            )
+
+            self.stdout.write(
+                "New admin created successfully"
+            )
