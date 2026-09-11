@@ -1062,14 +1062,11 @@ from .models import SiteBranding
 @admin.register(SiteBranding)
 class SiteBrandingAdmin(admin.ModelAdmin):
 
-   list_display = ("site_name", "tagline", "updated_at")
-
-     list_display = (
+    list_display = (
         "site_name",
         "tagline",
-        "updated_at"
+        "updated_at",
     )
-
     fieldsets = (
         ("General", {
             "fields": ("site_name", "tagline", "logo", "logo_preview_large", "favicon"),
