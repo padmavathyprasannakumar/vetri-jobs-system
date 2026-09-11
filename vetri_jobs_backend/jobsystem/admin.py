@@ -1067,49 +1067,67 @@ class SiteBrandingAdmin(admin.ModelAdmin):
         "tagline",
         "updated_at",
     )
+
+    readonly_fields = (
+        "updated_at",
+    )
+
     fieldsets = (
         ("General", {
-            "fields": ("site_name", "tagline", "logo", "logo_preview_large", "favicon"),
+            "fields": (
+                "site_name",
+                "tagline",
+                "logo",
+                "favicon",
+            ),
         }),
-        ("Homepage (public landing page)", {
+
+        ("Homepage", {
             "fields": (
                 "homepage_badge_text",
                 "homepage_headline",
                 "homepage_headline_highlight",
                 "homepage_subtext",
                 "homepage_hero_image",
-                "homepage_hero_preview",
             ),
         }),
-        ("Student Login page (left panel)", {
-            "fields": ("login_hero_image", "login_hero_preview", "login_headline", "login_subheadline"),
+
+        ("Student Login", {
+            "fields": (
+                "login_hero_image",
+                "login_headline",
+                "login_subheadline",
+            ),
         }),
-        ("Student Register page (left panel)", {
-            "fields": ("register_hero_image", "register_hero_preview", "register_headline", "register_subheadline"),
+
+        ("Student Register", {
+            "fields": (
+                "register_hero_image",
+                "register_headline",
+                "register_subheadline",
+            ),
         }),
-        ("Company Login page (left panel)", {
-            "fields": ("company_login_hero_image", "company_login_hero_preview", "company_login_headline", "company_login_subheadline"),
+
+        ("Company Login", {
+            "fields": (
+                "company_login_hero_image",
+                "company_login_headline",
+                "company_login_subheadline",
+            ),
         }),
-        ("Company Register page (left panel)", {
-            "fields": ("company_register_hero_image", "company_register_hero_preview", "company_register_headline", "company_register_subheadline"),
+
+        ("Company Register", {
+            "fields": (
+                "company_register_hero_image",
+                "company_register_headline",
+                "company_register_subheadline",
+            ),
         }),
-        ("Placement Admin Login page (left panel)", {
-            "fields": ("placement_login_hero_image", "placement_login_hero_preview", "placement_login_headline", "placement_login_subheadline"),
-        }),
-        ("Super Admin Login page (left panel)", {
-            "fields": ("admin_login_hero_image", "admin_login_hero_preview", "admin_login_headline", "admin_login_subheadline"),
-        }),
-        ("Student Dashboard - AI Career Assistant card", {
-            "fields": ("dashboard_assistant_image", "dashboard_assistant_preview"),
-        }),
-        ("Floating AI Chatbot avatar (site-wide)", {
-            "fields": ("chatbot_avatar_image", "chatbot_avatar_preview"),
-        }),
-        ("Student Profile page (left panel)", {
-            "fields": ("profile_hero_image", "profile_hero_preview"),
-        }),
+
         ("Meta", {
-            "fields": ("updated_at",),
+            "fields": (
+                "updated_at",
+            ),
         }),
     )
 
