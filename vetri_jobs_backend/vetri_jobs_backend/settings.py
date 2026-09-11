@@ -1081,7 +1081,7 @@ STORAGES = {
     "default": {
         "BACKEND":
             "cloudinary_storage.storage.RawMediaCloudinaryStorage"
-            if os.getenv("CLOUDINARY_CLOUD_NAME")
+            if (os.getenv("CLOUDINARY_URL") or os.getenv("CLOUDINARY_CLOUD_NAME"))
             else "django.core.files.storage.FileSystemStorage",
     },
     "staticfiles": {
@@ -1118,11 +1118,41 @@ MEDIA_ROOT = BASE_DIR / "media"
 # Cloudinary - used for uploaded resumes, logos, and branding images
 # in production (see STORAGES above). Leave these unset locally and
 # uploads just go to the MEDIA_ROOT folder above instead.
-CLOUDINARY_STORAGE = {
-    "CLOUD_NAME": os.getenv("CLOUDINARY_CLOUD_NAME"),
-    "API_KEY": os.getenv("CLOUDINARY_API_KEY"),
-    "API_SECRET": os.getenv("CLOUDINARY_API_SECRET"),
-}
+def _clean_env(name):
+    """Strip whitespace/newlines - a stray trailing newline from
+    pasting into a multi-line env var field is a common, hard-to-spot
+    cause of 'works locally, fails in production' credential bugs."""
+    value = os.getenv(name, "")
+    return value.strip() if value else value
+
+
+_cloudinary_url = _clean_env("CLOUDINARY_URL")
+
+if _cloudinary_url:
+
+    # Preferred: Cloudinary's own single combined string, copied
+    # straight from their dashboard's "API Environment variable"
+    # button - one paste, so there's no way to mismatch cloud name
+    # against the wrong key/secret. Format:
+    # cloudinary://<api_key>:<api_secret>@<cloud_name>
+    from urllib.parse import urlparse
+
+    _parsed = urlparse(_cloudinary_url)
+
+    CLOUDINARY_STORAGE = {
+        "CLOUD_NAME": _parsed.hostname,
+        "API_KEY": _parsed.username,
+        "API_SECRET": _parsed.password,
+    }
+
+else:
+
+    # Fallback: three separate env vars
+    CLOUDINARY_STORAGE = {
+        "CLOUD_NAME": _clean_env("CLOUDINARY_CLOUD_NAME"),
+        "API_KEY": _clean_env("CLOUDINARY_API_KEY"),
+        "API_SECRET": _clean_env("CLOUDINARY_API_SECRET"),
+    }
 
 
 
