@@ -4,6 +4,30 @@ from django.contrib.auth.models import AbstractUser
 
 from django.utils import timezone
 
+import os
+
+
+def document_storage():
+    """
+    Storage for actual documents (resumes, PDFs, registration/GST
+    certificates) - these need Cloudinary's 'raw' delivery type, not
+    the 'image' type used by the default storage (set in settings.py),
+    since Cloudinary treats non-image files differently. Passed as a
+    callable (not called here) so Django evaluates it lazily at
+    upload/access time rather than at import time - this avoids
+    crashing at startup in local dev where Cloudinary isn't configured.
+    """
+
+    if os.getenv("CLOUDINARY_URL") or os.getenv("CLOUDINARY_CLOUD_NAME"):
+
+        from cloudinary_storage.storage import RawMediaCloudinaryStorage
+
+        return RawMediaCloudinaryStorage()
+
+    from django.core.files.storage import FileSystemStorage
+
+    return FileSystemStorage()
+
 
 
 
@@ -532,6 +556,8 @@ class StudentProfile(models.Model):
 
         upload_to="student/resume/",
 
+        storage=document_storage,
+
         null=True,
 
         blank=True
@@ -946,6 +972,8 @@ class CompanyProfile(models.Model):
 
         upload_to="company/documents/registration/",
 
+        storage=document_storage,
+
         null=True,
 
         blank=True
@@ -955,6 +983,8 @@ class CompanyProfile(models.Model):
     gst_document = models.FileField(
 
         upload_to="company/documents/gst/",
+
+        storage=document_storage,
 
         null=True,
 
@@ -1298,7 +1328,8 @@ class Resume(models.Model):
     # Resume File
 
     file = models.FileField(
-        upload_to=resume_upload_path
+        upload_to=resume_upload_path,
+        storage=document_storage
     )
 
 
@@ -3909,7 +3940,9 @@ class StudentResume(models.Model):
 
     resume = models.FileField(
 
-        upload_to="student/resumes/"
+        upload_to="student/resumes/",
+
+        storage=document_storage
 
     )
 
