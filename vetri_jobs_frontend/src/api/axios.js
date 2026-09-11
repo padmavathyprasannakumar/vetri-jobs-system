@@ -15,7 +15,7 @@ import axios from "axios";
 // https://your-app-name.onrender.com/api/
 // Falls back to localhost so local development needs no setup.
 const API_BASE_URL =
-    import.meta.env.VITE_API_URL || "http://localhost:8000/api/";
+    import.meta.env.VITE_API_URL ||"https://vetri-jobs-backend.onrender.com",
 
 
 
