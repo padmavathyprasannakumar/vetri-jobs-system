@@ -72,15 +72,20 @@ urlpatterns = [
 
 
 # =====================================================
-# MEDIA FILES - DEVELOPMENT
+# MEDIA FILES
+# Serving these unconditionally (not just when DEBUG=True) since
+# this app currently has no separate static file server for media
+# in production. When CLOUDINARY_* env vars are set, uploads go
+# straight to Cloudinary and never hit this route at all - this is
+# purely a fallback for any file that ended up on local disk (e.g.
+# uploaded before Cloudinary was configured, or in an environment
+# without Cloudinary credentials set).
 # =====================================================
 
-if settings.DEBUG:
+urlpatterns += static(
 
-    urlpatterns += static(
+    settings.MEDIA_URL,
 
-        settings.MEDIA_URL,
+    document_root=settings.MEDIA_ROOT,
 
-        document_root=settings.MEDIA_ROOT,
-
-    )
+)
