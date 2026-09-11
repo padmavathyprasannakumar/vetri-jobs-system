@@ -1080,7 +1080,7 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 STORAGES = {
     "default": {
         "BACKEND":
-            "cloudinary_storage.storage.RawMediaCloudinaryStorage"
+            "cloudinary_storage.storage.MediaCloudinaryStorage"
             if (os.getenv("CLOUDINARY_URL") or os.getenv("CLOUDINARY_CLOUD_NAME"))
             else "django.core.files.storage.FileSystemStorage",
     },
