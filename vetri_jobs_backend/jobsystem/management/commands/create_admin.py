@@ -14,10 +14,11 @@ class Command(BaseCommand):
         username = os.getenv("DJANGO_ADMIN_USERNAME")
         password = os.getenv("DJANGO_ADMIN_PASSWORD")
 
-        user = User.objects.filter(username=username).first()
+        # Check by email first
+        user = User.objects.filter(email=email).first()
 
         if user:
-            user.email = email
+            user.username = username
             user.set_password(password)
             user.is_staff = True
             user.is_superuser = True
