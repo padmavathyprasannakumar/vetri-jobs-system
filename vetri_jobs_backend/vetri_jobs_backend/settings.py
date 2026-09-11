@@ -107,9 +107,9 @@ INSTALLED_APPS = [
 
     "django.contrib.messages",
 
-    "cloudinary_storage",
-
     "django.contrib.staticfiles",
+
+    "cloudinary_storage",
 
     "cloudinary",
 
@@ -1152,4 +1152,3 @@ CORS_ALLOW_CREDENTIALS = True
 GROQ_API_KEY = os.getenv(
     "GROQ_API_KEY"
 )
-   
