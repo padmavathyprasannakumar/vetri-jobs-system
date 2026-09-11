@@ -10,22 +10,28 @@ class Command(BaseCommand):
 
         User = get_user_model()
 
-        email = os.getenv("DJANGO_ADMIN_EMAIL")
-        username = os.getenv("DJANGO_ADMIN_USERNAME")
-        password = os.getenv("DJANGO_ADMIN_PASSWORD")
+        email = os.environ.get("DJANGO_ADMIN_EMAIL")
+        username = os.environ.get("DJANGO_ADMIN_USERNAME")
+        password = os.environ.get("DJANGO_ADMIN_PASSWORD")
 
-        # Check by email first
-        user = User.objects.filter(email=email).first()
+        # Check username OR email existing
+        user = User.objects.filter(username=username).first()
+
+        if not user:
+            user = User.objects.filter(email=email).first()
 
         if user:
             user.username = username
+            user.email = email
             user.set_password(password)
             user.is_staff = True
             user.is_superuser = True
             user.save()
 
             self.stdout.write(
-                "Existing admin updated successfully"
+                self.style.SUCCESS(
+                    "Admin user updated successfully"
+                )
             )
 
         else:
@@ -36,5 +42,7 @@ class Command(BaseCommand):
             )
 
             self.stdout.write(
-                "New admin created successfully"
+                self.style.SUCCESS(
+                    "New admin user created successfully"
+                )
             )
