@@ -107,7 +107,11 @@ INSTALLED_APPS = [
 
     "django.contrib.messages",
 
+    "cloudinary_storage",
+
     "django.contrib.staticfiles",
+
+    "cloudinary",
 
 
 
@@ -285,19 +289,20 @@ ASGI_APPLICATION = (
 # =====================================================
 
 
-if os.getenv("DB_HOST"):
+if os.getenv("DATABASE_URL"):
 
-    # Production: Postgres, configured via env vars
-    # (set by your host, e.g. Render's managed Postgres add-on)
+    # Production: Neon Postgres, configured via a single connection
+    # string. Neon gives you this in one piece from your project
+    # dashboard - it already includes sslmode=require, which Neon
+    # requires.
+    import dj_database_url
+
     DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.postgresql",
-            "NAME": os.getenv("DB_NAME"),
-            "USER": os.getenv("DB_USER"),
-            "PASSWORD": os.getenv("DB_PASSWORD"),
-            "HOST": os.getenv("DB_HOST"),
-            "PORT": os.getenv("DB_PORT", "5432"),
-        }
+        "default": dj_database_url.config(
+            default=os.getenv("DATABASE_URL"),
+            conn_max_age=600,
+            ssl_require=True,
+        )
     }
 
 else:
@@ -658,41 +663,46 @@ WHATSAPP_PHONE_NUMBER_ID = os.getenv(
 # =====================================================
 # CACHE
 # =====================================================
-# CACHE
-
-REDIS_URL = os.getenv(
-    "REDIS_URL",
-    "redis://127.0.0.1:6379/1"
-)
 
 
 CACHES = {
 
-    "default": {
 
-        "BACKEND":
-        "django.core.cache.backends.redis.RedisCache",
+"default":{
 
-        "LOCATION":
-        REDIS_URL,
 
-    }
+"BACKEND":
+
+"django.core.cache.backends.redis.RedisCache",
+
+
+
+"LOCATION":
+
+"redis://127.0.0.1:6379/1"
 
 }
+
+
+}
+
 # =====================================================
 # CELERY
 # =====================================================
 
 
-CELERY_BROKER_URL = os.getenv(
-    "REDIS_URL",
+CELERY_BROKER_URL = (
+
     "redis://127.0.0.1:6379/0"
+
 )
 
 
-CELERY_RESULT_BACKEND = os.getenv(
-    "REDIS_URL",
+
+CELERY_RESULT_BACKEND = (
+
     "redis://127.0.0.1:6379/0"
+
 )
 
 
@@ -911,6 +921,23 @@ if not DEBUG:
 
     SECURE_HSTS_PRELOAD=True
 
+
+    # Render (and most PaaS hosts) terminate HTTPS at a proxy and
+    # forward the request to your app as plain HTTP. Without this,
+    # Django thinks every request is insecure, which breaks
+    # SECURE_SSL_REDIRECT (infinite redirect loop) and secure cookies.
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+
+    # Required by Django 4+ for any HTTPS site with forms (e.g. Django
+    # Admin login) - without your real domain listed here, admin login
+    # fails with "CSRF verification failed. Origin checking failed."
+    CSRF_TRUSTED_ORIGINS = [
+        f"https://{host}"
+        for host in ALLOWED_HOSTS
+        if host not in ("localhost", "127.0.0.1", "0.0.0.0", "[::1]")
+    ]
+
     # =====================================================
 # PASSWORD VALIDATION
 # =====================================================
@@ -1038,7 +1065,9 @@ EMAIL_SUBJECT_PREFIX="[Vetri Jobs] "
 ADMIN_URL="secure-admin/"
 
 
-
+STATICFILES_DIRS = [
+    BASE_DIR / "static",
+]
 
 # ==============================
 # STATIC FILES
@@ -1050,7 +1079,10 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 
 STORAGES = {
     "default": {
-        "BACKEND": "django.core.files.storage.FileSystemStorage",
+        "BACKEND":
+            "cloudinary_storage.storage.RawMediaCloudinaryStorage"
+            if os.getenv("CLOUDINARY_CLOUD_NAME")
+            else "django.core.files.storage.FileSystemStorage",
     },
     "staticfiles": {
         "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
@@ -1075,6 +1107,16 @@ STATICFILES_DIRS = [
 MEDIA_URL = "/media/"
 
 MEDIA_ROOT = BASE_DIR / "media"
+
+
+# Cloudinary - used for uploaded resumes, logos, and branding images
+# in production (see STORAGES above). Leave these unset locally and
+# uploads just go to the MEDIA_ROOT folder above instead.
+CLOUDINARY_STORAGE = {
+    "CLOUD_NAME": os.getenv("CLOUDINARY_CLOUD_NAME"),
+    "API_KEY": os.getenv("CLOUDINARY_API_KEY"),
+    "API_SECRET": os.getenv("CLOUDINARY_API_SECRET"),
+}
 
 
 
