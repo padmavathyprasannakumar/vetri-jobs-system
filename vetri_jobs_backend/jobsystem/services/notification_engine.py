@@ -251,51 +251,37 @@ def dispatch(event_key, user, context=None):
             )
 
 
-    # =====================================================
-    # EMAIL
-    # =====================================================
+   # =====================================================
+# EMAIL
+# =====================================================
 
-    if (
-        channels["email"]
-        and getattr(user, "email", None)
-    ):
+if (
+    channels["email"]
+    and getattr(user, "email", None)
+):
 
-        try:
+    try:
 
-            from django.core.mail import send_mail
-            from django.conf import settings
+        from jobsystem.services.email_service import send_email
 
-            send_mail(
-                subject=_format(
-                    template["email_subject"],
-                    context
-                ),
-
-                message=_format(
-                    template["in_app"],
-                    context
-                ),
-
-                from_email=getattr(
-                    settings,
-                    "DEFAULT_FROM_EMAIL",
-                    None
-                ),
-
-                recipient_list=[
-                    user.email
-                ],
-
-                fail_silently=False,
+        send_email(
+            to_email=user.email,
+            subject=_format(
+                template["email_subject"],
+                context
+            ),
+            message=_format(
+                template["in_app"],
+                context
             )
+        )
 
-        except Exception as e:
+    except Exception as e:
 
-            print(
-                "notification_engine email error:",
-                e
-            )
-
+        print(
+            "notification_engine email error:",
+            e
+        )
 
     # =====================================================
     # WHATSAPP - CANDIDATE
