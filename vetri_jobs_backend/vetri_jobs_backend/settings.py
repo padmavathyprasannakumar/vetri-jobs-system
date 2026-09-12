@@ -497,11 +497,33 @@ SIMPLE_JWT = {
 
 
 
-EMAIL_BACKEND = (
-
-    "django.core.mail.backends.smtp.EmailBackend"
-
+BREVO_API_KEY = os.getenv(
+    "BREVO_API_KEY",
+    ""
 )
+
+BREVO_SENDER_EMAIL = os.getenv(
+    "BREVO_SENDER_EMAIL",
+    ""
+)
+
+BREVO_SENDER_NAME = os.getenv(
+    "BREVO_SENDER_NAME",
+    "Vetri Jobs"
+)
+
+
+if BREVO_API_KEY:
+
+    # Sends over HTTPS via Brevo's API (jobsystem/email_backends.py)
+    # instead of raw SMTP - see that file's docstring for why.
+    EMAIL_BACKEND = "jobsystem.email_backends.BrevoAPIBackend"
+
+else:
+
+    # Local development fallback - no Brevo account needed to run
+    # this locally, just uses your EMAIL_HOST_USER/PASSWORD as before.
+    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 
 
 
@@ -532,6 +554,9 @@ EMAIL_USE_TLS = True
 # already has a try/except for it. A timeout turns that hang into
 # an actual raised exception the try/except can catch, so
 # registration/notifications succeed even if the email itself fails.
+# Only actually applies when EMAIL_BACKEND is the SMTP one above -
+# harmless no-op when using BrevoAPIBackend, which sets its own
+# 10s HTTPS request timeout instead.
 EMAIL_TIMEOUT = 10
 
 
