@@ -522,6 +522,19 @@ EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 
 
+# Without this, a slow or unreachable SMTP server (e.g. outbound
+# port 587 blocked/throttled by the host, or a DNS hiccup) makes
+# Django's smtplib connection hang indefinitely. That's not just
+# slow - it eventually triggers gunicorn's worker timeout, which
+# SIGKILLs the entire worker process mid-request, taking down
+# whatever request happened to be sending an email (e.g.
+# registration) with a 500, even though the code around send_mail()
+# already has a try/except for it. A timeout turns that hang into
+# an actual raised exception the try/except can catch, so
+# registration/notifications succeed even if the email itself fails.
+EMAIL_TIMEOUT = 10
+
+
 
 EMAIL_HOST_USER = os.getenv(
 
