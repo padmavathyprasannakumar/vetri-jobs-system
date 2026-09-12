@@ -15,7 +15,8 @@ import axios from "axios";
 // https://your-app-name.onrender.com/api/
 // Falls back to localhost so local development needs no setup.
 const API_BASE_URL =
-    import.meta.env.VITE_API_URL || "https://vetri-jobs-backend.onrender.com/api";
+    import.meta.env.VITE_API_URL || "http://localhost:8000/api/";
+
 
 
 
@@ -33,7 +34,13 @@ const api = axios.create({
 
     timeout:
 
-        15000,
+        // 60s, not the original 15s - Render's free tier spins the
+        // backend down after ~15 min idle, and waking it back up on
+        // the next request alone can take 30-60s before your actual
+        // request even starts processing. 15s wasn't enough to
+        // survive that, causing "timeout exceeded" on registration/
+        // login attempts that hit a cold backend.
+        60000,
 
 
     headers:{
