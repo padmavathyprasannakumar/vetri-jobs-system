@@ -1068,8 +1068,6 @@ class SiteBrandingAdmin(admin.ModelAdmin):
         "logo_preview_large",
         "register_hero_preview",
         "company_register_hero_preview",
-        "placement_login_hero_preview",
-        "admin_login_hero_preview",
         "dashboard_assistant_preview",
         "chatbot_avatar_preview",
         "profile_hero_preview",
@@ -1104,10 +1102,7 @@ class SiteBrandingAdmin(admin.ModelAdmin):
             "fields": ("company_register_hero_image", "company_register_hero_preview", "company_register_headline", "company_register_subheadline"),
         }),
         ("Placement Admin Login page (left panel)", {
-            "fields": ("placement_login_hero_image", "placement_login_hero_preview", "placement_login_headline", "placement_login_subheadline"),
-        }),
-        ("Super Admin Login page (left panel)", {
-            "fields": ("admin_login_hero_image", "admin_login_hero_preview", "admin_login_headline", "admin_login_subheadline"),
+            "fields": ("placement_login_headline", "placement_login_subheadline"),
         }),
         ("Student Dashboard - AI Career Assistant card", {
             "fields": ("dashboard_assistant_image", "dashboard_assistant_preview"),
@@ -1177,34 +1172,6 @@ class SiteBrandingAdmin(admin.ModelAdmin):
                "built-in illustration instead."
 
     company_register_hero_preview.short_description = "Preview"
-
-    def placement_login_hero_preview(self, obj):
-
-        if obj.placement_login_hero_image:
-
-            return format_html(
-                '<img src="{}" style="max-height:200px;border-radius:10px;" />',
-                obj.placement_login_hero_image.url,
-            )
-
-        return "No image uploaded - the Placement Admin Login page will " \
-               "show a built-in illustration instead."
-
-    placement_login_hero_preview.short_description = "Preview"
-
-    def admin_login_hero_preview(self, obj):
-
-        if obj.admin_login_hero_image:
-
-            return format_html(
-                '<img src="{}" style="max-height:200px;border-radius:10px;" />',
-                obj.admin_login_hero_image.url,
-            )
-
-        return "No image uploaded - the Super Admin Login page will " \
-               "show a built-in illustration instead."
-
-    admin_login_hero_preview.short_description = "Preview"
 
     def dashboard_assistant_preview(self, obj):
 
