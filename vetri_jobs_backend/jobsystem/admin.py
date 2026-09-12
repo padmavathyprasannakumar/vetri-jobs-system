@@ -1053,121 +1053,76 @@ class PlacementQueryAdmin(admin.ModelAdmin):
 # =====================================================
 
 from django.utils.html import format_html
+
+from django.utils.safestring import mark_safe
+
 from .models import SiteBranding
 
 
 @admin.register(SiteBranding)
 class SiteBrandingAdmin(admin.ModelAdmin):
 
-    list_display = (
-        "site_name",
-        "tagline",
-        "updated_at",
-    )
+    list_display = ("site_name", "tagline", "logo_preview", "updated_at")
 
     readonly_fields = (
+        "logo_preview_large",
+        "register_hero_preview",
+        "company_register_hero_preview",
+        "placement_login_hero_preview",
+        "admin_login_hero_preview",
+        "dashboard_assistant_preview",
+        "chatbot_avatar_preview",
+        "profile_hero_preview",
+        "homepage_hero_preview",
         "updated_at",
     )
 
     fieldsets = (
-
         ("General", {
-            "fields": (
-                "site_name",
-                "tagline",
-                "logo",
-                "favicon",
-            ),
+            "fields": ("site_name", "tagline", "logo", "logo_preview_large", "favicon"),
         }),
-
-        ("Homepage", {
+        ("Homepage (public landing page)", {
             "fields": (
                 "homepage_badge_text",
                 "homepage_headline",
                 "homepage_headline_highlight",
                 "homepage_subtext",
                 "homepage_hero_image",
+                "homepage_hero_preview",
             ),
         }),
-
-        ("Student Login", {
-            "fields": (
-                "login_hero_image",
-                "login_headline",
-                "login_subheadline",
-            ),
+        ("Student Login page (left panel)", {
+            "fields": ("login_headline", "login_subheadline"),
         }),
-
-        ("Student Register", {
-            "fields": (
-                "register_hero_image",
-                "register_headline",
-                "register_subheadline",
-            ),
+        ("Student Register page (left panel)", {
+            "fields": ("register_hero_image", "register_hero_preview", "register_headline", "register_subheadline"),
         }),
-
-        ("Company Login", {
-            "fields": (
-                "company_login_hero_image",
-                "company_login_headline",
-                "company_login_subheadline",
-            ),
+        ("Company Login page (left panel)", {
+            "fields": ("company_login_headline", "company_login_subheadline"),
         }),
-
-        ("Company Register", {
-            "fields": (
-                "company_register_hero_image",
-                "company_register_headline",
-                "company_register_subheadline",
-            ),
+        ("Company Register page (left panel)", {
+            "fields": ("company_register_hero_image", "company_register_hero_preview", "company_register_headline", "company_register_subheadline"),
         }),
-
-        ("Placement Admin Login", {
-            "fields": (
-                "placement_login_hero_image",
-                "placement_login_headline",
-                "placement_login_subheadline",
-            ),
+        ("Placement Admin Login page (left panel)", {
+            "fields": ("placement_login_hero_image", "placement_login_hero_preview", "placement_login_headline", "placement_login_subheadline"),
         }),
-
-        ("Super Admin Login", {
-            "fields": (
-                "admin_login_hero_image",
-                "admin_login_headline",
-                "admin_login_subheadline",
-            ),
+        ("Super Admin Login page (left panel)", {
+            "fields": ("admin_login_hero_image", "admin_login_hero_preview", "admin_login_headline", "admin_login_subheadline"),
         }),
-
-        ("AI Assistant", {
-            "fields": (
-                "dashboard_assistant_image",
-                "chatbot_avatar_image",
-            ),
+        ("Student Dashboard - AI Career Assistant card", {
+            "fields": ("dashboard_assistant_image", "dashboard_assistant_preview"),
         }),
-
-        ("Profile Page", {
-            "fields": (
-                "profile_hero_image",
-            ),
+        ("Floating AI Chatbot avatar (site-wide)", {
+            "fields": ("chatbot_avatar_image", "chatbot_avatar_preview"),
         }),
-
+        ("Student Profile page (left panel)", {
+            "fields": ("profile_hero_image", "profile_hero_preview"),
+        }),
         ("Meta", {
-            "fields": (
-                "updated_at",
-            ),
+            "fields": ("updated_at",),
         }),
     )
 
-
-    def has_add_permission(self, request):
-
-        # Allow only one SiteBranding record
-        return not SiteBranding.objects.exists()
-
-
-    def has_delete_permission(self, request, obj=None):
-
-        return False
     def logo_preview(self, obj):
 
         if obj.logo:
@@ -1195,20 +1150,6 @@ class SiteBrandingAdmin(admin.ModelAdmin):
 
     logo_preview_large.short_description = "Current logo"
 
-    def login_hero_preview(self, obj):
-
-        if obj.login_hero_image:
-
-            return format_html(
-                '<img src="{}" style="max-height:200px;border-radius:10px;" />',
-                obj.login_hero_image.url,
-            )
-
-        return "No image uploaded - the Student Login page will show a " \
-               "built-in illustration instead."
-
-    login_hero_preview.short_description = "Preview"
-
     def register_hero_preview(self, obj):
 
         if obj.register_hero_image:
@@ -1222,20 +1163,6 @@ class SiteBrandingAdmin(admin.ModelAdmin):
                "built-in illustration instead."
 
     register_hero_preview.short_description = "Preview"
-
-    def company_login_hero_preview(self, obj):
-
-        if obj.company_login_hero_image:
-
-            return format_html(
-                '<img src="{}" style="max-height:200px;border-radius:10px;" />',
-                obj.company_login_hero_image.url,
-            )
-
-        return "No image uploaded - the Company Login page will show a " \
-               "built-in illustration instead."
-
-    company_login_hero_preview.short_description = "Preview"
 
     def company_register_hero_preview(self, obj):
 
