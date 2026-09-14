@@ -703,8 +703,13 @@ def _handle_ats_resume(profile, user, message):
 
         target_role = match.group(1).strip()
 
+    # analyze_ats_friendliness() takes the resume's Django file object
+    # (works with any storage backend - local disk or Cloudinary),
+    # not a filesystem path. resume.file.path raises
+    # NotImplementedError under Cloudinary storage, which is what was
+    # silently breaking this in production.
     result = analyze_ats_friendliness(
-        resume.file.path,
+        resume.file,
         target_role=target_role,
     )
 
@@ -884,7 +889,11 @@ def handle_resume_attachment(user, profile, uploaded_file, caption=""):
 
     try:
 
-        result = analyze_resume(resume.file.path)
+        # analyze_resume() takes the resume's Django file object
+        # (works with any storage backend - local disk or
+        # Cloudinary), not a filesystem path. resume.file.path
+        # raises NotImplementedError under Cloudinary storage.
+        result = analyze_resume(resume.file)
 
         resume.resume_score = result.get("resume_score", 0)
 
