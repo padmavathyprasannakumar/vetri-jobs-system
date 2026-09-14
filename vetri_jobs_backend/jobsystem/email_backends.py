@@ -16,13 +16,30 @@ every existing call to django.core.mail.send_mail() elsewhere in
 the codebase keeps working unchanged - only settings.EMAIL_BACKEND
 needs to point here (done conditionally in settings.py, based on
 whether SENDGRID_API_KEY is set).
+
+NOTE ON fail_silently: every caller in this codebase (see
+notification_engine.py) sends with fail_silently=True, on purpose -
+a broken notification should never break the action that triggered
+it (applying, verifying a student, etc). But that means Django
+swallows any exception raised here before it ever reaches the
+caller's own try/except. Without the logger calls below, a real
+SendGrid rejection (bad API key, unverified sender, rate limit)
+and "nothing happened" would look identical from the outside -
+nothing printed, nothing raised, nothing in Render's logs. The
+logger.error() calls make sure the actual SendGrid response body
+still shows up in Render's logs even when fail_silently swallows
+the exception itself.
 """
+
+import logging
 
 import requests
 
 from django.conf import settings
 from django.core.mail.backends.base import BaseEmailBackend
 
+
+logger = logging.getLogger("jobsystem")
 
 SENDGRID_API_URL = "https://api.sendgrid.com/v3/mail/send"
 
@@ -37,6 +54,12 @@ class SendGridBackend(BaseEmailBackend):
         api_key = getattr(settings, "SENDGRID_API_KEY", None)
 
         if not api_key:
+
+            logger.error(
+                "SendGridBackend: SENDGRID_API_KEY is not set - "
+                "cannot send email."
+            )
+
             if not self.fail_silently:
                 raise ValueError(
                     "SENDGRID_API_KEY is not set - cannot send email "
@@ -103,14 +126,49 @@ class SendGridBackend(BaseEmailBackend):
             "content": content,
         }
 
-        response = requests.post(
-            SENDGRID_API_URL,
-            json=payload,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            timeout=10,
-        )
+        try:
 
-        response.raise_for_status()
+            response = requests.post(
+                SENDGRID_API_URL,
+                json=payload,
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                timeout=10,
+            )
+
+            response.raise_for_status()
+
+        except requests.exceptions.HTTPError:
+
+            # SendGrid puts the actual reason (unverified sender,
+            # bad API key scope, invalid payload field, etc) in the
+            # response body - the status code alone isn't enough to
+            # debug this from Render's logs.
+            logger.error(
+                "SendGrid API error (%s) sending to %s: %s",
+                response.status_code,
+                message.to,
+                response.text,
+            )
+
+            raise
+
+        except requests.exceptions.RequestException as e:
+
+            logger.error(
+                "SendGrid request failed sending to %s: %s",
+                message.to,
+                e,
+            )
+
+            raise
+
+        else:
+
+            logger.debug(
+                "SendGrid: sent '%s' to %s",
+                message.subject,
+                message.to,
+            )
