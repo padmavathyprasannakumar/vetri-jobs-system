@@ -215,6 +215,8 @@ min_age: formData.min_age === "" ? null : formData.min_age,
 
 max_age: formData.max_age === "" ? null : formData.max_age,
 
+application_deadline: formData.application_deadline === "" ? null : formData.application_deadline,
+
 };
 
 
@@ -240,9 +242,30 @@ catch(error){
 console.log(error);
 
 
+const errorData = error.response?.data;
+
+let realMessage = errorData?.message || errorData?.error;
+
+if(!realMessage && errorData && typeof errorData === "object"){
+
+    // DRF validation errors look like {"field_name": ["reason"]} -
+    // surface the first one instead of a generic message, so
+    // whichever field is actually wrong is visible to the user.
+    const firstField = Object.keys(errorData)[0];
+
+    const firstError = errorData[firstField];
+
+    if(firstField && firstError){
+
+        realMessage = `${firstField}: ${Array.isArray(firstError) ? firstError[0] : firstError}`;
+
+    }
+
+}
+
 setMessage(
 
-error.response?.data?.message ||
+realMessage ||
 
 "Unable to create job"
 
