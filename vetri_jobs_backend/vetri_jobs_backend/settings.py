@@ -493,37 +493,45 @@ SIMPLE_JWT = {
     "UPDATE_LAST_LOGIN": True,
 
 }
+# =====================================================
+# SENDGRID EMAIL CONFIGURATION
+# =====================================================
 
-
-
-
-BREVO_API_KEY = os.getenv(
-    "BREVO_API_KEY",
+SENDGRID_API_KEY = os.getenv(
+    "SENDGRID_API_KEY",
     ""
 )
 
-BREVO_SENDER_EMAIL = os.getenv(
-    "BREVO_SENDER_EMAIL",
+SENDGRID_SENDER_EMAIL = os.getenv(
+    "SENDGRID_SENDER_EMAIL",
     ""
 )
 
-BREVO_SENDER_NAME = os.getenv(
-    "BREVO_SENDER_NAME",
+SENDGRID_SENDER_NAME = os.getenv(
+    "SENDGRID_SENDER_NAME",
     "Vetri Jobs"
 )
 
 
-if BREVO_API_KEY:
+if SENDGRID_API_KEY:
 
-    # Sends over HTTPS via Brevo's API (jobsystem/email_backends.py)
-    # instead of raw SMTP - see that file's docstring for why.
-    EMAIL_BACKEND = "jobsystem.email_backends.BrevoAPIBackend"
+    EMAIL_BACKEND = "jobsystem.email_backends.SendGridBackend"
 
 else:
 
-    # Local development fallback - no Brevo account needed to run
-    # this locally, just uses your EMAIL_HOST_USER/PASSWORD as before.
     EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+
+
+
+DEFAULT_FROM_EMAIL = SENDGRID_SENDER_EMAIL
+
+
+
+
+
+
+
+
 
 
 
