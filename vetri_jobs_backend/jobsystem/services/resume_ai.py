@@ -2,6 +2,8 @@ import os
 import re
 import json
 import traceback
+import io
+import tempfile
 
 from groq import Groq
 
@@ -38,15 +40,36 @@ GROQ_MODEL_FALLBACKS = [
 # =====================================================
 # TEXT EXTRACTION
 # =====================================================
+# Takes a Django FieldFile (e.g. resume.file), NOT a filesystem
+# path. Using file.path breaks the moment the project uses a
+# non-local storage backend (Cloudinary, S3, etc): those backends
+# have no local path at all and file.path raises
+# NotImplementedError. Reading the bytes through file.open()/
+# .read() instead goes through Django's Storage API, which works
+# identically whether the file lives on local disk or on
+# Cloudinary.
+# =====================================================
 
-def extract_resume_text(file_path):
+def extract_resume_text(file):
 
-    ext = os.path.splitext(file_path)[1].lower()
+    name = getattr(file, "name", "") or ""
+
+    ext = os.path.splitext(name)[1].lower()
+
+    file.open("rb")
+
+    try:
+
+        data = file.read()
+
+    finally:
+
+        file.close()
 
 
     if ext == ".docx":
 
-        return _extract_text_from_docx(file_path)
+        return _extract_text_from_docx(data)
 
 
     if ext == ".doc":
@@ -58,7 +81,7 @@ def extract_resume_text(file_path):
 
         try:
 
-            return _extract_text_from_pdf_like(file_path)
+            return _extract_text_from_pdf_like(data)
 
         except Exception:
 
@@ -67,11 +90,11 @@ def extract_resume_text(file_path):
 
     # default: PDF (and anything PyMuPDF can open)
 
-    return _extract_text_from_pdf_like(file_path)
+    return _extract_text_from_pdf_like(data)
 
 
 
-def _extract_text_from_pdf_like(file_path):
+def _extract_text_from_pdf_like(data):
 
     import fitz  # PyMuPDF - imported lazily so importing this
 
@@ -81,7 +104,8 @@ def _extract_text_from_pdf_like(file_path):
 
 
     document = fitz.open(
-        file_path
+        stream=data,
+        filetype="pdf",
     )
 
 
@@ -97,13 +121,13 @@ def _extract_text_from_pdf_like(file_path):
 
 
 
-def _extract_text_from_docx(file_path):
+def _extract_text_from_docx(data):
 
     import docx  # python-docx
 
 
     document = docx.Document(
-        file_path
+        io.BytesIO(data)
     )
 
 
@@ -192,12 +216,15 @@ def _parse_ai_json(raw_text):
 # =====================================================
 # AI RESUME ANALYSIS
 # =====================================================
+# file: a Django FieldFile (e.g. resume.file), not a path - see
+# the note on extract_resume_text() above for why.
+# =====================================================
 
-def analyse_resume_with_ai(file_path):
+def analyse_resume_with_ai(file):
 
 
     resume_text = extract_resume_text(
-        file_path
+        file
     )
 
 
@@ -461,12 +488,16 @@ Rules:
 # (kept for backwards compatibility with existing callers
 # that import "analyze_resume" instead of
 # "analyse_resume_with_ai")
+#
+# Takes a Django FieldFile (e.g. resume.file), not a path -
+# named "file" rather than "file_path" so a future edit doesn't
+# reintroduce the .path bug by assuming this needs a path string.
 # =====================================================
 
-def analyze_resume(file_path):
+def analyze_resume(file):
 
     return analyse_resume_with_ai(
-        file_path
+        file
     )
 
 
@@ -476,12 +507,14 @@ def analyze_resume(file_path):
 # System (ATS) compatibility - formatting, structure,
 # keyword usage - separate from the general quality/score
 # analysis above, and returns concrete rewrite suggestions.
+#
+# file: a Django FieldFile (e.g. resume.file), not a path.
 # =====================================================
 
-def analyze_ats_friendliness(file_path, target_role=None):
+def analyze_ats_friendliness(file, target_role=None):
 
     resume_text = extract_resume_text(
-        file_path
+        file
     )
 
     if not resume_text or not resume_text.strip():
