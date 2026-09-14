@@ -493,39 +493,55 @@ SIMPLE_JWT = {
     "UPDATE_LAST_LOGIN": True,
 
 }
-# =====================================================
-# SENDGRID EMAIL CONFIGURATION
-# =====================================================
+
+
+
+
+RESEND_API_KEY = os.getenv(
+    "RESEND_API_KEY",
+    ""
+).strip()
+
+RESEND_FROM_EMAIL = os.getenv(
+    "RESEND_FROM_EMAIL",
+    ""
+).strip()
+
 
 SENDGRID_API_KEY = os.getenv(
     "SENDGRID_API_KEY",
     ""
-)
+).strip()
 
 SENDGRID_SENDER_EMAIL = os.getenv(
     "SENDGRID_SENDER_EMAIL",
     ""
-)
+).strip()
 
 SENDGRID_SENDER_NAME = os.getenv(
     "SENDGRID_SENDER_NAME",
     "Vetri Jobs"
-)
+).strip()
 
 
-EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+if RESEND_API_KEY:
 
+    # Sends over HTTPS via Resend's API (jobsystem/resend_backend.py)
+    # instead of raw SMTP - preferred first when configured.
+    EMAIL_BACKEND = "jobsystem.resend_backend.ResendAPIBackend"
 
+elif SENDGRID_API_KEY:
 
-DEFAULT_FROM_EMAIL = SENDGRID_SENDER_EMAIL
+    # Sends over HTTPS via SendGrid's API (jobsystem/email_backends.py)
+    # instead of raw SMTP.
+    EMAIL_BACKEND = "jobsystem.email_backends.SendGridBackend"
 
+else:
 
-
-
-
-
-
-
+    # Local development fallback - no Resend/SendGrid account
+    # needed to run this locally, just uses your EMAIL_HOST_USER/
+    # PASSWORD as before.
+    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 
 
 
@@ -585,7 +601,9 @@ EMAIL_HOST_PASSWORD = os.getenv(
 
 DEFAULT_FROM_EMAIL = (
 
-    EMAIL_HOST_USER
+    RESEND_FROM_EMAIL
+    or SENDGRID_SENDER_EMAIL
+    or EMAIL_HOST_USER
 
 )
 
