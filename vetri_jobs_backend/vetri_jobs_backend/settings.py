@@ -513,13 +513,7 @@ SENDGRID_SENDER_NAME = os.getenv(
 )
 
 
-if SENDGRID_API_KEY:
-
-    EMAIL_BACKEND = "jobsystem.email_backends.SendGridBackend"
-
-else:
-
-    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 
 
 
