@@ -1,35 +1,39 @@
-import sib_api_v3_sdk
+import os
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail
 from django.conf import settings
 
 
 def send_email(to_email, subject, message):
 
-    configuration = sib_api_v3_sdk.Configuration()
-
-    configuration.api_key['api-key'] = settings.BREVO_API_KEY
-
-    api_instance = sib_api_v3_sdk.TransactionalEmailsApi(
-        sib_api_v3_sdk.ApiClient(configuration)
-    )
-
-    email = sib_api_v3_sdk.SendSmtpEmail(
-        sender={
-            "name": settings.BREVO_SENDER_NAME,
-            "email": settings.BREVO_SENDER_EMAIL
-        },
-        to=[
-            {
-                "email": to_email
-            }
-        ],
-        subject=subject,
-        html_content=message
-    )
-
     try:
-        response = api_instance.send_transac_email(email)
+
+        email = Mail(
+            from_email=(
+                settings.SENDGRID_SENDER_EMAIL
+            ),
+            to_emails=to_email,
+            subject=subject,
+            html_content=message
+        )
+
+
+        sg = SendGridAPIClient(
+            settings.SENDGRID_API_KEY
+        )
+
+
+        response = sg.send(email)
+
+
         return response
 
+
     except Exception as e:
-        print("BREVO EMAIL ERROR:", e)
+
+        print(
+            "SENDGRID EMAIL ERROR:",
+            e
+        )
+
         return None
