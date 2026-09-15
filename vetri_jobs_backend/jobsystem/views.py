@@ -9835,8 +9835,15 @@ class ResumeUploadView(APIView):
             start=time.time()
 
 
+            # analyze_resume() takes the resume's Django file
+            # object (works with any storage backend - local
+            # disk or Cloudinary), not a filesystem path.
+            # resume.file.path raises NotImplementedError under
+            # Cloudinary storage, which is what was silently
+            # breaking this in production.
+
             result = analyze_resume(
-                resume.file.path
+                resume.file
             )
 
 
@@ -10011,16 +10018,17 @@ class ResumeDeleteView(APIView):
 
 
         # remove file
+        #
+        # resume.file.delete() goes through Django's Storage
+        # API, so it works the same way whether the file lives
+        # on local disk or in Cloudinary. os.path.exists()/
+        # os.remove() only work for local disk storage and
+        # raised NotImplementedError under Cloudinary, which
+        # broke every resume deletion in production.
 
         if resume.file:
 
-            if os.path.exists(
-                resume.file.path
-            ):
-
-                os.remove(
-                    resume.file.path
-                )
+            resume.file.delete(save=False)
 
 
         resume.delete()
@@ -10058,8 +10066,12 @@ class ResumeAnalyzeView(APIView):
         )
 
 
+        # analyze_resume() takes the resume's Django file object,
+        # not a filesystem path - see the note in ResumeUploadView
+        # above for why resume.file.path breaks under Cloudinary.
+
         result = analyze_resume(
-            resume.file.path
+            resume.file
         )
 
 
@@ -10288,8 +10300,14 @@ class StudentResumeAnalyseView(APIView):
 
         try:
 
+            # analyze_resume() takes the resume's Django file
+            # object, not a filesystem path - resume.file.path
+            # raises NotImplementedError under Cloudinary
+            # storage, which is what was breaking this endpoint
+            # ("Unable to analyse resume" in the UI).
+
             result = analyze_resume(
-                resume.file.path
+                resume.file
             )
 
         except Exception as e:
