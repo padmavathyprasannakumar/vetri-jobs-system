@@ -483,7 +483,20 @@
 
 .versions-table-wrap{
 
-    overflow-x: auto;
+    /* Previously `overflow-x: auto;` here. That also forces the
+       browser to compute overflow-y as `auto` (CSS clips both
+       axes together when only one is set to a non-visible value),
+       which was silently clipping the .version-menu dropdown
+       below - it rendered, it just had nowhere visible to go,
+       since this wrapper's height stops exactly at the table's
+       own height. Table widths in this app are already narrow
+       enough (4 columns) that horizontal scrolling wasn't
+       actually needed; if a very small screen ever does overflow
+       horizontally, the surrounding .resume-card / page will
+       scroll instead, which is an acceptable tradeoff for a
+       working dropdown menu. */
+
+    overflow: visible;
 }
 
 .versions-table{
