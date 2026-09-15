@@ -251,41 +251,59 @@ def dispatch(event_key, user, context=None):
             )
 
 
-   # =====================================================
-# EMAIL
-# =====================================================
+    # =====================================================
+    # EMAIL
+    # =====================================================
+    # NOTE: this block - and everything below it (WhatsApp to
+    # the candidate, and the WhatsApp copy to placement admins)
+    # - was previously dedented all the way to column 0, i.e.
+    # OUTSIDE this function, at module level. That meant it ran
+    # once at import time, immediately raised NameError (since
+    # `channels`/`context`/`user` only exist as dispatch()'s
+    # local variables), and made the *entire module* fail to
+    # import - which every caller's try/except quietly
+    # swallowed. So this wasn't just breaking email: nothing
+    # from this point on ever ran, for any event, ever. Fixed
+    # by re-indenting it back inside dispatch().
 
-if (
-    channels["email"]
-    and getattr(user, "email", None)
-):
+    if (
+        channels["email"]
+        and getattr(user, "email", None)
+    ):
 
-    try:
+        try:
 
-        from jobsystem.services.email_service import send_email
+            from jobsystem.services.email_service import send_email
 
-        send_email(
-            to_email=user.email,
-            subject=_format(
-                template["email_subject"],
-                context
-            ),
-            message=_format(
-                template["in_app"],
-                context
+            send_email(
+                to_email=user.email,
+                subject=_format(
+                    template["email_subject"],
+                    context
+                ),
+                message=_format(
+                    template["in_app"],
+                    context
+                )
             )
-        )
 
-    except Exception as e:
+        except Exception as e:
 
-        print(
-            "notification_engine email error:",
-            e
-        )
+            print(
+                "notification_engine email error:",
+                e
+            )
+
 
     # =====================================================
     # WHATSAPP - CANDIDATE
     # =====================================================
+    # This is a sibling of the EMAIL block above, not nested
+    # inside it - previously it was nested under the email
+    # `if`, which meant a student with email disabled (or no
+    # email address at all) would never get a WhatsApp message
+    # either, even with WhatsApp independently enabled. Channel
+    # toggles are supposed to be independent of each other.
 
     if channels["whatsapp"]:
 
