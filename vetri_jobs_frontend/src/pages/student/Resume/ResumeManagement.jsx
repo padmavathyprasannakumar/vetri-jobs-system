@@ -4,6 +4,8 @@ import React, {
     useRef
 } from "react";
 
+import ReactDOM from "react-dom";
+
 
 import {
 
@@ -53,6 +55,18 @@ const [versions,setVersions] = useState([]);
 const [showAllVersions,setShowAllVersions] = useState(false);
 
 const [openMenuId,setOpenMenuId] = useState(null);
+
+// Screen coordinates for the currently open dropdown, computed
+// from the 3-dot button's own position (see openVersionMenu
+// below). The menu is rendered through a portal straight into
+// document.body instead of as a child of the <td> it's
+// triggered from - table cells run their own layout algorithm
+// that can squeeze an absolutely-positioned child into the
+// cell's own cramped width/height instead of letting it float
+// freely, which was the actual cause of the menu looking cut
+// off / like a stray scrollbar.
+
+const [menuPosition,setMenuPosition] = useState(null);
 
 const [analysis,setAnalysis] = useState(null);
 
@@ -400,6 +414,60 @@ setError("Unable to delete this resume version");
 
 
 // =================================
+// VERSION ACTIONS MENU (portal-based)
+// =================================
+
+
+const MENU_WIDTH = 170;
+
+
+const openVersionMenu = (e, versionId)=>{
+
+if(openMenuId === versionId){
+
+    setOpenMenuId(null);
+
+    setMenuPosition(null);
+
+    return;
+
+}
+
+
+const rect = e.currentTarget.getBoundingClientRect();
+
+
+// Position below the button, right-aligned to it, in viewport
+// coordinates - matches position:fixed on .version-menu, so it
+// is completely unaffected by the table/card's own overflow or
+// layout, no matter how the row scrolls.
+
+setMenuPosition({
+
+    top: rect.bottom + 6,
+
+    left: Math.max(8, rect.right - MENU_WIDTH),
+
+});
+
+
+setOpenMenuId(versionId);
+
+};
+
+
+const closeVersionMenu = ()=>{
+
+setOpenMenuId(null);
+
+setMenuPosition(null);
+
+};
+
+
+
+
+// =================================
 // AI RESUME ANALYSIS (GROQ)
 // =================================
 
@@ -456,6 +524,9 @@ setLoading(false);
 
 
 const visibleVersions = showAllVersions ? versions : versions.slice(0,2);
+
+
+const openVersion = versions.find(v=>v.id===openMenuId) || null;
 
 
 
@@ -862,7 +933,7 @@ className="table-download-btn"
 
 className="table-icon-btn"
 
-onClick={()=>setOpenMenuId(openMenuId===version.id ? null : version.id)}
+onClick={(e)=>openVersionMenu(e, version.id)}
 
 title="More options"
 
@@ -871,70 +942,6 @@ title="More options"
 <FaEllipsisV/>
 
 </button>
-
-
-{
-openMenuId===version.id &&
-
-<>
-
-<div
-
-className="version-menu-backdrop"
-
-onClick={()=>setOpenMenuId(null)}
-
-/>
-
-<div className="version-menu">
-
-
-<a
-
-href={version.resume_url}
-
-target="_blank"
-
-rel="noreferrer"
-
-className="version-menu-item"
-
-onClick={()=>setOpenMenuId(null)}
-
->
-
-<FaEye/> Preview
-
-</a>
-
-
-<button
-
-className="version-menu-item danger"
-
-onClick={()=>{
-
-setOpenMenuId(null);
-
-if(window.confirm(`Delete "${version.file_name || "this resume version"}"? This cannot be undone.`)){
-
-handleDeleteVersion(version.id);
-
-}
-
-}}
-
->
-
-<FaTrash/> Delete
-
-</button>
-
-
-</div>
-
-</>
-}
 
 
 </td>
@@ -987,6 +994,102 @@ onClick={()=>setShowAllVersions(!showAllVersions)}
 
 
 </div>
+
+
+
+
+{/* =================================
+VERSION ACTIONS MENU - rendered via portal directly into
+document.body, positioned in viewport coordinates. This is
+deliberately NOT nested inside the table/<td> - see the
+openVersionMenu comment above for why.
+================================= */}
+
+
+{
+openMenuId && openVersion && menuPosition &&
+
+ReactDOM.createPortal(
+
+<>
+
+<div
+
+className="version-menu-backdrop"
+
+onClick={closeVersionMenu}
+
+/>
+
+<div
+
+className="version-menu"
+
+style={{
+
+    top: menuPosition.top,
+
+    left: menuPosition.left,
+
+}}
+
+>
+
+
+<a
+
+href={openVersion.resume_url}
+
+target="_blank"
+
+rel="noreferrer"
+
+className="version-menu-item"
+
+onClick={closeVersionMenu}
+
+>
+
+<FaEye/> Preview
+
+</a>
+
+
+<button
+
+className="version-menu-item danger"
+
+onClick={()=>{
+
+const versionId = openVersion.id;
+
+const label = openVersion.file_name || "this resume version";
+
+closeVersionMenu();
+
+if(window.confirm(`Delete "${label}"? This cannot be undone.`)){
+
+    handleDeleteVersion(versionId);
+
+}
+
+}}
+
+>
+
+<FaTrash/> Delete
+
+</button>
+
+
+</div>
+
+</>,
+
+document.body
+
+)
+}
 
 
 
