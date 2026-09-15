@@ -902,13 +902,17 @@
 
 .version-menu{
 
-    position: absolute;
+    /* Rendered via a React portal into document.body and
+       positioned with top/left set inline in viewport
+       coordinates (see openVersionMenu in ResumeManagement.jsx).
+       This used to be `position: absolute` relative to the
+       table cell it was triggered from - table cells run their
+       own layout algorithm, which was squeezing this menu into
+       the cell's own cramped width/height instead of letting it
+       float freely over the page. position: fixed here means it
+       ignores the table/card's layout and overflow entirely. */
 
-    right: 0;
-
-    top: 100%;
-
-    margin-top: 6px;
+    position: fixed;
 
     background: white;
 
@@ -918,7 +922,7 @@
 
     border: 1px solid #eef2f7;
 
-    min-width: 160px;
+    min-width: 170px;
 
     z-index: 30;
 
