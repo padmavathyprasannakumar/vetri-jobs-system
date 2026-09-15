@@ -1428,11 +1428,18 @@ class Resume(models.Model):
 
     def delete_file(self):
 
+        # file.delete() goes through Django's Storage API, so it
+        # works the same way whether the file lives on local disk
+        # or in Cloudinary (this project uses
+        # RawMediaCloudinaryStorage for resumes - see
+        # document_storage() at the top of this file).
+        # os.path.isfile()/os.remove() only work for local disk
+        # storage and raise NotImplementedError under Cloudinary,
+        # which broke every resume deletion in production.
+
         if self.file:
 
-            if os.path.isfile(self.file.path):
-
-                os.remove(self.file.path)
+            self.file.delete(save=False)
 
 
 class ResumeAnalysisHistory(models.Model):
