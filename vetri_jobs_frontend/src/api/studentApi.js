@@ -883,6 +883,55 @@ export const getResume = async()=>{
 };
 
 // =====================================================
+// DOWNLOAD RESUME (forces an actual file download instead
+// of opening in a new tab)
+// GET /api/student/resume/:id/download/
+// =====================================================
+//
+// The resume file itself lives on Cloudinary, and Cloudinary's
+// direct URL (resume.resume_url) has no Content-Disposition
+// header telling the browser to save it - so a plain <a href>
+// link to it always just opens/previews the file in a new tab
+// instead of downloading. The backend's dedicated /download/
+// endpoint streams the file back with
+// Content-Disposition: attachment, which forces a real download
+// - but that endpoint requires the student's JWT auth header,
+// which a plain HTML <a> tag has no way to send. So this fetches
+// it through the authenticated `api` instance as a blob, then
+// triggers the save using a temporary object URL - see
+// triggerBlobDownload in ResumeManagement.jsx for the part that
+// actually clicks a hidden link with the blob URL.
+
+export const downloadResume = async(resumeId)=>{
+
+    try{
+
+        return await api.get(
+
+            `/student/resume/${resumeId}/download/`,
+
+            {
+                responseType: "blob"
+            }
+
+        );
+
+    }
+    catch(error){
+
+        console.error(
+            "DOWNLOAD RESUME ERROR:",
+            error.response?.data ||
+            error.message
+        );
+
+        throw error;
+
+    }
+
+};
+
+// =====================================================
 // ELIGIBILITY CHECK
 // =====================================================
 
@@ -1079,6 +1128,8 @@ export default {
     getResume,
 
     deleteResume,
+
+    downloadResume,
 
     getJobs,
 
