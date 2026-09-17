@@ -4223,12 +4223,26 @@ class CompanyInterviewCreateView(APIView):
 
 
             # Scheduling an interview should also move the
-            # candidate's application status to "interview" -
-            # this was never happening before, which is why the
+            # candidate's application status to "interview" - this
+            # was never happening before, which is why the
             # Candidates page kept showing the old status even
             # after an interview was scheduled.
+            #
+            # Only "selected" (already hired) should block this -
+            # a recruiter explicitly scheduling a NEW interview for
+            # a previously "rejected" candidate is a deliberate
+            # decision to reconsider them, and should be allowed to
+            # move the status forward to "interview" again. The old
+            # check here also excluded "rejected", which silently
+            # meant: once a candidate had ever been rejected,
+            # scheduling a fresh interview for them afterward would
+            # still create the Interview record, but their
+            # application status stayed stuck on "rejected" forever
+            # - making that interview permanently invisible on the
+            # Interviews tab, since it filters on
+            # application status == "interview".
 
-            if application.status not in ["selected", "rejected"]:
+            if application.status != "selected":
 
                 application.status = "interview"
 
@@ -4303,7 +4317,6 @@ class CompanyInterviewCreateView(APIView):
             status=400
 
         )
-
 
     # =====================================================
     # LIST COMPANY INTERVIEWS
