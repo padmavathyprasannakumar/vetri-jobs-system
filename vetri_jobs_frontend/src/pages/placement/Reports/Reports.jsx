@@ -9,9 +9,7 @@ import React, {
 
 import {
 
-    getPlacementReports,
-
-    scheduleAutomatedReport
+    getPlacementReports
 
 } from "../../../api/placementApi";
 
@@ -53,16 +51,6 @@ const Reports = ()=>{
 const [reports,setReports] = useState(null);
 
 const [loading,setLoading] = useState(true);
-
-const [showScheduleModal,setShowScheduleModal] = useState(false);
-
-const [scheduleEmail,setScheduleEmail] = useState("");
-
-const [scheduleFrequency,setScheduleFrequency] = useState("weekly");
-
-const [scheduling,setScheduling] = useState(false);
-
-const [scheduleMessage,setScheduleMessage] = useState("");
 
 
 
@@ -217,67 +205,6 @@ link.click();
 document.body.removeChild(link);
 
 URL.revokeObjectURL(url);
-
-};
-
-
-const handleScheduleReport = async(e)=>{
-
-e.preventDefault();
-
-if(!scheduleEmail.trim()){
-
-setScheduleMessage("Please enter an email address");
-
-return;
-
-}
-
-setScheduling(true);
-
-setScheduleMessage("");
-
-try{
-
-await scheduleAutomatedReport({
-
-email: scheduleEmail,
-
-frequency: scheduleFrequency,
-
-});
-
-setScheduleMessage("Automated report scheduled successfully");
-
-setTimeout(()=>{
-
-setShowScheduleModal(false);
-
-setScheduleMessage("");
-
-},1500);
-
-}
-
-catch(error){
-
-console.log("SCHEDULE REPORT ERROR", error);
-
-setScheduleMessage(
-
-error.response?.data?.error ||
-
-"Could not schedule report. Please try again."
-
-);
-
-}
-
-finally{
-
-setScheduling(false);
-
-}
 
 };
 
@@ -746,80 +673,7 @@ recentActivity.map(item=>(
 
 </div>
 
-<button onClick={()=>setShowScheduleModal(true)}>Schedule Automated Reports</button>
-
 </div>
-
-
-{
-showScheduleModal &&
-
-<div className="schedule-report-overlay" onClick={()=>setShowScheduleModal(false)}>
-
-<div className="schedule-report-modal" onClick={(e)=>e.stopPropagation()}>
-
-<h2>Schedule Automated Reports</h2>
-
-<p>Get a placement report summary emailed to you automatically.</p>
-
-<form onSubmit={handleScheduleReport}>
-
-<label>Email Address</label>
-
-<input
-
-type="email"
-
-placeholder="you@example.com"
-
-value={scheduleEmail}
-
-onChange={(e)=>setScheduleEmail(e.target.value)}
-
-required
-
-/>
-
-<label>Frequency</label>
-
-<select
-
-value={scheduleFrequency}
-
-onChange={(e)=>setScheduleFrequency(e.target.value)}
-
->
-
-<option value="weekly">Weekly</option>
-
-<option value="monthly">Monthly</option>
-
-</select>
-
-{
-scheduleMessage &&
-
-<div className="schedule-report-message">{scheduleMessage}</div>
-}
-
-<div className="schedule-report-actions">
-
-<button type="button" onClick={()=>setShowScheduleModal(false)}>Cancel</button>
-
-<button type="submit" className="schedule-report-submit" disabled={scheduling}>
-
-{scheduling ? "Scheduling..." : "Schedule"}
-
-</button>
-
-</div>
-
-</form>
-
-</div>
-
-</div>
-}
 
 
 </div>
