@@ -66,7 +66,6 @@ from .models import (
 
 
 from rest_framework import serializers
-
 from .models import Job
 
 
@@ -1207,12 +1206,27 @@ class ResumeSerializer(serializers.ModelSerializer):
 
         # Human-readable size (e.g. "245 KB") for the Resume
         # Management page's file listings.
+        #
+        # obj.file.size can come back as None from Cloudinary
+        # storage WITHOUT raising an exception - e.g. right after
+        # a fresh upload, before Cloudinary has reported the
+        # file's size back to Django. The old code only guarded
+        # against an exception being raised, so a None size_bytes
+        # slipped past the try/except and into
+        # `size_bytes < 1024`, which throws
+        # "'<' not supported between instances of 'NoneType' and
+        # 'int'" - a 500 error on every resume upload. Guarding
+        # against a falsy size_bytes (None or 0) as well fixes it.
 
         try:
 
             size_bytes = obj.file.size
 
         except Exception:
+
+            return None
+
+        if not size_bytes:
 
             return None
 
