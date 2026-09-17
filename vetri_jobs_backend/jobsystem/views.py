@@ -3938,6 +3938,59 @@ class CompanyApplicationStatusView(APIView):
             )
 
 
+            # If this update moved the application to "interview"
+            # and no Interview record exists for it yet, create
+            # one automatically here - this is what actually makes
+            # the Interviews tab show it, since that tab reads from
+            # the Interview model, not the application's status
+            # field. Without this, picking "Interview Scheduled"
+            # from the Candidates page's status dropdown (instead
+            # of using the "Schedule Interview" form) changed the
+            # status but left the Interviews tab empty, since no
+            # Interview row was ever created for that path.
+            #
+            # The dropdown doesn't collect a date/time/mode, so
+            # this uses a placeholder (tomorrow, same time, online)
+            # - the recruiter can reschedule it to the real
+            # date/time afterward from the Interviews page.
+
+            if application.status == "interview":
+
+                from django.utils import timezone
+
+                from datetime import timedelta
+
+                existing_interview = Interview.objects.filter(
+
+                    application=application
+
+                ).order_by("-interview_date").first()
+
+                if not existing_interview:
+
+                    Interview.objects.create(
+
+                        application=application,
+
+                        interviewer=request.user,
+
+                        interview_date=timezone.now() + timedelta(days=1),
+
+                        interview_mode="online",
+
+                        status="scheduled",
+
+                        remarks=(
+                            "Auto-created when status was set to "
+                            "'Interview Scheduled' from the Candidates "
+                            "page - this date/time is a placeholder. "
+                            "Please update it to the real interview "
+                            "date/time from the Interviews page."
+                        ),
+
+                    )
+
+
             # Route through the centralized Notification Engine
             # instead of calling WhatsApp/in-app separately - this
             # is what makes the admin's per-event channel toggles
