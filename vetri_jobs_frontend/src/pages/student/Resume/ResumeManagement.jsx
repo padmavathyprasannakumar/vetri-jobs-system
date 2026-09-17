@@ -30,6 +30,7 @@ import {
     uploadResume,
     getResume,
     deleteResume,
+    downloadResume,
     analyzeResume,
     getResumeVersions,
 
@@ -37,6 +38,46 @@ import {
 
 
 import "./Resume.css";
+
+
+
+
+// =================================
+// Turns an already-fetched blob response into an actual
+// "Save As" download, by momentarily creating a hidden <a>
+// with a temporary object URL and clicking it. This is the
+// part plain <a href="cloudinary-url"> links can't do - only
+// same-origin/blob URLs reliably force a download instead of
+// opening in a new tab, and this blob only exists because it
+// was fetched through the authenticated axios instance (see
+// downloadResume in studentApi.js).
+// =================================
+
+const triggerBlobDownload = (blobData, filename)=>{
+
+    const blobUrl = window.URL.createObjectURL(
+
+        new Blob([blobData])
+
+    );
+
+
+    const link = document.createElement("a");
+
+    link.href = blobUrl;
+
+    link.setAttribute("download", filename || "resume.pdf");
+
+    document.body.appendChild(link);
+
+    link.click();
+
+    link.remove();
+
+
+    window.URL.revokeObjectURL(blobUrl);
+
+};
 
 
 
@@ -73,6 +114,8 @@ const [analysis,setAnalysis] = useState(null);
 const [resumeScore,setResumeScore] = useState(0);
 
 const [loading,setLoading] = useState(false);
+
+const [downloadingId,setDownloadingId] = useState(null);
 
 const [error,setError] = useState("");
 
@@ -310,6 +353,47 @@ setLoading(false);
 
 }
 
+
+};
+
+
+
+
+// =================================
+// DOWNLOAD RESUME (current or a version)
+// =================================
+
+
+const handleDownload = async(resumeId, filename)=>{
+
+if(!resumeId) return;
+
+try{
+
+setDownloadingId(resumeId);
+
+setError("");
+
+
+const response = await downloadResume(resumeId);
+
+
+triggerBlobDownload(response.data, filename);
+
+
+}
+catch(error){
+
+console.log("Resume Download Error", error);
+
+setError("Unable to download resume");
+
+}
+finally{
+
+setDownloadingId(null);
+
+}
 
 };
 
@@ -744,33 +828,19 @@ resume.file_size &&
 <div className="current-resume-actions">
 
 
-{
-resume.resume_url ?
-
-<a
-
-href={resume.resume_url}
-
-target="_blank"
-
-rel="noreferrer"
+<button
 
 className="ghost-btn"
 
+disabled={!resume.id || downloadingId===resume.id}
+
+onClick={()=>handleDownload(resume.id, resume.file_name)}
+
 >
 
-<FaDownload/> Download
-
-</a>
-
-:
-
-<button className="ghost-btn" disabled title="Resume file unavailable">
-
-<FaDownload/> Download
+<FaDownload/> {downloadingId===resume.id ? "Downloading..." : "Download"}
 
 </button>
-}
 
 
 <button className="danger-btn" onClick={confirmAndDelete}>
@@ -912,21 +982,19 @@ version.is_active &&
 <td className="version-actions-cell">
 
 
-<a
-
-href={version.resume_url}
-
-target="_blank"
-
-rel="noreferrer"
+<button
 
 className="table-download-btn"
 
+disabled={downloadingId===version.id}
+
+onClick={()=>handleDownload(version.id, version.file_name)}
+
 >
 
-<FaDownload/> Download
+<FaDownload/> {downloadingId===version.id ? "..." : "Download"}
 
-</a>
+</button>
 
 
 <button
@@ -1053,6 +1121,29 @@ onClick={closeVersionMenu}
 <FaEye/> Preview
 
 </a>
+
+
+<button
+
+className="version-menu-item"
+
+onClick={()=>{
+
+const versionId = openVersion.id;
+
+const label = openVersion.file_name;
+
+closeVersionMenu();
+
+handleDownload(versionId, label);
+
+}}
+
+>
+
+<FaDownload/> Download
+
+</button>
 
 
 <button
