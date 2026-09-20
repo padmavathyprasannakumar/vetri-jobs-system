@@ -57,10 +57,6 @@ import Home from "./pages/public/Home/Home";
 
 
 
-import StudentRegister
-from "./pages/public/Register/StudentRegister";
-
-
 import CompanyRegister
 from "./pages/public/Register/CompanyRegister";
 
@@ -345,11 +341,21 @@ element={<Navigate to="/" replace/>}
 
 
 
+{/*
+    Student self-registration has been removed - student
+    accounts are now created only by a placement admin
+    (via Django Admin or the Placement > Students > Add
+    Student page). Any old bookmarked/shared link to
+    /student/register now just lands on the home page's
+    login card, same as the retired /student/login route
+    above, instead of 404ing.
+*/}
+
 <Route
 
 path="/student/register"
 
-element={<StudentRegister/>}
+element={<Navigate to="/" replace/>}
 
 />
 
