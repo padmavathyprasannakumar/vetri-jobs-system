@@ -352,9 +352,17 @@ placement_admin: "/placement/dashboard",
 };
 
 
+// Student self-registration no longer exists - accounts are
+// created only by a placement admin (Django Admin, or
+// Placement > Students > Add Student). Setting this to null
+// hides the "Don't have an account? Register Here" line
+// beneath the login form whenever the Student tab is active,
+// since the "REGISTER_LINKS[activeTab] &&" check below already
+// treats a falsy value as "nothing to show here".
+
 const REGISTER_LINKS = {
 
-student: "/student/register",
+student: null,
 
 company: "/company/register",
 
