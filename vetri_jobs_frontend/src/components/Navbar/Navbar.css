@@ -442,7 +442,20 @@ display:flex;
 }
 
 
-.navbar-login-btn{
+/*
+   Register/login-style buttons inside the navbar.
+
+   Scoped as ".navbar-links a.navbar-login-btn" (not just
+   ".navbar-login-btn") so these rules always beat the more
+   general ".navbar-links a" / ".navbar-links a:hover" rules
+   above, regardless of which is written later in the file.
+   Without that extra specificity, ".navbar-links a:hover"'s
+   color:#2563eb was winning the color property over this
+   rule's own color:white, leaving blue text on a blue
+   background on hover - i.e. invisible button text.
+*/
+
+.navbar-links a.navbar-login-btn{
 
     background: white;
 
@@ -463,7 +476,7 @@ display:flex;
     transition: .2s;
 }
 
-.navbar-login-btn:hover{
+.navbar-links a.navbar-login-btn:hover{
 
     background: #2563eb;
 
