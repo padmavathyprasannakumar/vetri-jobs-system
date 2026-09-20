@@ -131,11 +131,11 @@ menuOpen
 
 
 
-<Link to="/">
-
-Home
-
-</Link>
+{/*
+    "Home" link removed - the logo (BrandLogo, top-left)
+    already navigates to "/" on click, so this was a
+    duplicate way to do the same thing.
+*/}
 
 
 
