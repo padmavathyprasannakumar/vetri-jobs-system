@@ -186,23 +186,12 @@ Placement Admin
 
 
 {/*
-    Only companies can self-register now, so this is a
-    direct link straight to Company Register instead of a
-    dropdown offering a (removed) Student Register option.
+    The standalone Register button is removed - "For
+    Companies" above already links to /company/register,
+    which is now the only self-registration path, so a
+    second button offering the same destination was
+    redundant.
 */}
-
-<Link
-
-to="/company/register"
-
-className="navbar-login-btn"
-
->
-
-Register
-
-</Link>
-
 
 
 <button
