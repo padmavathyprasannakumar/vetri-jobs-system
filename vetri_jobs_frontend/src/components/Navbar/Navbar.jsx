@@ -146,7 +146,15 @@ Home
 <>
 
 
-<Link to="/student/register">
+{/*
+    Students no longer self-register - accounts are created
+    by a placement admin. "For Students" now takes them to
+    the home page's login card instead of a registration
+    form, same destination the old /student/login route
+    already redirected to.
+*/}
+
+<Link to="/">
 
 For Students
 
@@ -177,39 +185,23 @@ Placement Admin
 
 
 
-<div className="register-dropdown">
+{/*
+    Only companies can self-register now, so this is a
+    direct link straight to Company Register instead of a
+    dropdown offering a (removed) Student Register option.
+*/}
 
+<Link
 
-<button>
+to="/company/register"
 
-Register ▾
+className="navbar-login-btn"
 
-</button>
+>
 
-
-
-<div className="dropdown-menu">
-
-
-<Link to="/student/register">
-
-Student Register
+Register
 
 </Link>
-
-
-
-<Link to="/company/register">
-
-Company Register
-
-</Link>
-
-
-</div>
-
-
-</div>
 
 
 
