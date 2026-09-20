@@ -12,8 +12,7 @@ import {
 import {
     FaBars,
     FaTimes,
-    FaUserCircle,
-    FaUserShield
+    FaUserCircle
 } from "react-icons/fa";
 
 import BrandLogo from "../BrandLogo/BrandLogo";
@@ -72,7 +71,9 @@ return (
 
 
 
-{/* LOGO */}
+{/* LOGO - also serves as the "go home / login" entry point,
+    since clicking it already navigates to "/", where the
+    Student/Company/Placement Admin login tabs all live. */}
 
 <BrandLogo onClick={()=>navigate("/")}/>
 
@@ -132,9 +133,15 @@ menuOpen
 
 
 {/*
-    "Home" link removed - the logo (BrandLogo, top-left)
-    already navigates to "/" on click, so this was a
-    duplicate way to do the same thing.
+    Everything except Company Register has been removed here.
+    Student and Placement Admin accounts are created only in
+    Django Admin now, so there is nothing left to self-serve
+    for them - and "Home", "For Students", "Placement Admin"
+    and a standalone "Login" button all used to point at the
+    exact same "/" page (where every role's login tab already
+    lives), which was confusing rather than useful. Company
+    Register is the one distinct, real action left, so it's
+    the only thing shown to a logged-out visitor.
 */}
 
 
@@ -143,72 +150,17 @@ menuOpen
 
 !user &&
 
-<>
+<Link
 
-
-{/*
-    Students no longer self-register - accounts are created
-    by a placement admin. "For Students" now takes them to
-    the home page's login card instead of a registration
-    form, same destination the old /student/login route
-    already redirected to.
-*/}
-
-<Link to="/">
-
-For Students
-
-</Link>
-
-
-
-
-
-<Link to="/company/register">
-
-For Companies
-
-</Link>
-
-
-
-<Link to="/placement/login" className="placement-nav-link">
-
-<FaUserShield/>
-
-Placement Admin
-
-</Link>
-
-
-
-
-
-
-{/*
-    The standalone Register button is removed - "For
-    Companies" above already links to /company/register,
-    which is now the only self-registration path, so a
-    second button offering the same destination was
-    redundant.
-*/}
-
-
-<button
+to="/company/register"
 
 className="navbar-login-btn"
 
-onClick={()=>navigate("/")}
-
 >
 
-Login
+Register Company
 
-</button>
-
-
-
-</>
+</Link>
 
 
 }
