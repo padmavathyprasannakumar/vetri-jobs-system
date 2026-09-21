@@ -11,6 +11,13 @@ import React, {
 
 import {
 
+    useNavigate
+
+} from "react-router-dom";
+
+
+import {
+
     sendChatMessage
 
 } from "../../../api/chatbotApi";
@@ -65,6 +72,9 @@ const QUICK_ACTIONS = [
 
 
 const AIAssistant = ()=>{
+
+
+const navigate = useNavigate();
 
 
 const bodyRef = useRef(null);
@@ -165,13 +175,37 @@ try{
 
 const response = await sendChatMessage(textToSend, pendingFile);
 
+const data = response.data || {};
+
 setMessages(prev=>[
 
 ...prev,
 
-{ sender:"bot", text: response.data.reply || "Sorry, I couldn't understand that." }
+{
+
+sender:"bot",
+
+text: data.reply || "Sorry, I couldn't understand that.",
+
+// Only set when the bot ran a job-matching action
+// (search_jobs / eligible_jobs) - lets real Apply/View
+// cards render inline, agent-style.
+matchedJobs: data.matched_jobs || null
+
+}
 
 ]);
+
+// Auto-navigate to the Jobs page when the bot's action says
+// to. Note: unlike the floating widget, this page itself
+// unmounts once that navigation happens, since it's a full
+// route change away from the AI Assistant page.
+
+if(data.navigate_to){
+
+navigate(data.navigate_to);
+
+}
 
 }
 catch(error){
@@ -261,6 +295,84 @@ item.attachment &&
 }
 
 {item.text}
+
+
+{/* AGENT-STYLE JOB MATCH CARDS */}
+
+{
+item.matchedJobs && item.matchedJobs.length > 0 &&
+
+<div className="ai-chat-job-cards">
+
+{
+item.matchedJobs.map(job=>(
+
+<div className="ai-chat-job-card" key={job.id}>
+
+
+<div className="ai-chat-job-card-top">
+
+<strong>{job.title}</strong>
+
+{
+job.match_score !== null && job.match_score !== undefined &&
+
+<span className="ai-chat-job-card-score">
+
+{job.match_score}% match
+
+</span>
+}
+
+</div>
+
+
+<p className="ai-chat-job-card-sub">
+
+{job.company}
+{job.location ? ` \u2022 ${job.location}` : ""}
+
+</p>
+
+
+<div className="ai-chat-job-card-actions">
+
+<button
+
+className="ai-chat-job-card-apply"
+
+onClick={()=>navigate(job.apply_url)}
+
+>
+
+Apply
+
+</button>
+
+
+<button
+
+className="ai-chat-job-card-view"
+
+onClick={()=>navigate(job.details_url)}
+
+>
+
+View details
+
+</button>
+
+</div>
+
+
+</div>
+
+))
+}
+
+</div>
+}
+
 
 </div>
 
