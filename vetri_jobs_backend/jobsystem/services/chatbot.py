@@ -20,18 +20,16 @@ user-supplied IDs.
 AGENT ARCHITECTURE:
 Signed-in students AND companies get real Groq tool calling - the
 model itself decides, based on the actual meaning of the message,
-which real action is needed (find jobs / find candidates, check
-status, apply, check interviews, etc), then calls the matching
-Python tool below. Each tool runs the exact same kind of real Django
-query the platform's own pages already use (nothing invented,
-nothing pulled from anywhere new) and returns structured JSON, which
-is fed back to the model for a natural-language reply. Any
-job/candidate list a tool returns (job id/title/apply link/score, or
-candidate name/match score) is taken directly from that JSON - never
-from what the model writes - so the frontend's result cards and
-auto-navigation always reflect real data. Guests and any other role
-(placement_admin/super_admin) get the plain grounded-context chat,
-same as before - no tools are offered to them.
+which real action is needed, then calls the matching Python tool
+below. Each tool runs the exact same kind of real Django query the
+platform's own pages already use (nothing invented, nothing pulled
+from anywhere new) and returns structured JSON, which is fed back to
+the model for a natural-language reply. Any job/candidate/document
+list a tool returns is taken directly from that JSON - never from
+what the model writes - so the frontend's result cards, download
+buttons, and auto-navigation always reflect real data. Guests and
+any other role (placement_admin/super_admin) get the plain
+grounded-context chat, same as before - no tools are offered to them.
 """
 
 import json
@@ -334,26 +332,38 @@ If you have been given tools, use them whenever the message calls for
 a real action or up-to-the-moment data, rather than answering from the
 CURRENT USER DATA snapshot alone, since a tool call always reflects
 the very latest state. For a student, this includes finding jobs,
-checking eligibility, applying to a job, application status,
-interviews, resume feedback, ATS checking, placement drives,
-requesting an interview slot, or raising a query. For a company, this
-includes searching candidates, finding top applicants for one of
-their jobs, viewing applications, interviews, or active job postings.
-Only call apply_to_job when a student clearly, explicitly asks to
-apply to a specific named job - never as a side effect of a general
-question. When a job in a find_matching_jobs/check_job_eligibility
+checking eligibility, applying to a job, application/interview status,
+job requirements for a specific role, skill suggestions, interview
+preparation, resume feedback, ATS checking, resume/document download,
+saved jobs, notifications, placement drives, requesting an interview
+slot, or raising a query. For a company, this includes searching
+candidates, finding top applicants for one of their jobs, viewing
+applications, interviews, job postings, or an analytics summary. Only
+call apply_to_job when a student clearly, explicitly asks to apply to
+a specific named job - never as a side effect of a general question.
+When a job in a find_matching_jobs/check_job_eligibility/get_saved_jobs
 result has already_applied set to true, tell the student they've
 already applied to it instead of inviting them to apply again.
 
-Be proactive about next steps, not just a lookup: after showing
-application status, if any application includes interview details
-(a scheduled interview date/time/mode), proactively offer to help
-the student prepare for that specific interview - ask if they'd like
-sample questions for that role/company, or explain what to expect -
-rather than waiting to be asked. If an application shows the student
-was selected, congratulate them. If rejected, be encouraging and
-offer to find more matching jobs. Keep this brief - one or two extra
-sentences, not a lecture.
+DOWNLOADS: when get_resume_download_link runs successfully, tell the
+student their resume is ready and that a download button is shown
+right in the chat - never write out or mention a URL/link yourself,
+since the actual download happens through the button, not a link you
+provide.
+
+INTERVIEW PREPARATION: when get_interview_prep or get_application_status
+returns job_skills_required/skills_required/job_description for a
+specific interview, use that real data to write 3-5 genuinely
+role-and-company-specific preparation points or practice questions -
+not generic interview advice. Be proactive: after showing application
+status, if any application includes interview details, offer this
+preparation immediately rather than waiting to be asked. If an
+application shows the student was selected, congratulate them. If
+rejected, be encouraging and offer to find more matching jobs.
+
+JOB REQUIREMENTS: when get_job_details returns missing_skills, point
+those out clearly as what the student should focus on for that
+specific role, alongside skills_required.
 
 You also have a Knowledge Base of placement policies, FAQs, and
 guidelines maintained by placement staff - use it for policy/process
@@ -428,13 +438,6 @@ SECURITY_REFUSAL = (
 
 # =====================================================
 # STUDENT AGENT TOOLS (Requirement 17)
-#
-# Each tool below is a plain Python function that runs a real query
-# against real records, returning structured JSON the LLM's final
-# reply is grounded in. A tool's "matched_jobs"/"navigate_to" keys
-# (only ever present for job search/eligibility) are forwarded to
-# the frontend as-is - the model never gets a chance to alter that
-# structured part.
 # =====================================================
 
 def _serialize_matched_job(job, match_score=None, reasons=None, already_applied=False):
@@ -450,10 +453,6 @@ def _serialize_matched_job(job, match_score=None, reasons=None, already_applied=
         ),
         "match_score": match_score,
         "reasons": reasons or [],
-        # True when the student has already applied to this job -
-        # the frontend shows "Already Applied" instead of a live
-        # Apply button/link for these, and the model is told (via
-        # SYSTEM_TEMPLATE) to say so instead of inviting a re-apply.
         "already_applied": already_applied,
         "apply_url": f"/student/jobs/{job.id}/apply",
         "details_url": f"/student/jobs/{job.id}",
@@ -561,6 +560,134 @@ def _tool_check_job_eligibility(profile, user, args):
     }
 
 
+def _tool_get_job_details(profile, user, args):
+    """
+    Covers "What does this job require?" - a literal example question
+    from the spec that had no tool behind it before. Leans on
+    JobSerializer's own output (via .get()) rather than guessing at
+    Job model field names directly, so it degrades gracefully if a
+    field isn't present instead of raising an AttributeError.
+    """
+
+    from jobsystem.models import Job
+    from jobsystem.serializers import JobSerializer
+    from jobsystem.services.job_matching import compute_job_match
+
+    job_title = (args.get("job_title") or "").strip()
+
+    if not job_title:
+
+        return {"summary": "No job title was given."}
+
+    job = Job.objects.filter(
+        status="active", is_active=True,
+        title__icontains=job_title,
+    ).select_related("company").order_by("-created_at").first()
+
+    if not job:
+
+        return {
+            "summary": (
+                f"No open job found matching \"{job_title}\". Ask the "
+                "student to check the exact title on the Jobs page."
+            ),
+        }
+
+    job_data = JobSerializer(job).data
+
+    try:
+
+        score, reasons = compute_job_match(profile, job)
+
+    except Exception:
+
+        score, reasons = None, []
+
+    skills_raw = job_data.get("skills_required") or ""
+
+    skills_required = (
+        [s.strip() for s in skills_raw.split(",") if s.strip()]
+        if isinstance(skills_raw, str) else (skills_raw or [])
+    )
+
+    student_skills = set(
+        s.strip().lower()
+        for s in (getattr(profile, "skills", "") or "").split(",")
+        if s.strip()
+    )
+
+    missing_skills = [
+        s for s in skills_required
+        if s.strip().lower() not in student_skills
+    ]
+
+    company_name = job.company.company_name if job.company else "Company"
+
+    return {
+        "job_title": job.title,
+        "company": company_name,
+        "location": job_data.get("location", ""),
+        "job_type": job_data.get("job_type", ""),
+        "description": job_data.get("description", ""),
+        "eligibility_criteria": job_data.get("eligibility_criteria", ""),
+        "skills_required": skills_required,
+        "missing_skills": missing_skills,
+        "match_score": score,
+        "apply_url": f"/student/jobs/{job.id}/apply",
+        "details_url": f"/student/jobs/{job.id}",
+        "summary": f"Requirements for {job.title} at {company_name}.",
+    }
+
+
+def _tool_get_skill_suggestions(profile, user, args):
+    """
+    Covers "What skills should I improve?" with a real answer grounded
+    in current job-market demand on the platform, not a generic list -
+    the skills most frequently required across active postings that
+    the student doesn't already have.
+    """
+
+    from jobsystem.models import Job
+    from collections import Counter
+
+    jobs = Job.objects.filter(status="active", is_active=True)[:50]
+
+    student_skills = set(
+        s.strip().lower()
+        for s in (getattr(profile, "skills", "") or "").split(",")
+        if s.strip()
+    )
+
+    missing_counter = Counter()
+
+    for job in jobs:
+
+        required = [
+            s.strip() for s in (job.skills_required or "").split(",")
+            if s.strip()
+        ]
+
+        for skill in required:
+
+            if skill.lower() not in student_skills:
+
+                missing_counter[skill] += 1
+
+    top_missing = [skill for skill, _ in missing_counter.most_common(8)]
+
+    return {
+        "current_skills": sorted(student_skills),
+        "suggested_skills": top_missing,
+        "summary": (
+            "Top in-demand skills the student doesn't have yet: "
+            + ", ".join(top_missing)
+        ) if top_missing else (
+            "The student's current skills already cover most open "
+            "job requirements on the platform."
+        ),
+    }
+
+
 def _tool_apply_to_job(profile, user, args):
 
     from jobsystem.models import Job, Application
@@ -657,11 +784,11 @@ def _tool_get_application_status(profile, user, args):
         }
 
         # For an application currently at the "interview" stage,
-        # attach the actual scheduled interview's date/time/mode
-        # here - this is what lets the model proactively offer
-        # interview prep with real specifics instead of a generic
-        # "good luck", and avoids a second tool call just to fetch
-        # the same interview a moment later.
+        # attach the actual scheduled interview's date/time/mode AND
+        # that job's real required skills - this is what lets the
+        # model proactively offer genuinely role/company-specific
+        # interview prep, grounded in real data, without a second
+        # tool call.
 
         if app.status == "interview":
 
@@ -672,10 +799,17 @@ def _tool_get_application_status(profile, user, args):
 
             if upcoming_iv:
 
+                job_skills = [
+                    s.strip()
+                    for s in (app.job.skills_required or "").split(",")
+                    if s.strip()
+                ]
+
                 entry["interview"] = {
                     "date": upcoming_iv.interview_date.strftime("%b %d, %Y"),
                     "time": upcoming_iv.interview_date.strftime("%I:%M %p"),
                     "mode": upcoming_iv.get_interview_mode_display(),
+                    "job_skills_required": job_skills,
                 }
 
                 has_interview_scheduled = True
@@ -722,6 +856,64 @@ def _tool_get_upcoming_interviews(profile, user, args):
         "summary": (
             f"{len(interviews)} upcoming interview(s)"
             + (" this week." if week_only else ".")
+        ),
+    }
+
+
+def _tool_get_interview_prep(profile, user, args):
+    """
+    Covers "How can I prepare for this interview?" with real
+    grounding: the actual scheduled interview's job title, company,
+    and required skills, so the model's prep suggestions are
+    genuinely specific rather than generic advice.
+    """
+
+    from jobsystem.models import Interview
+
+    job_title = (args.get("job_title") or "").strip()
+
+    qs = Interview.objects.filter(
+        application__student=profile,
+        status__in=["scheduled", "rescheduled"],
+    ).select_related(
+        "application__job", "application__job__company"
+    ).order_by("interview_date")
+
+    if job_title:
+
+        qs = qs.filter(application__job__title__icontains=job_title)
+
+    interview = qs.first()
+
+    if not interview:
+
+        return {
+            "summary": (
+                "No upcoming interview found to prepare for."
+                + (f" (looked for \"{job_title}\")" if job_title else "")
+            ),
+        }
+
+    job = interview.application.job
+
+    skills_required = [
+        s.strip() for s in (job.skills_required or "").split(",")
+        if s.strip()
+    ]
+
+    company_name = job.company.company_name if job.company else "Company"
+
+    return {
+        "job_title": job.title,
+        "company": company_name,
+        "interview_date": interview.interview_date.strftime("%b %d, %Y"),
+        "interview_time": interview.interview_date.strftime("%I:%M %p"),
+        "mode": interview.get_interview_mode_display(),
+        "skills_required": skills_required,
+        "job_description": getattr(job, "description", "") or "",
+        "summary": (
+            f"Interview for {job.title} at {company_name} on "
+            f"{interview.interview_date.strftime('%b %d, %Y')}."
         ),
     }
 
@@ -866,6 +1058,14 @@ def _tool_raise_placement_query(profile, user, args):
 
 
 def _tool_get_resume_download_link(profile, user, args):
+    """
+    Returns the resume's own id, NOT a raw URL - the frontend uses
+    this id with the exact same authenticated blob-download flow the
+    Resume Management page already uses, so the file downloads
+    directly from inside the chat rather than the model writing out
+    a link that would either 404 (wrong domain/route) or leave the
+    app entirely (different domain from the backend).
+    """
 
     from jobsystem.models import Resume
 
@@ -882,9 +1082,69 @@ def _tool_get_resume_download_link(profile, user, args):
 
     return {
         "has_resume": True,
+        "resume_id": resume.id,
         "filename": resume.filename or "Resume",
-        "download_url": f"/student/resume/{resume.id}/download/",
-        "summary": f"Resume available for download: {resume.filename or 'Resume'}.",
+        "summary": f"Resume ready to download: {resume.filename or 'Resume'}.",
+    }
+
+
+def _tool_get_saved_jobs(profile, user, args):
+
+    from jobsystem.models import Job, Application
+
+    jobs = Job.objects.filter(
+        saved_by__student=profile
+    ).select_related("company").order_by("-saved_by__saved_at")[:10]
+
+    applied_job_ids = set(
+        Application.objects.filter(
+            student=profile
+        ).values_list("job_id", flat=True)
+    )
+
+    matched_jobs = [
+        _serialize_matched_job(
+            job, already_applied=(job.id in applied_job_ids)
+        )
+        for job in jobs
+    ]
+
+    return {
+        "matched_jobs": matched_jobs,
+        "navigate_to": "/student/saved-jobs",
+        "summary": (
+            f"{len(matched_jobs)} saved job(s)."
+            if matched_jobs else "No saved jobs yet."
+        ),
+    }
+
+
+def _tool_get_notifications(profile, user, args):
+
+    from jobsystem.models import Notification
+
+    notifications = Notification.objects.filter(
+        user=user
+    ).order_by("-created_at")[:10]
+
+    data = [
+        {
+            "title": getattr(n, "title", "") or "",
+            "message": n.message,
+            "is_read": n.is_read,
+        }
+        for n in notifications
+    ]
+
+    unread_count = sum(1 for n in data if not n["is_read"])
+
+    return {
+        "notifications": data,
+        "navigate_to": "/student/notifications",
+        "summary": (
+            f"{len(data)} recent notification(s), {unread_count} unread."
+            if data else "No notifications yet."
+        ),
     }
 
 
@@ -920,6 +1180,42 @@ TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "get_job_details",
+            "description": (
+                "Get the full requirements for one specific open job "
+                "by title - description, required skills, eligibility "
+                "criteria, and which required skills the student is "
+                "missing. Use when the student asks what a job "
+                "requires/needs, or wants details on a specific role."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "job_title": {
+                        "type": "string",
+                        "description": "The job title to get requirements for.",
+                    }
+                },
+                "required": ["job_title"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_skill_suggestions",
+            "description": (
+                "Get skills the student should learn, based on what's "
+                "most in-demand across currently active job postings "
+                "that they don't already have. Use when the student "
+                "asks what skills to improve or learn."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "apply_to_job",
             "description": (
                 "Submit a job application for the student to a "
@@ -946,9 +1242,9 @@ TOOL_SCHEMAS = [
                 "Get the student's current job applications and "
                 "their statuses. For any application at the "
                 "interview stage, this also returns the actual "
-                "scheduled interview date/time/mode - after showing "
-                "this, proactively offer to help the student prepare "
-                "for that specific interview."
+                "scheduled interview date/time/mode and that job's "
+                "required skills - after showing this, proactively "
+                "offer role-and-company-specific interview prep."
             ),
             "parameters": {"type": "object", "properties": {}, "required": []},
         },
@@ -964,6 +1260,29 @@ TOOL_SCHEMAS = [
                     "this_week": {
                         "type": "boolean",
                         "description": "True only if the student specifically asked about interviews this week.",
+                    }
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_interview_prep",
+            "description": (
+                "Get real, job-specific data (company, role, required "
+                "skills, description) for an upcoming interview, to "
+                "generate genuinely tailored preparation suggestions "
+                "or practice questions - not generic advice. Use when "
+                "the student asks how to prepare for an interview."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "job_title": {
+                        "type": "string",
+                        "description": "The job title to prepare for, if the student mentioned one.",
                     }
                 },
                 "required": [],
@@ -997,6 +1316,35 @@ TOOL_SCHEMAS = [
                 },
                 "required": [],
             },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_resume_download_link",
+            "description": (
+                "Get the student's current active resume ready for "
+                "download - triggers a real download button directly "
+                "in the chat. Use when the student asks to download "
+                "their resume or documents."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_saved_jobs",
+            "description": "Get the student's saved/bookmarked jobs.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_notifications",
+            "description": "Get the student's recent notifications.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
         },
     },
     {
@@ -1041,39 +1389,31 @@ TOOL_SCHEMAS = [
             },
         },
     },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_resume_download_link",
-            "description": "Get a download link for the student's current active resume.",
-            "parameters": {"type": "object", "properties": {}, "required": []},
-        },
-    },
 ]
 
 
 TOOL_EXECUTORS = {
     "find_matching_jobs": _tool_find_matching_jobs,
     "check_job_eligibility": _tool_check_job_eligibility,
+    "get_job_details": _tool_get_job_details,
+    "get_skill_suggestions": _tool_get_skill_suggestions,
     "apply_to_job": _tool_apply_to_job,
     "get_application_status": _tool_get_application_status,
     "get_upcoming_interviews": _tool_get_upcoming_interviews,
+    "get_interview_prep": _tool_get_interview_prep,
     "get_resume_feedback": _tool_get_resume_feedback,
     "check_ats_friendliness": _tool_check_ats_friendliness,
+    "get_resume_download_link": _tool_get_resume_download_link,
+    "get_saved_jobs": _tool_get_saved_jobs,
+    "get_notifications": _tool_get_notifications,
     "get_upcoming_drives": _tool_get_upcoming_drives,
     "request_interview_slot": _tool_request_interview_slot,
     "raise_placement_query": _tool_raise_placement_query,
-    "get_resume_download_link": _tool_get_resume_download_link,
 }
 
 
 # =====================================================
 # COMPANY AGENT TOOLS
-#
-# Same shape/spirit as the student tools above, scoped to the
-# signed-in company's own jobs/candidates/interviews only - a
-# company can never search or see another company's applicants,
-# applications, or interviews through these.
 # =====================================================
 
 def _tool_search_candidates(profile, user, args):
@@ -1287,6 +1627,67 @@ def _tool_get_active_job_postings(profile, user, args):
     }
 
 
+def _tool_list_all_job_postings(profile, user, args):
+    """
+    Full Manage Jobs tab coverage - every status, not just active,
+    so "show my job postings" covers closed/draft ones too.
+    """
+
+    from jobsystem.models import Job
+
+    jobs = Job.objects.filter(
+        company=profile
+    ).order_by("-created_at")[:15]
+
+    data = [
+        {
+            "title": j.title,
+            "status": (
+                j.get_status_display()
+                if hasattr(j, "get_status_display") else j.status
+            ),
+            "applications": j.applications.count(),
+        }
+        for j in jobs
+    ]
+
+    return {
+        "jobs": data,
+        "navigate_to": "/company/jobs",
+        "summary": (
+            f"{len(data)} job posting(s) total."
+            if data else "No jobs posted yet."
+        ),
+    }
+
+
+def _tool_get_company_analytics_summary(profile, user, args):
+
+    from jobsystem.models import Job, Application, Interview
+
+    jobs_qs = Job.objects.filter(company=profile)
+
+    applications_qs = Application.objects.filter(job__company=profile)
+
+    interviews_qs = Interview.objects.filter(
+        application__job__company=profile
+    )
+
+    return {
+        "total_jobs_posted": jobs_qs.count(),
+        "active_jobs": jobs_qs.filter(status="active").count(),
+        "total_applications": applications_qs.count(),
+        "interviews_scheduled": interviews_qs.filter(
+            status="scheduled"
+        ).count(),
+        "hired_candidates": applications_qs.filter(
+            status="selected"
+        ).count(),
+        "navigate_to": "/company/analytics",
+        "summary": "Company analytics summary.",
+    }
+
+
 COMPANY_TOOL_SCHEMAS = [
     {
         "type": "function",
@@ -1365,6 +1766,31 @@ COMPANY_TOOL_SCHEMAS = [
             "parameters": {"type": "object", "properties": {}, "required": []},
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_all_job_postings",
+            "description": (
+                "Get every job posting the company has made, in any "
+                "status (active, closed, draft), not just active "
+                "ones. Use for 'show all my job postings' style "
+                "questions."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_company_analytics_summary",
+            "description": (
+                "Get a summary of the company's hiring analytics: "
+                "jobs posted, active jobs, total applications, "
+                "interviews scheduled, and candidates hired."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
 ]
 
 
@@ -1374,6 +1800,8 @@ COMPANY_TOOL_EXECUTORS = {
     "get_company_applications": _tool_get_company_applications,
     "get_company_interviews": _tool_get_company_interviews,
     "get_active_job_postings": _tool_get_active_job_postings,
+    "list_all_job_postings": _tool_list_all_job_postings,
+    "get_company_analytics_summary": _tool_get_company_analytics_summary,
 }
 
 
@@ -1549,6 +1977,16 @@ def _call_groq_with_tools(messages, tools):
 # MAIN ENTRY POINT
 # =====================================================
 
+# Keys that, when present in a tool's result, are forwarded to the
+# frontend as-is (never rewritten by the model) so it can render
+# real cards/lists/buttons instead of plain text.
+
+_FORWARDED_LIST_KEYS = (
+    "matched_jobs", "candidates", "applications",
+    "interviews", "jobs", "drives", "notifications",
+)
+
+
 def generate_reply(user, message, history=None):
     """
     history: optional list of {"sender": "user"|"bot", "message": "..."}
@@ -1556,28 +1994,17 @@ def generate_reply(user, message, history=None):
 
     Returns either a plain string (guests, placement_admin/super_admin,
     or any tool-less reply) or a dict {"reply": ..., plus extra keys
-    like "matched_jobs"/"candidates"/"navigate_to"} when a tool ran -
-    see the module docstring and the two _serialize_*/tool functions
-    above for the exact shapes.
+    like "matched_jobs"/"candidates"/"resume_download"/"navigate_to"}
+    when a tool ran.
     """
 
     # ---------------- AI SECURITY (Requirement 31) ----------------
-    # Checked before anything else touches the LLM or the database -
-    # a request that even looks like it's probing for another
-    # student's/company's data is refused outright, regardless of
-    # tools.
 
     if _is_security_probe(message):
 
         return SECURITY_REFUSAL
 
     # ---------------- PICK THE RIGHT ACTOR + TOOL SET ----------------
-    # A student gets the student tools against their own
-    # StudentProfile; a company gets the company tools against their
-    # own CompanyProfile. Anyone else (guest, placement_admin,
-    # super_admin, or a student/company with no profile yet) gets no
-    # tools at all - just the plain grounded-context conversation,
-    # same as before this agent rebuild.
 
     role = (
         getattr(user, "role", None)
@@ -1619,11 +2046,6 @@ def generate_reply(user, message, history=None):
         context_json=json.dumps(context, default=str),
         knowledge_json=json.dumps(knowledge, default=str),
     )
-
-    # Admin-configured extra instructions (Requirement 28 -
-    # "AI prompts/configuration"), layered on top of the grounding
-    # rules above rather than replacing them, so the security and
-    # data-grounding behaviour always stays intact.
 
     setting = get_active_chatbot_setting()
 
@@ -1688,11 +2110,6 @@ def generate_reply(user, message, history=None):
 
         return (choice_message.content or "").strip()
 
-    # Only the first requested tool call is executed - keeps this
-    # predictable and avoids silently chaining multiple
-    # side-effecting actions (like applying to a job) from one
-    # ambiguous message.
-
     tool_call = tool_calls[0]
 
     tool_name = tool_call.function.name
@@ -1723,9 +2140,6 @@ def generate_reply(user, message, history=None):
             "I ran into an issue while doing that. Please try again "
             "in a moment, or ask me in a different way."
         )
-
-    # Feed the tool's real result back to Groq for a natural-language
-    # reply, grounded in this exact data.
 
     messages.append({
         "role": "assistant",
@@ -1766,18 +2180,30 @@ def generate_reply(user, message, history=None):
 
         final_text = tool_result.get("summary", "Here's what I found.")
 
-    # Structured, agent-style data (job/candidate cards, navigation)
-    # always comes straight from the tool's own return value above -
-    # never from anything the model wrote - so the frontend shows
-    # real data, not a hallucinated summary of it.
+    # Structured, agent-style data always comes straight from the
+    # tool's own return value above - never from anything the model
+    # wrote - so the frontend shows real data, not a hallucinated
+    # summary of it.
 
     result_payload = {"reply": final_text}
 
-    for key in ("matched_jobs", "candidates", "applications", "interviews", "jobs", "drives"):
+    for key in _FORWARDED_LIST_KEYS:
 
         if key in tool_result:
 
             result_payload[key] = tool_result[key]
+
+    # Resume/document download - forwarded as its own small object
+    # (not a URL) so the frontend triggers a real authenticated
+    # blob download button, rather than a link the model could get
+    # wrong or that would navigate away from the app entirely.
+
+    if tool_result.get("resume_id"):
+
+        result_payload["resume_download"] = {
+            "resume_id": tool_result["resume_id"],
+            "filename": tool_result.get("filename", "Resume"),
+        }
 
     if tool_result.get("navigate_to"):
 
