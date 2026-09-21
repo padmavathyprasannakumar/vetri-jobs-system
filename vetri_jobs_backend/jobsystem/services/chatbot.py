@@ -341,7 +341,19 @@ includes searching candidates, finding top applicants for one of
 their jobs, viewing applications, interviews, or active job postings.
 Only call apply_to_job when a student clearly, explicitly asks to
 apply to a specific named job - never as a side effect of a general
-question.
+question. When a job in a find_matching_jobs/check_job_eligibility
+result has already_applied set to true, tell the student they've
+already applied to it instead of inviting them to apply again.
+
+Be proactive about next steps, not just a lookup: after showing
+application status, if any application includes interview details
+(a scheduled interview date/time/mode), proactively offer to help
+the student prepare for that specific interview - ask if they'd like
+sample questions for that role/company, or explain what to expect -
+rather than waiting to be asked. If an application shows the student
+was selected, congratulate them. If rejected, be encouraging and
+offer to find more matching jobs. Keep this brief - one or two extra
+sentences, not a lecture.
 
 You also have a Knowledge Base of placement policies, FAQs, and
 guidelines maintained by placement staff - use it for policy/process
@@ -425,7 +437,7 @@ SECURITY_REFUSAL = (
 # structured part.
 # =====================================================
 
-def _serialize_matched_job(job, match_score=None, reasons=None):
+def _serialize_matched_job(job, match_score=None, reasons=None, already_applied=False):
 
     return {
         "id": job.id,
@@ -438,6 +450,11 @@ def _serialize_matched_job(job, match_score=None, reasons=None):
         ),
         "match_score": match_score,
         "reasons": reasons or [],
+        # True when the student has already applied to this job -
+        # the frontend shows "Already Applied" instead of a live
+        # Apply button/link for these, and the model is told (via
+        # SYSTEM_TEMPLATE) to say so instead of inviting a re-apply.
+        "already_applied": already_applied,
         "apply_url": f"/student/jobs/{job.id}/apply",
         "details_url": f"/student/jobs/{job.id}",
     }
@@ -445,7 +462,7 @@ def _serialize_matched_job(job, match_score=None, reasons=None):
 
 def _tool_find_matching_jobs(profile, user, args):
 
-    from jobsystem.models import Job
+    from jobsystem.models import Job, Application
     from jobsystem.services.job_matching import rank_jobs_for_student
 
     jobs = Job.objects.filter(
@@ -461,8 +478,17 @@ def _tool_find_matching_jobs(profile, user, args):
             "summary": "No active job postings found right now.",
         }
 
+    applied_job_ids = set(
+        Application.objects.filter(
+            student=profile
+        ).values_list("job_id", flat=True)
+    )
+
     matched_jobs = [
-        _serialize_matched_job(job, score, reasons)
+        _serialize_matched_job(
+            job, score, reasons,
+            already_applied=(job.id in applied_job_ids),
+        )
         for job, score, reasons in ranked
     ]
 
@@ -475,7 +501,7 @@ def _tool_find_matching_jobs(profile, user, args):
 
 def _tool_check_job_eligibility(profile, user, args):
 
-    from jobsystem.models import Job
+    from jobsystem.models import Job, Application
     from jobsystem.services.eligibility import check_eligibility
     from jobsystem.services.job_matching import compute_job_match
 
@@ -503,6 +529,12 @@ def _tool_check_job_eligibility(profile, user, args):
             ),
         }
 
+    applied_job_ids = set(
+        Application.objects.filter(
+            student=profile
+        ).values_list("job_id", flat=True)
+    )
+
     matched_jobs = []
 
     for job in eligible[:8]:
@@ -515,7 +547,12 @@ def _tool_check_job_eligibility(profile, user, args):
 
             score, reasons = None, []
 
-        matched_jobs.append(_serialize_matched_job(job, score, reasons))
+        matched_jobs.append(
+            _serialize_matched_job(
+                job, score, reasons,
+                already_applied=(job.id in applied_job_ids),
+            )
+        )
 
     return {
         "matched_jobs": matched_jobs,
@@ -601,23 +638,53 @@ def _tool_apply_to_job(profile, user, args):
 
 def _tool_get_application_status(profile, user, args):
 
-    from jobsystem.models import Application
+    from jobsystem.models import Application, Interview
 
     apps = Application.objects.filter(
         student=profile
     ).select_related("job", "job__company").order_by("-applied_date")[:10]
 
-    applications = [
-        {
+    applications = []
+
+    has_interview_scheduled = False
+
+    for app in apps:
+
+        entry = {
             "job_title": app.job.title,
             "company": app.job.company.company_name if app.job.company else "Company",
             "status": app.get_status_display(),
         }
-        for app in apps
-    ]
+
+        # For an application currently at the "interview" stage,
+        # attach the actual scheduled interview's date/time/mode
+        # here - this is what lets the model proactively offer
+        # interview prep with real specifics instead of a generic
+        # "good luck", and avoids a second tool call just to fetch
+        # the same interview a moment later.
+
+        if app.status == "interview":
+
+            upcoming_iv = Interview.objects.filter(
+                application=app,
+                status__in=["scheduled", "rescheduled"],
+            ).order_by("-interview_date").first()
+
+            if upcoming_iv:
+
+                entry["interview"] = {
+                    "date": upcoming_iv.interview_date.strftime("%b %d, %Y"),
+                    "time": upcoming_iv.interview_date.strftime("%I:%M %p"),
+                    "mode": upcoming_iv.get_interview_mode_display(),
+                }
+
+                has_interview_scheduled = True
+
+        applications.append(entry)
 
     return {
         "applications": applications,
+        "has_interview_scheduled": has_interview_scheduled,
         "summary": (
             f"{len(applications)} applications found."
             if applications else
@@ -830,7 +897,8 @@ TOOL_SCHEMAS = [
                 "Find active job postings that best match the "
                 "student's skills, course, and profile. Use whenever "
                 "the student asks to find, search, see, or get "
-                "suitable/recommended jobs for themselves."
+                "suitable/recommended jobs for themselves. Results "
+                "include an already_applied flag per job."
             ),
             "parameters": {"type": "object", "properties": {}, "required": []},
         },
@@ -843,7 +911,8 @@ TOOL_SCHEMAS = [
                 "List open jobs the student is currently eligible "
                 "for, based on their profile (CGPA, department, "
                 "backlogs, etc). Use when the student asks which "
-                "jobs they're eligible for."
+                "jobs they're eligible for. Results include an "
+                "already_applied flag per job."
             ),
             "parameters": {"type": "object", "properties": {}, "required": []},
         },
@@ -873,7 +942,14 @@ TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "get_application_status",
-            "description": "Get the student's current job applications and their statuses.",
+            "description": (
+                "Get the student's current job applications and "
+                "their statuses. For any application at the "
+                "interview stage, this also returns the actual "
+                "scheduled interview date/time/mode - after showing "
+                "this, proactively offer to help the student prepare "
+                "for that specific interview."
+            ),
             "parameters": {"type": "object", "properties": {}, "required": []},
         },
     },
