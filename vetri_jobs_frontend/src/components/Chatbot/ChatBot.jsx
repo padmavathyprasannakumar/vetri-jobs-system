@@ -25,6 +25,13 @@ import {
 
 import {
 
+    downloadResume
+
+} from "../../api/studentApi";
+
+
+import {
+
     getSiteBranding
 
 } from "../../api/brandingApi";
@@ -127,12 +134,6 @@ function Chatbot(){
     ]);
 
 
-    // If the signed-in role changes (e.g. logging in partway
-    // through a session, or switching accounts), refresh the
-    // greeting so it isn't stuck showing the wrong role's message.
-    // Only resets when the conversation is still just the initial
-    // greeting, so it never wipes an actual in-progress chat.
-
     useEffect(()=>{
 
         setMessages(prev=>
@@ -153,11 +154,13 @@ function Chatbot(){
     const [loading,setLoading] = useState(false);
 
 
+    // Per-message download state, keyed by message index, so a
+    // download button can show "Downloading..." without affecting
+    // the rest of the chat's loading state.
 
-    // Window "slightly expands" once a real conversation has
-    // started (more than the initial greeting) or while the
-    // assistant is typing a reply - gives it room to breathe
-    // instead of staying cramped at the tiny default size.
+    const [downloadingIndex,setDownloadingIndex] = useState(null);
+
+
 
     const isExpanded = messages.length > 1 || loading;
 
@@ -235,6 +238,78 @@ function Chatbot(){
     const removeAttachment = ()=>{
 
         setAttachedFile(null);
+
+    };
+
+
+
+
+    // ===============================
+    // IN-CHAT RESUME DOWNLOAD
+    //
+    // Uses the exact same authenticated blob-download flow the
+    // Resume Management page already uses (downloadResume() hits
+    // /student/resume/<id>/download/ through the authenticated axios
+    // instance, responseType "blob"). The file saves directly from
+    // this button - nothing is rendered as a clickable URL, since a
+    // plain link would either 404 (frontend has no matching route)
+    // or leave the app entirely (backend is a different domain).
+    // ===============================
+
+
+    const handleDownloadResume = async(resumeId, filename, index)=>{
+
+        setDownloadingIndex(index);
+
+        try{
+
+            const response = await downloadResume(resumeId);
+
+            const blobUrl = window.URL.createObjectURL(
+
+                new Blob([response.data])
+
+            );
+
+            const link = document.createElement("a");
+
+            link.href = blobUrl;
+
+            link.download = filename || "resume";
+
+            document.body.appendChild(link);
+
+            link.click();
+
+            link.remove();
+
+            window.URL.revokeObjectURL(blobUrl);
+
+        }
+
+        catch(error){
+
+            setMessages(prev=>[
+
+                ...prev,
+
+                {
+
+                    sender:"bot",
+
+                    text:"Sorry, I couldn't download that file just now. Try again from the Resume page."
+
+                }
+
+            ]);
+
+        }
+
+        finally{
+
+            setDownloadingIndex(null);
+
+        }
 
     };
 
@@ -334,20 +409,25 @@ function Chatbot(){
                     "Sorry, I could not understand.",
 
 
-                    // Present only when the bot ran a job-matching
-                    // action (student tools) - lets real Apply/View
-                    // cards render inline, agent-style. Each job may
-                    // carry already_applied - see the card rendering
-                    // below for how that's shown.
+                    // Job-matching results (student tools)
 
                     matchedJobs: data.matched_jobs || null,
 
 
-                    // Present only when the bot ran a candidate-
-                    // matching action (company tools) - lets real
-                    // candidate cards render inline the same way.
+                    // Candidate-matching results (company tools)
 
-                    candidates: data.candidates || null
+                    candidates: data.candidates || null,
+
+
+                    // Resume ready to download - renders a real
+                    // button, never a plain link/URL.
+
+                    resumeDownload: data.resume_download || null,
+
+
+                    // Recent notifications, shown as a simple list.
+
+                    notifications: data.notifications || null
 
 
                 }
@@ -357,12 +437,6 @@ function Chatbot(){
 
 
 
-
-            // Auto-navigate when the bot's action says to (job
-            // search/eligibility for a student, candidate search /
-            // interviews / jobs for a company). The widget itself
-            // stays mounted/open across the route change since it
-            // lives in the layout, not the page.
 
             if(data.navigate_to){
 
@@ -780,6 +854,106 @@ function Chatbot(){
 
                                         </div>
 
+
+                                    </div>
+
+                                ))
+                                }
+
+                            </div>
+                            }
+
+
+
+
+                            {/* IN-CHAT RESUME DOWNLOAD BUTTON */}
+
+                            {
+                            item.resumeDownload &&
+
+                            <div className="chat-job-cards">
+
+                                <div className="chat-job-card">
+
+                                    <div className="chat-job-card-top">
+
+                                        <strong>{item.resumeDownload.filename}</strong>
+
+                                    </div>
+
+                                    <div className="chat-job-card-actions">
+
+                                        <button
+
+                                        type="button"
+
+                                        className="chat-job-card-apply"
+
+                                        disabled={downloadingIndex===index}
+
+                                        onClick={()=>handleDownloadResume(
+
+                                            item.resumeDownload.resume_id,
+
+                                            item.resumeDownload.filename,
+
+                                            index
+
+                                        )}
+
+                                        >
+
+                                            {
+                                            downloadingIndex===index
+
+                                            ? "Downloading..."
+
+                                            : "Download"
+                                            }
+
+                                        </button>
+
+                                    </div>
+
+                                </div>
+
+                            </div>
+                            }
+
+
+
+
+                            {/* NOTIFICATIONS LIST */}
+
+                            {
+                            item.notifications && item.notifications.length > 0 &&
+
+                            <div className="chat-notification-list">
+
+                                {
+                                item.notifications.map((n,idx)=>(
+
+                                    <div
+
+                                    className={
+
+                                        "chat-notification-item" +
+
+                                        (n.is_read ? "" : " unread")
+
+                                    }
+
+                                    key={idx}
+
+                                    >
+
+                                        {
+                                        n.title &&
+
+                                        <strong>{n.title}</strong>
+                                        }
+
+                                        <p>{n.message}</p>
 
                                     </div>
 
