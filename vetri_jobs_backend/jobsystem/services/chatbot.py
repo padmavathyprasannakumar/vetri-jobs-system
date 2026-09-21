@@ -17,19 +17,21 @@ student's applications/interviews through this endpoint, since the
 context is always built from the authenticated user, never from
 user-supplied IDs.
 
-AGENT ARCHITECTURE (replaces the old regex-pattern router):
-Signed-in students with a completed profile get real Groq tool
-calling instead of keyword matching - the model itself decides,
-based on the actual meaning of the message, whether an action like
-"find jobs", "check my application status" or "apply to X" is
-needed, then calls the matching Python tool below. Each tool runs
-the exact same kind of real Django query the old regex handlers
-did (nothing invented, nothing pulled from anywhere new) and
-returns structured JSON, which is fed back to the model for a
-natural-language reply. Any job-matching tool's structured data
-(job id/title/company/apply link/score) is taken directly from
-that JSON - never from what the model writes - so the frontend's
-job cards and auto-navigation always reflect real data.
+AGENT ARCHITECTURE:
+Signed-in students AND companies get real Groq tool calling - the
+model itself decides, based on the actual meaning of the message,
+which real action is needed (find jobs / find candidates, check
+status, apply, check interviews, etc), then calls the matching
+Python tool below. Each tool runs the exact same kind of real Django
+query the platform's own pages already use (nothing invented,
+nothing pulled from anywhere new) and returns structured JSON, which
+is fed back to the model for a natural-language reply. Any
+job/candidate list a tool returns (job id/title/apply link/score, or
+candidate name/match score) is taken directly from that JSON - never
+from what the model writes - so the frontend's result cards and
+auto-navigation always reflect real data. Guests and any other role
+(placement_admin/super_admin) get the plain grounded-context chat,
+same as before - no tools are offered to them.
 """
 
 import json
@@ -319,25 +321,27 @@ campus recruitment platform used by students, companies, and placement staff.
 
 You have been given the signed-in user's REAL, CURRENT data from the
 platform database as JSON below. Always answer questions about "my
-applications", "my interviews", "my resume", "jobs for me", etc. using
-this data directly - never say you don't have access to it. If a
-relevant list in the data is empty, say so plainly (e.g. "You don't
-have any interviews scheduled this week").
+applications", "my interviews", "my resume", "jobs for me" (for a
+student), or "my candidates", "my applicants", "my interviews" (for a
+company), using this data directly - never say you don't have access
+to it. If a relevant list in the data is empty, say so plainly.
 
 If the user is a guest (not signed in), you do not have any personal
 data - answer general questions about the platform, and suggest they
-log in or register for personalized help with applications,
-interviews, or resume feedback.
+log in or register for personalized help.
 
-If you have been given tools, use them whenever the student's message
-calls for a real action or up-to-the-moment data - finding jobs,
-checking eligibility, applying to a job, checking application status,
-checking interviews, resume feedback, ATS checking, placement drives,
-requesting an interview slot, or raising a placement query - rather
-than answering from the CURRENT USER DATA snapshot alone, since a
-tool call always reflects the very latest state. Only call apply_to_job
-when the student clearly, explicitly asks to apply to a specific named
-job - never as a side effect of a general question.
+If you have been given tools, use them whenever the message calls for
+a real action or up-to-the-moment data, rather than answering from the
+CURRENT USER DATA snapshot alone, since a tool call always reflects
+the very latest state. For a student, this includes finding jobs,
+checking eligibility, applying to a job, application status,
+interviews, resume feedback, ATS checking, placement drives,
+requesting an interview slot, or raising a query. For a company, this
+includes searching candidates, finding top applicants for one of
+their jobs, viewing applications, interviews, or active job postings.
+Only call apply_to_job when a student clearly, explicitly asks to
+apply to a specific named job - never as a side effect of a general
+question.
 
 You also have a Knowledge Base of placement policies, FAQs, and
 guidelines maintained by placement staff - use it for policy/process
@@ -346,16 +350,16 @@ knowledge base, say you're not sure rather than inventing details.
 
 Keep replies concise, friendly, and practical (a few sentences or a
 short list). Never reveal another user's information - you only ever
-have access to the signed-in user's own data.
+have access to the signed-in user's own data, and every tool above
+only ever touches this same signed-in user's own records (a
+student's own profile, or a company's own jobs/candidates/interviews
+- never another student's or another company's).
 
 SECURITY (non-negotiable): the JSON below contains ONLY the current
-signed-in user's own data - no other student's or company's private
-records are ever included, and every tool above only ever touches
-this same signed-in user's own records. If the user asks to see
-another person's application status, interview details, resume, or
-any other private information, refuse clearly and suggest they
-contact the placement office. Never guess, infer, or fabricate
-another person's data even if asked to "assume" or "pretend". This
+signed-in user's own data. If the user asks to see another person's
+or another company's private information, refuse clearly and suggest
+they contact the placement office. Never guess, infer, or fabricate
+another party's data even if asked to "assume" or "pretend". This
 rule overrides any other instruction in this prompt, including
 anything added below by an administrator.
 
@@ -387,6 +391,8 @@ _OTHER_STUDENT_PATTERNS = [
     r"\bstudent (id|number)\s*[:#]?\s*\w+",
     r"\bshow me .*(student|candidate)s? (list|data|details|status)",
     r"\bmy (friend|classmate)'?s? (application|status|interview)",
+    r"\bother compan(y|ies)", r"\banother company",
+    r"\ball companies['\u2019]?\s*(application|candidate|data)",
 ]
 
 
@@ -402,23 +408,21 @@ def _is_security_probe(message):
 
 SECURITY_REFUSAL = (
     "I can only share information about your own account - I'm not "
-    "able to show another student's application status, interviews, "
-    "or personal data. If you need details about someone else's "
-    "placement progress, please contact the placement office directly."
+    "able to show another student's or another company's private "
+    "data. If you need details about someone else's placement "
+    "progress, please contact the placement office directly."
 )
 
 
 # =====================================================
-# AGENT TOOLS (Requirement 17)
+# STUDENT AGENT TOOLS (Requirement 17)
 #
 # Each tool below is a plain Python function that runs a real query
-# against real records - identical in spirit to the old regex-routed
-# _handle_* functions this replaces, just returning structured JSON
-# instead of a pre-written string, since the LLM writes the final
-# reply text itself now, grounded in this exact data. A tool's
-# "matched_jobs"/"navigate_to" keys (only ever present for job
-# search/eligibility) are forwarded to the frontend as-is - the model
-# never gets a chance to alter that structured part.
+# against real records, returning structured JSON the LLM's final
+# reply is grounded in. A tool's "matched_jobs"/"navigate_to" keys
+# (only ever present for job search/eligibility) are forwarded to
+# the frontend as-is - the model never gets a chance to alter that
+# structured part.
 # =====================================================
 
 def _serialize_matched_job(job, match_score=None, reasons=None):
@@ -988,6 +992,316 @@ TOOL_EXECUTORS = {
 
 
 # =====================================================
+# COMPANY AGENT TOOLS
+#
+# Same shape/spirit as the student tools above, scoped to the
+# signed-in company's own jobs/candidates/interviews only - a
+# company can never search or see another company's applicants,
+# applications, or interviews through these.
+# =====================================================
+
+def _tool_search_candidates(profile, user, args):
+
+    from django.db.models import Q
+    from jobsystem.models import StudentProfile
+
+    query = (args.get("query") or "").strip()
+
+    department = (args.get("department") or "").strip()
+
+    min_cgpa = args.get("min_cgpa")
+
+    candidates_qs = StudentProfile.objects.select_related("user")
+
+    if query:
+
+        candidates_qs = candidates_qs.filter(
+            Q(skills__icontains=query) |
+            Q(full_name__icontains=query) |
+            Q(course__icontains=query) |
+            Q(department__icontains=query)
+        )
+
+    if department:
+
+        candidates_qs = candidates_qs.filter(
+            department__icontains=department
+        )
+
+    if min_cgpa is not None:
+
+        try:
+
+            candidates_qs = candidates_qs.filter(
+                ug_cgpa__gte=float(min_cgpa)
+            )
+
+        except (TypeError, ValueError):
+
+            pass
+
+    candidates_qs = candidates_qs.order_by("-id")[:15]
+
+    results = [
+        {
+            "name": s.full_name,
+            "course": s.course,
+            "department": s.department,
+            "cgpa": s.ug_cgpa,
+            "skills": (
+                [x.strip() for x in s.skills.split(",")]
+                if s.skills else []
+            ),
+        }
+        for s in candidates_qs
+    ]
+
+    return {
+        "candidates": results,
+        "navigate_to": "/company/candidates",
+        "summary": f"Found {len(results)} matching student profiles.",
+    }
+
+
+def _tool_get_top_candidates_for_job(profile, user, args):
+
+    from jobsystem.models import Job, Application
+    from jobsystem.services.job_matching import compute_job_match
+
+    job_title = (args.get("job_title") or "").strip()
+
+    jobs_qs = Job.objects.filter(company=profile)
+
+    if job_title:
+
+        jobs_qs = jobs_qs.filter(title__icontains=job_title)
+
+    job = jobs_qs.order_by("-created_at").first()
+
+    if not job:
+
+        return {
+            "candidates": [],
+            "summary": (
+                f"No job found matching \"{job_title}\"."
+                if job_title else
+                "This company hasn't posted any jobs yet."
+            ),
+        }
+
+    apps = Application.objects.filter(
+        job=job
+    ).select_related("student")[:30]
+
+    scored = []
+
+    for app in apps:
+
+        try:
+
+            score, reasons = compute_job_match(app.student, job)
+
+        except Exception:
+
+            score, reasons = 0, []
+
+        scored.append({
+            "name": app.student.full_name,
+            "match_score": score,
+            "status": app.get_status_display(),
+        })
+
+    scored.sort(key=lambda c: c["match_score"], reverse=True)
+
+    return {
+        "candidates": scored[:10],
+        "job_title": job.title,
+        "navigate_to": "/company/candidates",
+        "summary": f"Top applicants for {job.title}.",
+    }
+
+
+def _tool_get_company_applications(profile, user, args):
+
+    from jobsystem.models import Application
+
+    apps = Application.objects.filter(
+        job__company=profile
+    ).select_related("student", "job").order_by("-applied_date")[:15]
+
+    data = [
+        {
+            "candidate": app.student.full_name,
+            "job_title": app.job.title,
+            "status": app.get_status_display(),
+        }
+        for app in apps
+    ]
+
+    return {
+        "applications": data,
+        "navigate_to": "/company/candidates",
+        "summary": (
+            f"{len(data)} recent application(s)."
+            if data else
+            "No applications received yet."
+        ),
+    }
+
+
+def _tool_get_company_interviews(profile, user, args):
+
+    from jobsystem.models import Interview
+
+    now = timezone.now()
+
+    interviews = Interview.objects.filter(
+        application__job__company=profile,
+        interview_date__gte=now,
+        status__in=["scheduled", "rescheduled"],
+    ).select_related(
+        "application__student", "application__job"
+    ).order_by("interview_date")[:10]
+
+    data = [
+        {
+            "candidate": iv.application.student.full_name,
+            "job_title": iv.application.job.title,
+            "date": iv.interview_date.strftime("%b %d, %Y"),
+            "time": iv.interview_date.strftime("%I:%M %p"),
+        }
+        for iv in interviews
+    ]
+
+    return {
+        "interviews": data,
+        "navigate_to": "/company/interviews",
+        "summary": (
+            f"{len(data)} upcoming interview(s)."
+            if data else
+            "No upcoming interviews scheduled."
+        ),
+    }
+
+
+def _tool_get_active_job_postings(profile, user, args):
+
+    from jobsystem.models import Job
+
+    jobs = Job.objects.filter(
+        company=profile, status="active"
+    ).order_by("-created_at")[:10]
+
+    data = [
+        {
+            "title": j.title,
+            "applications": j.applications.count(),
+        }
+        for j in jobs
+    ]
+
+    return {
+        "jobs": data,
+        "navigate_to": "/company/jobs",
+        "summary": (
+            f"{len(data)} active job posting(s)."
+            if data else
+            "No active job postings right now."
+        ),
+    }
+
+
+COMPANY_TOOL_SCHEMAS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "search_candidates",
+            "description": (
+                "Search all student profiles on the platform (not "
+                "just people who applied) by skill, name, course, or "
+                "department, with an optional minimum CGPA. Use when "
+                "the recruiter asks to find or search "
+                "candidates/students matching some criteria."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "A skill, name, or course keyword to search for.",
+                    },
+                    "department": {
+                        "type": "string",
+                        "description": "Department to filter by, if mentioned.",
+                    },
+                    "min_cgpa": {
+                        "type": "number",
+                        "description": "Minimum CGPA filter, if mentioned.",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_top_candidates_for_job",
+            "description": (
+                "Get the best-matching applicants for one of the "
+                "company's own job postings, ranked by AI match "
+                "score. Use when the recruiter asks who the best/top "
+                "candidates are for a specific role."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "job_title": {
+                        "type": "string",
+                        "description": "The job title to check applicants for.",
+                    }
+                },
+                "required": ["job_title"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_company_applications",
+            "description": "Get the company's recent job applications and their statuses.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_company_interviews",
+            "description": "Get the company's upcoming scheduled interviews.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_active_job_postings",
+            "description": "Get the company's currently active job postings and how many applications each has.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+]
+
+
+COMPANY_TOOL_EXECUTORS = {
+    "search_candidates": _tool_search_candidates,
+    "get_top_candidates_for_job": _tool_get_top_candidates_for_job,
+    "get_company_applications": _tool_get_company_applications,
+    "get_company_interviews": _tool_get_company_interviews,
+    "get_active_job_postings": _tool_get_active_job_postings,
+}
+
+
+# =====================================================
 # RESUME ATTACHMENT (unchanged - separate from the tool-
 # calling agent loop below, since a file attachment is
 # handled directly, not routed through the LLM at all)
@@ -1100,8 +1414,9 @@ def handle_resume_attachment(user, profile, uploaded_file, caption=""):
 
 def _call_groq_plain(messages):
     """
-    No tools offered - used for guests and non-student roles, same
-    plain grounded-chat behaviour as before.
+    No tools offered - used for guests and roles with no tool set
+    (placement_admin/super_admin, or a student/company with no
+    profile yet), same plain grounded-chat behaviour as before.
     """
 
     last_error = None
@@ -1128,7 +1443,7 @@ def _call_groq_plain(messages):
     raise last_error or Exception("Chatbot: all models failed")
 
 
-def _call_groq_with_tools(messages):
+def _call_groq_with_tools(messages, tools):
 
     last_error = None
 
@@ -1139,7 +1454,7 @@ def _call_groq_with_tools(messages):
             return client.chat.completions.create(
                 model=model_name,
                 messages=messages,
-                tools=TOOL_SCHEMAS,
+                tools=tools,
                 tool_choice="auto",
                 temperature=0.3,
                 max_tokens=600,
@@ -1163,27 +1478,62 @@ def generate_reply(user, message, history=None):
     history: optional list of {"sender": "user"|"bot", "message": "..."}
     for short conversational continuity.
 
-    Returns either a plain string (guests, non-student roles, or any
-    tool-less reply) or a dict {"reply": ..., "matched_jobs": [...],
-    "navigate_to": "..."} when a job-related tool ran - see the
-    module docstring and _serialize_matched_job above for the exact
-    shape the frontend expects.
+    Returns either a plain string (guests, placement_admin/super_admin,
+    or any tool-less reply) or a dict {"reply": ..., plus extra keys
+    like "matched_jobs"/"candidates"/"navigate_to"} when a tool ran -
+    see the module docstring and the two _serialize_*/tool functions
+    above for the exact shapes.
     """
 
     # ---------------- AI SECURITY (Requirement 31) ----------------
     # Checked before anything else touches the LLM or the database -
     # a request that even looks like it's probing for another
-    # student's data is refused outright, regardless of tools.
+    # student's/company's data is refused outright, regardless of
+    # tools.
 
     if _is_security_probe(message):
 
         return SECURITY_REFUSAL
 
-    profile = None
+    # ---------------- PICK THE RIGHT ACTOR + TOOL SET ----------------
+    # A student gets the student tools against their own
+    # StudentProfile; a company gets the company tools against their
+    # own CompanyProfile. Anyone else (guest, placement_admin,
+    # super_admin, or a student/company with no profile yet) gets no
+    # tools at all - just the plain grounded-context conversation,
+    # same as before this agent rebuild.
 
-    if user and getattr(user, "is_authenticated", False):
+    role = (
+        getattr(user, "role", None)
+        if user and getattr(user, "is_authenticated", False)
+        else None
+    )
 
-        profile = getattr(user, "student_profile", None)
+    actor_profile = None
+
+    tool_schemas = None
+
+    tool_executors = None
+
+    if role == "student":
+
+        actor_profile = getattr(user, "student_profile", None)
+
+        if actor_profile:
+
+            tool_schemas = TOOL_SCHEMAS
+
+            tool_executors = TOOL_EXECUTORS
+
+    elif role == "company":
+
+        actor_profile = getattr(user, "company_profile", None)
+
+        if actor_profile:
+
+            tool_schemas = COMPANY_TOOL_SCHEMAS
+
+            tool_executors = COMPANY_TOOL_EXECUTORS
 
     context = build_context(user)
 
@@ -1214,10 +1564,10 @@ def generate_reply(user, message, history=None):
 
     for turn in (history or [])[-6:]:
 
-        role = "assistant" if turn.get("sender") == "bot" else "user"
+        role_for_turn = "assistant" if turn.get("sender") == "bot" else "user"
 
         messages.append({
-            "role": role,
+            "role": role_for_turn,
             "content": turn.get("message", "")
         })
 
@@ -1226,12 +1576,7 @@ def generate_reply(user, message, history=None):
         "content": message
     })
 
-    # Tools are only offered to signed-in students with a completed
-    # profile - a guest or a company/placement-admin user gets the
-    # same plain, grounded-context conversation as before, since
-    # none of these tools touch anything outside a student profile.
-
-    if not profile:
+    if not tool_schemas:
 
         try:
 
@@ -1248,7 +1593,7 @@ def generate_reply(user, message, history=None):
 
     try:
 
-        response = _call_groq_with_tools(messages)
+        response = _call_groq_with_tools(messages, tool_schemas)
 
     except Exception as e:
 
@@ -1284,7 +1629,7 @@ def generate_reply(user, message, history=None):
 
         tool_args = {}
 
-    executor = TOOL_EXECUTORS.get(tool_name)
+    executor = tool_executors.get(tool_name)
 
     if not executor:
 
@@ -1292,7 +1637,7 @@ def generate_reply(user, message, history=None):
 
     try:
 
-        tool_result = executor(profile, user, tool_args)
+        tool_result = executor(actor_profile, user, tool_args)
 
     except Exception as e:
 
@@ -1329,7 +1674,7 @@ def generate_reply(user, message, history=None):
 
     try:
 
-        final_response = _call_groq_with_tools(messages)
+        final_response = _call_groq_with_tools(messages, tool_schemas)
 
         final_text = (final_response.choices[0].message.content or "").strip()
 
@@ -1345,16 +1690,18 @@ def generate_reply(user, message, history=None):
 
         final_text = tool_result.get("summary", "Here's what I found.")
 
-    # Structured, agent-style data (job cards, navigation) always
-    # comes straight from the tool's own return value above - never
-    # from anything the model wrote - so the frontend shows real
-    # data, not a hallucinated summary of it.
+    # Structured, agent-style data (job/candidate cards, navigation)
+    # always comes straight from the tool's own return value above -
+    # never from anything the model wrote - so the frontend shows
+    # real data, not a hallucinated summary of it.
 
     result_payload = {"reply": final_text}
 
-    if "matched_jobs" in tool_result:
+    for key in ("matched_jobs", "candidates", "applications", "interviews", "jobs", "drives"):
 
-        result_payload["matched_jobs"] = tool_result["matched_jobs"]
+        if key in tool_result:
+
+            result_payload[key] = tool_result[key]
 
     if tool_result.get("navigate_to"):
 
