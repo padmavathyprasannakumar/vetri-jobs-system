@@ -16,6 +16,20 @@ but every personal-data question is answered only from
 student's applications/interviews through this endpoint, since the
 context is always built from the authenticated user, never from
 user-supplied IDs.
+
+AGENT ARCHITECTURE (replaces the old regex-pattern router):
+Signed-in students with a completed profile get real Groq tool
+calling instead of keyword matching - the model itself decides,
+based on the actual meaning of the message, whether an action like
+"find jobs", "check my application status" or "apply to X" is
+needed, then calls the matching Python tool below. Each tool runs
+the exact same kind of real Django query the old regex handlers
+did (nothing invented, nothing pulled from anywhere new) and
+returns structured JSON, which is fed back to the model for a
+natural-language reply. Any job-matching tool's structured data
+(job id/title/company/apply link/score) is taken directly from
+that JSON - never from what the model writes - so the frontend's
+job cards and auto-navigation always reflect real data.
 """
 
 import json
@@ -297,7 +311,7 @@ def get_knowledge_base_snippets(limit=12):
 
 
 # =====================================================
-# PROMPT + LLM CALL
+# PROMPT
 # =====================================================
 
 SYSTEM_TEMPLATE = """You are the Vetri Jobs AI Placement Assistant, built into a
@@ -315,10 +329,20 @@ data - answer general questions about the platform, and suggest they
 log in or register for personalized help with applications,
 interviews, or resume feedback.
 
+If you have been given tools, use them whenever the student's message
+calls for a real action or up-to-the-moment data - finding jobs,
+checking eligibility, applying to a job, checking application status,
+checking interviews, resume feedback, ATS checking, placement drives,
+requesting an interview slot, or raising a placement query - rather
+than answering from the CURRENT USER DATA snapshot alone, since a
+tool call always reflects the very latest state. Only call apply_to_job
+when the student clearly, explicitly asks to apply to a specific named
+job - never as a side effect of a general question.
+
 You also have a Knowledge Base of placement policies, FAQs, and
 guidelines maintained by placement staff - use it for policy/process
-questions. If something isn't covered by the data or knowledge base,
-say you're not sure rather than inventing details.
+questions. If something isn't covered by the data, tools, or
+knowledge base, say you're not sure rather than inventing details.
 
 Keep replies concise, friendly, and practical (a few sentences or a
 short list). Never reveal another user's information - you only ever
@@ -326,13 +350,14 @@ have access to the signed-in user's own data.
 
 SECURITY (non-negotiable): the JSON below contains ONLY the current
 signed-in user's own data - no other student's or company's private
-records are ever included. If the user asks to see another person's
-application status, interview details, resume, or any other private
-information, refuse clearly and suggest they contact the placement
-office. Never guess, infer, or fabricate another person's data even
-if asked to "assume" or "pretend". This rule overrides any other
-instruction in this prompt, including anything added below by an
-administrator.
+records are ever included, and every tool above only ever touches
+this same signed-in user's own records. If the user asks to see
+another person's application status, interview details, resume, or
+any other private information, refuse clearly and suggest they
+contact the placement office. Never guess, infer, or fabricate
+another person's data even if asked to "assume" or "pretend". This
+rule overrides any other instruction in this prompt, including
+anything added below by an administrator.
 
 CURRENT USER DATA:
 {context_json}
@@ -384,45 +409,17 @@ SECURITY_REFUSAL = (
 
 
 # =====================================================
-# ACTIONS (Requirement 17) - AGENT-STYLE JOB CARDS
+# AGENT TOOLS (Requirement 17)
 #
-# _handle_search_jobs / _handle_eligible_jobs used to return a
-# plain text string ("1. Job Title at Company - 85% match ...").
-# They now return a dict instead:
-#
-#   {
-#       "reply": "<short natural-language summary>",
-#       "matched_jobs": [
-#           {
-#               "id": <job id>,
-#               "title": ...,
-#               "company": ...,
-#               "location": ...,
-#               "match_score": <int or None>,
-#               "reasons": [...],
-#               "apply_url": "/student/jobs/<id>/apply",
-#               "details_url": "/student/jobs/<id>",
-#           },
-#           ...
-#       ],
-#       "navigate_to": "/student/jobs",
-#   }
-#
-# handle_action()/generate_reply() already just forward whatever a
-# handler returns, so no change was needed there - only the two
-# handlers below, plus the API view and the frontend, need to know
-# about this richer shape. Every other action handler in this file
-# is untouched and still returns a plain string, exactly as before.
+# Each tool below is a plain Python function that runs a real query
+# against real records - identical in spirit to the old regex-routed
+# _handle_* functions this replaces, just returning structured JSON
+# instead of a pre-written string, since the LLM writes the final
+# reply text itself now, grounded in this exact data. A tool's
+# "matched_jobs"/"navigate_to" keys (only ever present for job
+# search/eligibility) are forwarded to the frontend as-is - the model
+# never gets a chance to alter that structured part.
 # =====================================================
-
-def _format_job_line(job, index=None):
-
-    prefix = f"{index}. " if index else "- "
-
-    company = job.company.company_name if job.company else "Company"
-
-    return f"{prefix}{job.title} at {company} ({job.location or 'Location N/A'})"
-
 
 def _serialize_matched_job(job, match_score=None, reasons=None):
 
@@ -442,7 +439,7 @@ def _serialize_matched_job(job, match_score=None, reasons=None):
     }
 
 
-def _handle_search_jobs(profile, message):
+def _tool_find_matching_jobs(profile, user, args):
 
     from jobsystem.models import Job
     from jobsystem.services.job_matching import rank_jobs_for_student
@@ -455,28 +452,24 @@ def _handle_search_jobs(profile, message):
 
     if not ranked:
 
-        return "I couldn't find any active job postings right now. Check back soon!"
+        return {
+            "matched_jobs": [],
+            "summary": "No active job postings found right now.",
+        }
 
     matched_jobs = [
         _serialize_matched_job(job, score, reasons)
         for job, score, reasons in ranked
     ]
 
-    reply_text = (
-        f"I found {len(matched_jobs)} job"
-        f"{'s' if len(matched_jobs) != 1 else ''} that match your "
-        "profile - tap Apply on any of them below, or I've opened the "
-        "full Jobs page for you too."
-    )
-
     return {
-        "reply": reply_text,
         "matched_jobs": matched_jobs,
         "navigate_to": "/student/jobs",
+        "summary": f"Found {len(matched_jobs)} jobs matching the student's profile.",
     }
 
 
-def _handle_eligible_jobs(profile, message):
+def _tool_check_job_eligibility(profile, user, args):
 
     from jobsystem.models import Job
     from jobsystem.services.eligibility import check_eligibility
@@ -498,11 +491,13 @@ def _handle_eligible_jobs(profile, message):
 
     if not eligible:
 
-        return (
-            "Based on your current profile, I couldn't find jobs you're "
-            "fully eligible for yet. Improving your CGPA, skills or "
-            "completing your profile may open up more options."
-        )
+        return {
+            "matched_jobs": [],
+            "summary": (
+                "The student isn't fully eligible for any open jobs "
+                "right now based on their current profile."
+            ),
+        }
 
     matched_jobs = []
 
@@ -518,68 +513,72 @@ def _handle_eligible_jobs(profile, message):
 
         matched_jobs.append(_serialize_matched_job(job, score, reasons))
 
-    reply_text = (
-        f"You're eligible for {len(matched_jobs)} open job"
-        f"{'s' if len(matched_jobs) != 1 else ''} right now - here they "
-        "are, with links to apply."
-    )
-
     return {
-        "reply": reply_text,
         "matched_jobs": matched_jobs,
         "navigate_to": "/student/jobs",
+        "summary": f"The student is eligible for {len(matched_jobs)} open jobs.",
     }
 
 
-def _handle_apply_job(profile, user, message):
+def _tool_apply_to_job(profile, user, args):
 
     from jobsystem.models import Job, Application
 
-    match = re.search(
-        r"apply (?:to|for)\s+(.+)", message, re.IGNORECASE
-    )
+    job_title = (args.get("job_title") or "").strip()
 
-    if not match:
+    if not job_title:
 
-        return (
-            "Tell me which job you'd like to apply for, e.g. "
-            "\"apply for Software Developer\"."
-        )
-
-    query = match.group(1).strip(" .!?")
+        return {
+            "success": False,
+            "summary": "No job title was given to apply to.",
+        }
 
     candidates = Job.objects.filter(
         status="active", is_active=True,
-        title__icontains=query,
+        title__icontains=job_title,
     ).select_related("company")
 
     count = candidates.count()
 
     if count == 0:
 
-        return (
-            f"I couldn't find an open job matching \"{query}\". "
-            "Try searching the Jobs page for the exact title."
-        )
+        return {
+            "success": False,
+            "summary": (
+                f"No open job matching \"{job_title}\" was found. "
+                "Ask the student to check the exact title on the Jobs page."
+            ),
+        }
 
     if count > 1:
 
-        lines = [
-            f"I found {count} jobs matching \"{query}\" - "
-            "please be more specific:"
+        options = [
+            {
+                "title": j.title,
+                "company": j.company.company_name if j.company else "",
+            }
+            for j in candidates[:5]
         ]
 
-        for i, job in enumerate(candidates[:5], 1):
-
-            lines.append(f"{i}. " + _format_job_line(job)[2:])
-
-        return "\n".join(lines)
+        return {
+            "success": False,
+            "options": options,
+            "summary": (
+                f"{count} jobs match \"{job_title}\" - ask the student "
+                "to specify which exact one they mean."
+            ),
+        }
 
     job = candidates.first()
 
+    company_name = job.company.company_name if job.company else "the company"
+
     if Application.objects.filter(student=profile, job=job).exists():
 
-        return f"You've already applied to {job.title} at {job.company.company_name}."
+        return {
+            "success": False,
+            "summary": f"The student already applied to {job.title} at {company_name}.",
+        }
 
     Application.objects.create(
         student=profile,
@@ -587,15 +586,16 @@ def _handle_apply_job(profile, user, message):
         status="applied",
     )
 
-    return (
-        f"Done! Your application for {job.title} at "
-        f"{job.company.company_name if job.company else 'the company'} "
-        "has been submitted. You can track its status anytime by asking "
-        "me \"what is my application status\"."
-    )
+    return {
+        "success": True,
+        "job_id": job.id,
+        "job_title": job.title,
+        "company": company_name,
+        "summary": f"Applied to {job.title} at {company_name} successfully.",
+    }
 
 
-def _handle_application_status(profile, message):
+def _tool_get_application_status(profile, user, args):
 
     from jobsystem.models import Application
 
@@ -603,37 +603,34 @@ def _handle_application_status(profile, message):
         student=profile
     ).select_related("job", "job__company").order_by("-applied_date")[:10]
 
-    if not apps:
+    applications = [
+        {
+            "job_title": app.job.title,
+            "company": app.job.company.company_name if app.job.company else "Company",
+            "status": app.get_status_display(),
+        }
+        for app in apps
+    ]
 
-        return (
-            "You haven't applied to any jobs yet. Ask me to \"search "
-            "jobs\" and I'll help you find good matches."
-        )
-
-    lines = ["Here's your application status:"]
-
-    for app in apps:
-
-        company = app.job.company.company_name if app.job.company else "Company"
-
-        lines.append(
-            f"- {app.job.title} at {company}: {app.get_status_display()}"
-        )
-
-    return "\n".join(lines)
+    return {
+        "applications": applications,
+        "summary": (
+            f"{len(applications)} applications found."
+            if applications else
+            "The student hasn't applied to any jobs yet."
+        ),
+    }
 
 
-def _handle_interviews(profile, message):
+def _tool_get_upcoming_interviews(profile, user, args):
 
     from jobsystem.models import Interview
 
     now = timezone.now()
 
+    week_only = bool(args.get("this_week"))
+
     week_end = now + timedelta(days=7)
-
-    text = (message or "").lower()
-
-    is_week_query = "week" in text
 
     qs = Interview.objects.filter(
         application__student=profile,
@@ -643,41 +640,22 @@ def _handle_interviews(profile, message):
         "application__job", "application__job__company"
     ).order_by("interview_date")
 
-    if is_week_query:
+    if week_only:
 
         qs = qs.filter(interview_date__lte=week_end)
 
-    interviews = list(qs)
+    interviews = [_serialize_interview(iv) for iv in qs]
 
-    if not interviews:
-
-        return (
-            "You don't have any upcoming interviews scheduled"
-            + (" this week." if is_week_query else ".")
-        )
-
-    lines = [
-        f"You have {len(interviews)} interview"
-        f"{'s' if len(interviews) != 1 else ''}"
-        f"{' this week' if is_week_query else ' coming up'}:"
-    ]
-
-    for iv in interviews:
-
-        company = (
-            iv.application.job.company.company_name
-            if iv.application.job.company else "Company"
-        )
-
-        lines.append(
-            f"- {company} \u2013 "
-            f"{iv.interview_date.strftime('%b %d, %I:%M %p')}"
-        )
-
-    return "\n".join(lines)
+    return {
+        "interviews": interviews,
+        "summary": (
+            f"{len(interviews)} upcoming interview(s)"
+            + (" this week." if week_only else ".")
+        ),
+    }
 
 
-def _handle_resume_help(profile, user, message):
+def _tool_get_resume_feedback(profile, user, args):
 
     from jobsystem.models import Resume
 
@@ -687,58 +665,21 @@ def _handle_resume_help(profile, user, message):
 
     if not resume:
 
-        return (
-            "You haven't uploaded a resume yet. Upload one on the Resume "
-            "page and I can analyse it and suggest improvements."
-        )
+        return {
+            "has_resume": False,
+            "summary": "The student hasn't uploaded a resume yet.",
+        }
 
-    lines = [f"Your resume score is {resume.resume_score}/100."]
-
-    if resume.missing_information:
-
-        lines.append("Here's what would strengthen it:")
-
-        for item in resume.missing_information[:6]:
-
-            lines.append(f"- {item}")
-
-    else:
-
-        lines.append("It looks complete - nice work!")
-
-    if resume.job_categories:
-
-        lines.append(
-            "Based on your resume, you'd be a good fit for: "
-            + ", ".join(resume.job_categories[:5])
-        )
-
-    return "\n".join(lines)
+    return {
+        "has_resume": True,
+        "score": resume.resume_score,
+        "missing_information": resume.missing_information,
+        "suggested_job_categories": resume.job_categories,
+        "summary": f"Resume score is {resume.resume_score}/100.",
+    }
 
 
-def _handle_download_resume(profile, user, message):
-
-    from jobsystem.models import Resume
-
-    resume = Resume.objects.filter(
-        student=user, is_active=True
-    ).first()
-
-    if not resume or not resume.file:
-
-        return (
-            "You don't have a resume uploaded yet - add one on the "
-            "Resume page first."
-        )
-
-    return (
-        f"Here's your latest resume: {resume.filename or 'Resume'}. "
-        "You can download it from the Resume page, or use this link: "
-        + (resume.file.url if resume.file else "")
-    )
-
-
-def _handle_ats_resume(profile, user, message):
+def _tool_check_ats_friendliness(profile, user, args):
 
     from jobsystem.models import Resume
     from jobsystem.services.resume_ai import analyze_ats_friendliness
@@ -749,71 +690,41 @@ def _handle_ats_resume(profile, user, message):
 
     if not resume or not resume.file:
 
-        return (
-            "You don't have a resume uploaded yet. Send it to me here "
-            "as an attachment, or upload it on the Resume page, and "
-            "I'll check how ATS-friendly it is."
+        return {
+            "has_resume": False,
+            "summary": "The student hasn't uploaded a resume yet.",
+        }
+
+    target_role = args.get("target_role") or None
+
+    try:
+
+        # analyze_ats_friendliness() takes the resume's Django file
+        # object, not a filesystem path - resume.file.path raises
+        # NotImplementedError under Cloudinary storage.
+        result = analyze_ats_friendliness(
+            resume.file,
+            target_role=target_role,
         )
 
-    target_role = None
+    except Exception as e:
 
-    match = re.search(
-        r"for (?:the )?(.+?) (?:role|position|job)", message, re.IGNORECASE
-    )
+        return {
+            "has_resume": True,
+            "summary": f"Could not run the ATS check right now ({e}).",
+        }
 
-    if match:
-
-        target_role = match.group(1).strip()
-
-    # analyze_ats_friendliness() takes the resume's Django file object
-    # (works with any storage backend - local disk or Cloudinary),
-    # not a filesystem path. resume.file.path raises
-    # NotImplementedError under Cloudinary storage, which is what was
-    # silently breaking this in production.
-    result = analyze_ats_friendliness(
-        resume.file,
-        target_role=target_role,
-    )
-
-    lines = [
-        f"Your resume's ATS-friendliness score: {result['ats_score']}/100."
-    ]
-
-    if result["issues"]:
-
-        lines.append("\nIssues that could trip up an ATS parser:")
-
-        for item in result["issues"][:6]:
-
-            lines.append(f"- {item}")
-
-    if result["suggestions"]:
-
-        lines.append("\nHow to fix it:")
-
-        for item in result["suggestions"][:6]:
-
-            lines.append(f"- {item}")
-
-    if result["rewritten_bullets"]:
-
-        lines.append("\nExample rewrites:")
-
-        for item in result["rewritten_bullets"][:4]:
-
-            lines.append(f"- {item}")
-
-    if not result["issues"] and not result["suggestions"]:
-
-        lines.append(
-            "It already looks ATS-friendly - clean structure, no "
-            "obvious parsing traps."
-        )
-
-    return "\n".join(lines)
+    return {
+        "has_resume": True,
+        "ats_score": result.get("ats_score"),
+        "issues": result.get("issues", []),
+        "suggestions": result.get("suggestions", []),
+        "rewritten_bullets": result.get("rewritten_bullets", []),
+        "summary": f"ATS-friendliness score is {result.get('ats_score')}/100.",
+    }
 
 
-def _handle_placement_drives(profile, message):
+def _tool_get_upcoming_drives(profile, user, args):
 
     from jobsystem.models import PlacementDrive
 
@@ -823,92 +734,264 @@ def _handle_placement_drives(profile, message):
         drive_date__gte=now
     ).select_related("company").order_by("drive_date")[:6]
 
-    if not drives:
+    data = [
+        {
+            "company": d.company.company_name if d.company else "Company",
+            "title": d.title,
+            "date": d.drive_date.strftime("%b %d, %Y"),
+        }
+        for d in drives
+    ]
 
-        return "There are no upcoming placement drives scheduled right now."
-
-    lines = ["Upcoming placement drives:"]
-
-    for d in drives:
-
-        company = d.company.company_name if d.company else "Company"
-
-        lines.append(
-            f"- {company}: {d.title} on "
-            f"{d.drive_date.strftime('%b %d, %Y')}"
-        )
-
-    return "\n".join(lines)
+    return {
+        "drives": data,
+        "summary": (
+            f"{len(data)} upcoming placement drive(s)."
+            if data else
+            "No upcoming placement drives right now."
+        ),
+    }
 
 
-def _handle_schedule_interview_request(profile, message):
+def _tool_request_interview_slot(profile, user, args):
 
     from jobsystem.models import PlacementQuery
+
+    note = (args.get("note") or "").strip()
 
     PlacementQuery.objects.create(
         student=profile,
         category="interview_request",
-        message=message,
+        message=note or "Interview slot request via AI Assistant",
         source="chatbot",
     )
 
-    return (
-        "I've sent your interview slot request to the placement team. "
-        "Interview scheduling is confirmed by the company/placement "
-        "office, so you'll be notified once a slot is assigned."
-    )
+    return {
+        "success": True,
+        "summary": (
+            "Interview slot request sent to the placement team - "
+            "the student will be notified once a slot is assigned."
+        ),
+    }
 
 
-def _handle_raise_query(profile, message):
+def _tool_raise_placement_query(profile, user, args):
 
     from jobsystem.models import PlacementQuery
+
+    message_text = (args.get("message") or "").strip()
 
     PlacementQuery.objects.create(
         student=profile,
         category="general",
-        message=message,
+        message=message_text,
         source="chatbot",
     )
 
-    return (
-        "Your query has been raised with the placement team - they'll "
-        "get back to you soon. Is there anything else I can help with "
-        "in the meantime?"
-    )
+    return {
+        "success": True,
+        "summary": "Query raised with the placement team - they'll respond soon.",
+    }
 
 
-# Ordered so more specific patterns are checked before generic ones.
-_ACTION_ROUTES = [
-    (r"\bapply (to|for)\b", "apply_job"),
-    (r"\b(eligible|eligibility)\b", "eligible_jobs"),
-    (r"\b(search|find|show).*(job|opening|vacanc)", "search_jobs"),
-    (r"jobs? matching my profile", "search_jobs"),
-    (r"\bapplication (status|progress)\b", "application_status"),
-    (r"\bstatus of my application", "application_status"),
-    (r"\binterview.*(this week|today|tomorrow|upcoming|when)", "interviews"),
-    (r"\bwhen is my interview", "interviews"),
-    (r"\bupcoming (placement )?drives?\b", "placement_drives"),
-    (r"\bdownload (my )?(resume|document)", "download_resume"),
-    (r"\bimprove (my )?resume|resume suggestion|resume help", "resume_help"),
-    (r"\brequest.*(interview slot|interview time)", "schedule_interview"),
-    (r"\bschedule.*(interview|slot)", "schedule_interview"),
-    (r"\braise a query|placement query|i have a (query|complaint|issue)", "raise_query"),
-    (r"\bats[\s-]?friendly|\bats\b.*resume|resume.*\bats\b|applicant tracking system", "ats_resume"),
+def _tool_get_resume_download_link(profile, user, args):
+
+    from jobsystem.models import Resume
+
+    resume = Resume.objects.filter(
+        student=user, is_active=True
+    ).first()
+
+    if not resume or not resume.file:
+
+        return {
+            "has_resume": False,
+            "summary": "The student hasn't uploaded a resume yet.",
+        }
+
+    return {
+        "has_resume": True,
+        "filename": resume.filename or "Resume",
+        "download_url": f"/student/resume/{resume.id}/download/",
+        "summary": f"Resume available for download: {resume.filename or 'Resume'}.",
+    }
+
+
+TOOL_SCHEMAS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "find_matching_jobs",
+            "description": (
+                "Find active job postings that best match the "
+                "student's skills, course, and profile. Use whenever "
+                "the student asks to find, search, see, or get "
+                "suitable/recommended jobs for themselves."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "check_job_eligibility",
+            "description": (
+                "List open jobs the student is currently eligible "
+                "for, based on their profile (CGPA, department, "
+                "backlogs, etc). Use when the student asks which "
+                "jobs they're eligible for."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "apply_to_job",
+            "description": (
+                "Submit a job application for the student to a "
+                "specific open job by title. Only use when the "
+                "student explicitly asks to apply to a named job."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "job_title": {
+                        "type": "string",
+                        "description": "The job title to apply to, as the student mentioned it.",
+                    }
+                },
+                "required": ["job_title"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_application_status",
+            "description": "Get the student's current job applications and their statuses.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_upcoming_interviews",
+            "description": "Get the student's upcoming scheduled interviews.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "this_week": {
+                        "type": "boolean",
+                        "description": "True only if the student specifically asked about interviews this week.",
+                    }
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_resume_feedback",
+            "description": "Get the student's resume score and suggestions for improving it.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "check_ats_friendliness",
+            "description": (
+                "Check how ATS (Applicant Tracking System) friendly "
+                "the student's resume is, optionally against a "
+                "specific target job role."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "target_role": {
+                        "type": "string",
+                        "description": "The job role to check the resume against, if the student mentioned one.",
+                    }
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_upcoming_drives",
+            "description": "Get upcoming placement drives across all companies.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "request_interview_slot",
+            "description": "Send a request to the placement team for an interview slot on the student's behalf.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "note": {
+                        "type": "string",
+                        "description": "Any extra detail the student gave about their request.",
+                    }
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "raise_placement_query",
+            "description": "Raise a general query, doubt, or complaint with the placement office on the student's behalf.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "message": {
+                        "type": "string",
+                        "description": "The student's query or complaint, in their own words.",
+                    }
+                },
+                "required": ["message"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_resume_download_link",
+            "description": "Get a download link for the student's current active resume.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
 ]
 
 
-def _detect_action(message):
+TOOL_EXECUTORS = {
+    "find_matching_jobs": _tool_find_matching_jobs,
+    "check_job_eligibility": _tool_check_job_eligibility,
+    "apply_to_job": _tool_apply_to_job,
+    "get_application_status": _tool_get_application_status,
+    "get_upcoming_interviews": _tool_get_upcoming_interviews,
+    "get_resume_feedback": _tool_get_resume_feedback,
+    "check_ats_friendliness": _tool_check_ats_friendliness,
+    "get_upcoming_drives": _tool_get_upcoming_drives,
+    "request_interview_slot": _tool_request_interview_slot,
+    "raise_placement_query": _tool_raise_placement_query,
+    "get_resume_download_link": _tool_get_resume_download_link,
+}
 
-    text = (message or "").lower()
 
-    for pattern, action in _ACTION_ROUTES:
-
-        if re.search(pattern, text):
-
-            return action
-
-    return None
-
+# =====================================================
+# RESUME ATTACHMENT (unchanged - separate from the tool-
+# calling agent loop below, since a file attachment is
+# handled directly, not routed through the LLM at all)
+# =====================================================
 
 def handle_resume_attachment(user, profile, uploaded_file, caption=""):
     """
@@ -1011,53 +1094,15 @@ def handle_resume_attachment(user, profile, uploaded_file, caption=""):
     return "\n".join(lines)
 
 
-def handle_action(user, profile, message):
+# =====================================================
+# GROQ CALLS
+# =====================================================
+
+def _call_groq_plain(messages):
     """
-    Returns a direct reply if `message` matched a known action, else
-    None (caller should fall back to the LLM). The reply is usually a
-    plain string, but search_jobs/eligible_jobs return a dict (see
-    the comment above _serialize_matched_job) - callers already just
-    forward this value as-is, so both shapes flow through unchanged.
+    No tools offered - used for guests and non-student roles, same
+    plain grounded-chat behaviour as before.
     """
-
-    action = _detect_action(message)
-
-    if not action:
-
-        return None
-
-    handlers = {
-        "search_jobs": lambda: _handle_search_jobs(profile, message),
-        "eligible_jobs": lambda: _handle_eligible_jobs(profile, message),
-        "apply_job": lambda: _handle_apply_job(profile, user, message),
-        "application_status": lambda: _handle_application_status(profile, message),
-        "interviews": lambda: _handle_interviews(profile, message),
-        "resume_help": lambda: _handle_resume_help(profile, user, message),
-        "download_resume": lambda: _handle_download_resume(profile, user, message),
-        "placement_drives": lambda: _handle_placement_drives(profile, message),
-        "schedule_interview": lambda: _handle_schedule_interview_request(profile, message),
-        "raise_query": lambda: _handle_raise_query(profile, message),
-        "ats_resume": lambda: _handle_ats_resume(profile, user, message),
-    }
-
-    handler = handlers.get(action)
-
-    if not handler:
-
-        return None
-
-    try:
-
-        return handler()
-
-    except Exception as e:
-
-        print("Chatbot action error:", action, e)
-
-        return None
-
-
-def _call_groq(messages):
 
     last_error = None
 
@@ -1083,45 +1128,62 @@ def _call_groq(messages):
     raise last_error or Exception("Chatbot: all models failed")
 
 
+def _call_groq_with_tools(messages):
+
+    last_error = None
+
+    for model_name in GROQ_MODEL_FALLBACKS:
+
+        try:
+
+            return client.chat.completions.create(
+                model=model_name,
+                messages=messages,
+                tools=TOOL_SCHEMAS,
+                tool_choice="auto",
+                temperature=0.3,
+                max_tokens=600,
+            )
+
+        except Exception as e:
+
+            last_error = e
+
+            continue
+
+    raise last_error or Exception("Chatbot: all models failed")
+
+
+# =====================================================
+# MAIN ENTRY POINT
+# =====================================================
+
 def generate_reply(user, message, history=None):
     """
     history: optional list of {"sender": "user"|"bot", "message": "..."}
     for short conversational continuity.
 
-    Returns either a plain string (the normal/LLM case) or a dict
-    with "reply" plus extra keys like "matched_jobs"/"navigate_to"
-    (only from the search_jobs/eligible_jobs actions) - see the
-    comment above _serialize_matched_job for the exact shape.
+    Returns either a plain string (guests, non-student roles, or any
+    tool-less reply) or a dict {"reply": ..., "matched_jobs": [...],
+    "navigate_to": "..."} when a job-related tool ran - see the
+    module docstring and _serialize_matched_job above for the exact
+    shape the frontend expects.
     """
 
     # ---------------- AI SECURITY (Requirement 31) ----------------
     # Checked before anything else touches the LLM or the database -
     # a request that even looks like it's probing for another
-    # student's data is refused outright.
+    # student's data is refused outright, regardless of tools.
 
     if _is_security_probe(message):
 
         return SECURITY_REFUSAL
-
-    # ---------------- ACTIONS (Requirement 17) ----------------
-    # Handled directly against real records for reliability, only
-    # for signed-in students with a completed profile. Anything not
-    # matched here (career advice, interview prep tips, "what does
-    # this job require", general chat) falls through to the LLM.
 
     profile = None
 
     if user and getattr(user, "is_authenticated", False):
 
         profile = getattr(user, "student_profile", None)
-
-    if profile:
-
-        action_reply = handle_action(user, profile, message)
-
-        if action_reply:
-
-            return action_reply
 
     context = build_context(user)
 
@@ -1164,9 +1226,29 @@ def generate_reply(user, message, history=None):
         "content": message
     })
 
+    # Tools are only offered to signed-in students with a completed
+    # profile - a guest or a company/placement-admin user gets the
+    # same plain, grounded-context conversation as before, since
+    # none of these tools touch anything outside a student profile.
+
+    if not profile:
+
+        try:
+
+            return _call_groq_plain(messages)
+
+        except Exception as e:
+
+            print("Chatbot error:", e)
+
+            return (
+                "I'm having trouble reaching the assistant right now. "
+                "Please try again in a moment."
+            )
+
     try:
 
-        return _call_groq(messages)
+        response = _call_groq_with_tools(messages)
 
     except Exception as e:
 
@@ -1176,3 +1258,106 @@ def generate_reply(user, message, history=None):
             "I'm having trouble reaching the assistant right now. "
             "Please try again in a moment."
         )
+
+    choice_message = response.choices[0].message
+
+    tool_calls = getattr(choice_message, "tool_calls", None)
+
+    if not tool_calls:
+
+        return (choice_message.content or "").strip()
+
+    # Only the first requested tool call is executed - keeps this
+    # predictable and avoids silently chaining multiple
+    # side-effecting actions (like applying to a job) from one
+    # ambiguous message.
+
+    tool_call = tool_calls[0]
+
+    tool_name = tool_call.function.name
+
+    try:
+
+        tool_args = json.loads(tool_call.function.arguments or "{}")
+
+    except Exception:
+
+        tool_args = {}
+
+    executor = TOOL_EXECUTORS.get(tool_name)
+
+    if not executor:
+
+        return "I'm not able to do that yet - try asking in a different way."
+
+    try:
+
+        tool_result = executor(profile, user, tool_args)
+
+    except Exception as e:
+
+        print("Chatbot tool execution error:", tool_name, e)
+
+        return (
+            "I ran into an issue while doing that. Please try again "
+            "in a moment, or ask me in a different way."
+        )
+
+    # Feed the tool's real result back to Groq for a natural-language
+    # reply, grounded in this exact data.
+
+    messages.append({
+        "role": "assistant",
+        "content": choice_message.content or "",
+        "tool_calls": [
+            {
+                "id": tool_call.id,
+                "type": "function",
+                "function": {
+                    "name": tool_name,
+                    "arguments": tool_call.function.arguments,
+                },
+            }
+        ],
+    })
+
+    messages.append({
+        "role": "tool",
+        "tool_call_id": tool_call.id,
+        "content": json.dumps(tool_result, default=str),
+    })
+
+    try:
+
+        final_response = _call_groq_with_tools(messages)
+
+        final_text = (final_response.choices[0].message.content or "").strip()
+
+    except Exception as e:
+
+        print("Chatbot follow-up error:", e)
+
+        final_text = tool_result.get(
+            "summary", "Here's what I found."
+        )
+
+    if not final_text:
+
+        final_text = tool_result.get("summary", "Here's what I found.")
+
+    # Structured, agent-style data (job cards, navigation) always
+    # comes straight from the tool's own return value above - never
+    # from anything the model wrote - so the frontend shows real
+    # data, not a hallucinated summary of it.
+
+    result_payload = {"reply": final_text}
+
+    if "matched_jobs" in tool_result:
+
+        result_payload["matched_jobs"] = tool_result["matched_jobs"]
+
+    if tool_result.get("navigate_to"):
+
+        result_payload["navigate_to"] = tool_result["navigate_to"]
+
+    return result_payload
