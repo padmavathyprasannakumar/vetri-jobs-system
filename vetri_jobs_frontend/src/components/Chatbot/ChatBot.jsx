@@ -336,7 +336,9 @@ function Chatbot(){
 
                     // Present only when the bot ran a job-matching
                     // action (student tools) - lets real Apply/View
-                    // cards render inline, agent-style.
+                    // cards render inline, agent-style. Each job may
+                    // carry already_applied - see the card rendering
+                    // below for how that's shown.
 
                     matchedJobs: data.matched_jobs || null,
 
@@ -648,6 +650,17 @@ function Chatbot(){
 
                                         <div className="chat-job-card-actions">
 
+                                            {
+                                            job.already_applied ?
+
+                                            <span className="chat-job-card-applied-badge">
+
+                                                ✓ Already Applied
+
+                                            </span>
+
+                                            :
+
                                             <a
 
                                             href={job.apply_url}
@@ -667,6 +680,7 @@ function Chatbot(){
                                                 Apply
 
                                             </a>
+                                            }
 
 
                                             <a
