@@ -30,7 +30,41 @@ import {
 } from "../../api/brandingApi";
 
 
+import {
+
+    useAuth
+
+} from "../../context/AuthContext";
+
+
 import "./ChatBot.css";
+
+
+
+
+// =================================
+// Role-aware greeting - the old single hardcoded message
+// ("...attach your resume...") made no sense for a company
+// recruiter, who has no resume of their own to attach.
+// =================================
+
+const getGreeting = (role)=>{
+
+    if(role==="company"){
+
+        return "Hello 👋 How can I help you today? Ask me to find candidates, check applicants for a job, or see your upcoming interviews.";
+
+    }
+
+    if(role==="student"){
+
+        return "Hello 👋 How can I help you today? You can also attach your resume and ask me to check it or make it ATS-friendly.";
+
+    }
+
+    return "Hello 👋 How can I help you today?";
+
+};
 
 
 
@@ -40,6 +74,10 @@ function Chatbot(){
 
 
     const navigate = useNavigate();
+
+
+
+    const { user } = useAuth();
 
 
 
@@ -82,11 +120,33 @@ function Chatbot(){
 
             sender:"bot",
 
-            text:"Hello 👋 How can I help you today? You can also attach your resume and ask me to check it or make it ATS-friendly."
+            text: getGreeting(user?.role)
 
         }
 
     ]);
+
+
+    // If the signed-in role changes (e.g. logging in partway
+    // through a session, or switching accounts), refresh the
+    // greeting so it isn't stuck showing the wrong role's message.
+    // Only resets when the conversation is still just the initial
+    // greeting, so it never wipes an actual in-progress chat.
+
+    useEffect(()=>{
+
+        setMessages(prev=>
+
+            prev.length===1 && prev[0].sender==="bot"
+
+            ? [{ sender:"bot", text: getGreeting(user?.role) }]
+
+            : prev
+
+        );
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    },[user?.role]);
 
 
 
@@ -275,11 +335,17 @@ function Chatbot(){
 
 
                     // Present only when the bot ran a job-matching
-                    // action (search_jobs / eligible_jobs) - lets
-                    // real Apply/View cards render inline, agent-style,
-                    // instead of just plain text.
+                    // action (student tools) - lets real Apply/View
+                    // cards render inline, agent-style.
 
-                    matchedJobs: data.matched_jobs || null
+                    matchedJobs: data.matched_jobs || null,
+
+
+                    // Present only when the bot ran a candidate-
+                    // matching action (company tools) - lets real
+                    // candidate cards render inline the same way.
+
+                    candidates: data.candidates || null
 
 
                 }
@@ -290,10 +356,11 @@ function Chatbot(){
 
 
 
-            // Auto-navigate to the Jobs page when the bot's action
-            // says to (currently only search_jobs/eligible_jobs set
-            // this). The widget itself stays mounted/open across the
-            // route change since it lives in the layout, not the page.
+            // Auto-navigate when the bot's action says to (job
+            // search/eligibility for a student, candidate search /
+            // interviews / jobs for a company). The widget itself
+            // stays mounted/open across the route change since it
+            // lives in the layout, not the page.
 
             if(data.navigate_to){
 
@@ -541,7 +608,7 @@ function Chatbot(){
 
 
 
-                            {/* AGENT-STYLE JOB MATCH CARDS */}
+                            {/* AGENT-STYLE JOB MATCH CARDS (student) */}
 
                             {
                             item.matchedJobs && item.matchedJobs.length > 0 &&
@@ -619,6 +686,81 @@ function Chatbot(){
                                             >
 
                                                 View details
+
+                                            </a>
+
+                                        </div>
+
+
+                                    </div>
+
+                                ))
+                                }
+
+                            </div>
+                            }
+
+
+
+
+                            {/* AGENT-STYLE CANDIDATE CARDS (company) */}
+
+                            {
+                            item.candidates && item.candidates.length > 0 &&
+
+                            <div className="chat-job-cards">
+
+                                {
+                                item.candidates.map((c,idx)=>(
+
+                                    <div className="chat-job-card" key={idx}>
+
+
+                                        <div className="chat-job-card-top">
+
+                                            <strong>{c.name}</strong>
+
+                                            {
+                                            c.match_score !== null && c.match_score !== undefined &&
+
+                                            <span className="chat-job-card-score">
+
+                                                {c.match_score}% match
+
+                                            </span>
+                                            }
+
+                                        </div>
+
+
+                                        <p className="chat-job-card-sub">
+
+                                            {c.course || c.department || ""}
+                                            {c.cgpa ? ` \u2022 CGPA ${c.cgpa}` : ""}
+                                            {c.status ? ` \u2022 ${c.status}` : ""}
+
+                                        </p>
+
+
+                                        <div className="chat-job-card-actions">
+
+                                            <a
+
+                                            href="/company/candidates"
+
+                                            className="chat-job-card-view"
+
+                                            onClick={(e)=>{
+
+                                                e.preventDefault();
+
+                                                navigate("/company/candidates");
+
+                                            }}
+
+                                            >
+
+                                                View in Candidates
 
                                             </a>
 
