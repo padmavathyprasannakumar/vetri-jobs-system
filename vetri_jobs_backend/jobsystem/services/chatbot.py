@@ -384,12 +384,35 @@ SECURITY_REFUSAL = (
 
 
 # =====================================================
-# ACTIONS (Requirement 17)
-# Handled directly (no LLM call) for reliability/safety on
-# anything that touches real records - search, apply,
-# status, interviews, resume download, raising queries.
-# Returns a reply string if this message matched an action,
-# or None to fall through to the general LLM conversation.
+# ACTIONS (Requirement 17) - AGENT-STYLE JOB CARDS
+#
+# _handle_search_jobs / _handle_eligible_jobs used to return a
+# plain text string ("1. Job Title at Company - 85% match ...").
+# They now return a dict instead:
+#
+#   {
+#       "reply": "<short natural-language summary>",
+#       "matched_jobs": [
+#           {
+#               "id": <job id>,
+#               "title": ...,
+#               "company": ...,
+#               "location": ...,
+#               "match_score": <int or None>,
+#               "reasons": [...],
+#               "apply_url": "/student/jobs/<id>/apply",
+#               "details_url": "/student/jobs/<id>",
+#           },
+#           ...
+#       ],
+#       "navigate_to": "/student/jobs",
+#   }
+#
+# handle_action()/generate_reply() already just forward whatever a
+# handler returns, so no change was needed there - only the two
+# handlers below, plus the API view and the frontend, need to know
+# about this richer shape. Every other action handler in this file
+# is untouched and still returns a plain string, exactly as before.
 # =====================================================
 
 def _format_job_line(job, index=None):
@@ -399,6 +422,24 @@ def _format_job_line(job, index=None):
     company = job.company.company_name if job.company else "Company"
 
     return f"{prefix}{job.title} at {company} ({job.location or 'Location N/A'})"
+
+
+def _serialize_matched_job(job, match_score=None, reasons=None):
+
+    return {
+        "id": job.id,
+        "title": job.title,
+        "company": job.company.company_name if job.company else "Company",
+        "location": job.location or "",
+        "job_type": (
+            job.get_job_type_display()
+            if hasattr(job, "get_job_type_display") else ""
+        ),
+        "match_score": match_score,
+        "reasons": reasons or [],
+        "apply_url": f"/student/jobs/{job.id}/apply",
+        "details_url": f"/student/jobs/{job.id}",
+    }
 
 
 def _handle_search_jobs(profile, message):
@@ -416,27 +457,30 @@ def _handle_search_jobs(profile, message):
 
         return "I couldn't find any active job postings right now. Check back soon!"
 
-    lines = ["Here are jobs that match your profile:"]
+    matched_jobs = [
+        _serialize_matched_job(job, score, reasons)
+        for job, score, reasons in ranked
+    ]
 
-    for i, (job, score, _reasons) in enumerate(ranked, 1):
-
-        lines.append(
-            f"{i}. {job.title} at "
-            f"{job.company.company_name if job.company else 'Company'} "
-            f"- {score}% match"
-        )
-
-    lines.append(
-        "\nOpen the Jobs page to see full details or apply."
+    reply_text = (
+        f"I found {len(matched_jobs)} job"
+        f"{'s' if len(matched_jobs) != 1 else ''} that match your "
+        "profile - tap Apply on any of them below, or I've opened the "
+        "full Jobs page for you too."
     )
 
-    return "\n".join(lines)
+    return {
+        "reply": reply_text,
+        "matched_jobs": matched_jobs,
+        "navigate_to": "/student/jobs",
+    }
 
 
 def _handle_eligible_jobs(profile, message):
 
     from jobsystem.models import Job
     from jobsystem.services.eligibility import check_eligibility
+    from jobsystem.services.job_matching import compute_job_match
 
     jobs = Job.objects.filter(
         status="active", is_active=True
@@ -460,13 +504,31 @@ def _handle_eligible_jobs(profile, message):
             "completing your profile may open up more options."
         )
 
-    lines = ["You're eligible for these open jobs:"]
+    matched_jobs = []
 
-    for i, job in enumerate(eligible[:8], 1):
+    for job in eligible[:8]:
 
-        lines.append(f"{i}. " + _format_job_line(job)[2:])
+        try:
 
-    return "\n".join(lines)
+            score, reasons = compute_job_match(profile, job)
+
+        except Exception:
+
+            score, reasons = None, []
+
+        matched_jobs.append(_serialize_matched_job(job, score, reasons))
+
+    reply_text = (
+        f"You're eligible for {len(matched_jobs)} open job"
+        f"{'s' if len(matched_jobs) != 1 else ''} right now - here they "
+        "are, with links to apply."
+    )
+
+    return {
+        "reply": reply_text,
+        "matched_jobs": matched_jobs,
+        "navigate_to": "/student/jobs",
+    }
 
 
 def _handle_apply_job(profile, user, message):
@@ -951,8 +1013,11 @@ def handle_resume_attachment(user, profile, uploaded_file, caption=""):
 
 def handle_action(user, profile, message):
     """
-    Returns a direct reply string if `message` matched a known
-    action, else None (caller should fall back to the LLM).
+    Returns a direct reply if `message` matched a known action, else
+    None (caller should fall back to the LLM). The reply is usually a
+    plain string, but search_jobs/eligible_jobs return a dict (see
+    the comment above _serialize_matched_job) - callers already just
+    forward this value as-is, so both shapes flow through unchanged.
     """
 
     action = _detect_action(message)
@@ -1022,6 +1087,11 @@ def generate_reply(user, message, history=None):
     """
     history: optional list of {"sender": "user"|"bot", "message": "..."}
     for short conversational continuity.
+
+    Returns either a plain string (the normal/LLM case) or a dict
+    with "reply" plus extra keys like "matched_jobs"/"navigate_to"
+    (only from the search_jobs/eligible_jobs actions) - see the
+    comment above _serialize_matched_job for the exact shape.
     """
 
     # ---------------- AI SECURITY (Requirement 31) ----------------
