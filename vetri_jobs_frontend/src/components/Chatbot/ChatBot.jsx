@@ -11,6 +11,13 @@ import React, {
 
 import {
 
+    useNavigate
+
+} from "react-router-dom";
+
+
+import {
+
     sendChatMessage
 
 } from "../../api/chatbotApi";
@@ -29,6 +36,10 @@ import "./ChatBot.css";
 
 
 function Chatbot(){
+
+
+
+    const navigate = useNavigate();
 
 
 
@@ -239,6 +250,11 @@ function Chatbot(){
 
 
 
+            const data = response.data || {};
+
+
+
+
             setMessages(prev=>[
 
 
@@ -253,15 +269,37 @@ function Chatbot(){
 
                     text:
 
-                    response.data.reply ||
+                    data.reply ||
 
-                    "Sorry, I could not understand."
+                    "Sorry, I could not understand.",
+
+
+                    // Present only when the bot ran a job-matching
+                    // action (search_jobs / eligible_jobs) - lets
+                    // real Apply/View cards render inline, agent-style,
+                    // instead of just plain text.
+
+                    matchedJobs: data.matched_jobs || null
 
 
                 }
 
 
             ]);
+
+
+
+
+            // Auto-navigate to the Jobs page when the bot's action
+            // says to (currently only search_jobs/eligible_jobs set
+            // this). The widget itself stays mounted/open across the
+            // route change since it lives in the layout, not the page.
+
+            if(data.navigate_to){
+
+                navigate(data.navigate_to);
+
+            }
 
 
 
@@ -499,6 +537,101 @@ function Chatbot(){
 
 
                             {item.text}
+
+
+
+
+                            {/* AGENT-STYLE JOB MATCH CARDS */}
+
+                            {
+                            item.matchedJobs && item.matchedJobs.length > 0 &&
+
+                            <div className="chat-job-cards">
+
+                                {
+                                item.matchedJobs.map(job=>(
+
+                                    <div className="chat-job-card" key={job.id}>
+
+
+                                        <div className="chat-job-card-top">
+
+                                            <strong>{job.title}</strong>
+
+                                            {
+                                            job.match_score !== null && job.match_score !== undefined &&
+
+                                            <span className="chat-job-card-score">
+
+                                                {job.match_score}% match
+
+                                            </span>
+                                            }
+
+                                        </div>
+
+
+                                        <p className="chat-job-card-sub">
+
+                                            {job.company}
+                                            {job.location ? ` \u2022 ${job.location}` : ""}
+
+                                        </p>
+
+
+                                        <div className="chat-job-card-actions">
+
+                                            <a
+
+                                            href={job.apply_url}
+
+                                            className="chat-job-card-apply"
+
+                                            onClick={(e)=>{
+
+                                                e.preventDefault();
+
+                                                navigate(job.apply_url);
+
+                                            }}
+
+                                            >
+
+                                                Apply
+
+                                            </a>
+
+
+                                            <a
+
+                                            href={job.details_url}
+
+                                            className="chat-job-card-view"
+
+                                            onClick={(e)=>{
+
+                                                e.preventDefault();
+
+                                                navigate(job.details_url);
+
+                                            }}
+
+                                            >
+
+                                                View details
+
+                                            </a>
+
+                                        </div>
+
+
+                                    </div>
+
+                                ))
+                                }
+
+                            </div>
+                            }
 
 
                         </div>
