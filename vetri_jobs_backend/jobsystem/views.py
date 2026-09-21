@@ -8329,17 +8329,35 @@ class ChatbotMessageAPIView(APIView):
                 history=history,
             )
 
+        # generate_reply() (and handle_resume_attachment) normally
+        # return a plain string, but the search_jobs/eligible_jobs
+        # chatbot actions now return a dict shaped like:
+        #   {"reply": "...", "matched_jobs": [...], "navigate_to": "..."}
+        # so the frontend can render real job cards with apply links
+        # and auto-navigate, instead of just plain text. Only the
+        # text portion is ever saved to chat history either way.
+
+        if isinstance(reply, dict):
+
+            reply_text = reply.get("reply", "")
+
+            response_payload = dict(reply)
+
+        else:
+
+            reply_text = reply
+
+            response_payload = {"reply": reply}
+
         if conversation:
 
             ChatMessage.objects.create(
                 conversation=conversation,
                 sender="bot",
-                message=reply,
+                message=reply_text,
             )
 
-        return Response({
-            "reply": reply
-        })
+        return Response(response_payload)
 
 
 
