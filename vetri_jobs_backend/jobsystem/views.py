@@ -9392,48 +9392,13 @@ class StudentDashboardView(APIView):
         )[:5]
 
 
-               student_skills = [
+        student_skills = [
             s.strip()
             for s in (getattr(profile, "skills", "") or "").split(",")
             if s.strip()
         ]
 
 
-        # -------------------------------------------------
-        # Next upcoming interview (real date/time/mode) - the
-        # Dashboard's "Upcoming Interview" card previously tried to
-        # infer this from the 5 most recent applications' status
-        # text under a "recent_applications" key this view never
-        # actually returns (it's "applications"), so it always
-        # showed "No upcoming interviews scheduled" regardless of
-        # what was really booked. This queries the real Interview
-        # record directly instead.
-        # -------------------------------------------------
-
-        from django.utils import timezone
-
-        upcoming_interview_obj = Interview.objects.filter(
-            application__student=profile,
-            interview_date__gte=timezone.now(),
-            status__in=["scheduled", "rescheduled"],
-        ).select_related(
-            "application__job", "application__job__company"
-        ).order_by("interview_date").first()
-
-        next_interview = None
-
-        if upcoming_interview_obj:
-
-            next_interview = {
-                "job_title": upcoming_interview_obj.application.job.title,
-                "company": (
-                    upcoming_interview_obj.application.job.company.company_name
-                    if upcoming_interview_obj.application.job.company else ""
-                ),
-                "date": upcoming_interview_obj.interview_date.strftime("%b %d, %Y"),
-                "time": upcoming_interview_obj.interview_date.strftime("%I:%M %p"),
-                "mode": upcoming_interview_obj.get_interview_mode_display(),
-            }
 
 
         return Response({
@@ -9493,14 +9458,9 @@ class StudentDashboardView(APIView):
 
 
 
-                        "notifications":
+            "notifications":
 
-            list(notifications),
-
-
-            "next_interview":
-
-            next_interview
+            list(notifications)
 
 
 
