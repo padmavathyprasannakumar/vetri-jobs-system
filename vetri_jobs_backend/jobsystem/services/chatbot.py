@@ -335,12 +335,15 @@ the very latest state. For a student, this includes finding jobs,
 checking eligibility, applying to a job, application/interview status,
 job requirements for a specific role, skill suggestions, interview
 preparation, resume feedback, ATS checking, resume/document download,
-saved jobs, notifications, placement drives, requesting an interview
-slot, or raising a query. For a company, this includes searching
-candidates, finding top applicants for one of their jobs, viewing
-applications, interviews, job postings, or an analytics summary. Only
-call apply_to_job when a student clearly, explicitly asks to apply to
-a specific named job - never as a side effect of a general question.
+saved jobs, notifications, their own profile, updating their skills,
+placement drives, requesting an interview slot, or raising a query.
+For a company, this includes searching candidates, finding top
+applicants for one of their jobs, viewing applications, interviews,
+job postings, analytics, or their own company profile. Only call
+apply_to_job when a student clearly, explicitly asks to apply to a
+specific named job, and only call update_my_skills when they clearly,
+explicitly ask to add/update a skill - never as a side effect of a
+general question or a casual mention of a skill in conversation.
 When a job in a find_matching_jobs/check_job_eligibility/get_saved_jobs
 result has already_applied set to true, tell the student they've
 already applied to it instead of inviting them to apply again.
@@ -1246,6 +1249,91 @@ def _tool_get_notifications(profile, user, args):
     }
 
 
+def _tool_get_my_profile(profile, user, args):
+    """
+    Covers the Profile tab - a read-only snapshot of the student's
+    own profile, including how complete it is.
+    """
+
+    return {
+        "full_name": profile.full_name,
+        "course": profile.course,
+        "department": profile.department,
+        "graduation_year": profile.graduation_year,
+        "cgpa": profile.ug_cgpa,
+        "skills": profile.skills,
+        "location": profile.location,
+        "linkedin": profile.linkedin,
+        "github": profile.github,
+        "portfolio": profile.portfolio,
+        "profile_completion": profile.profile_completion,
+        "verified": profile.verified,
+        "navigate_to": "/student/profile",
+        "summary": f"Profile is {profile.profile_completion}% complete.",
+    }
+
+
+def _tool_update_my_skills(profile, user, args):
+    """
+    A real write action - adds new skills directly to the student's
+    profile from chat. Purely additive (never removes or overwrites
+    existing skills), so there's no destructive risk even if the
+    model runs this more eagerly than intended. Only call when the
+    student clearly asks to add/update a skill - see the guardrail
+    in SYSTEM_TEMPLATE.
+    """
+
+    new_skills_raw = (args.get("skills") or "").strip()
+
+    if not new_skills_raw:
+
+        return {
+            "success": False,
+            "summary": "No skills were given to add.",
+        }
+
+    existing_lower = set(
+        s.strip().lower()
+        for s in (profile.skills or "").split(",")
+        if s.strip()
+    )
+
+    current_list = [
+        s.strip() for s in (profile.skills or "").split(",") if s.strip()
+    ]
+
+    added = []
+
+    for skill in new_skills_raw.split(","):
+
+        skill = skill.strip()
+
+        if skill and skill.lower() not in existing_lower:
+
+            added.append(skill)
+
+            existing_lower.add(skill.lower())
+
+    if not added:
+
+        return {
+            "success": False,
+            "summary": "Those skills are already on the student's profile.",
+        }
+
+    profile.skills = ", ".join(current_list + added)
+
+    profile.save()
+
+    return {
+        "success": True,
+        "added_skills": added,
+        "all_skills": profile.skills,
+        "navigate_to": "/student/profile",
+        "summary": f"Added {', '.join(added)} to the student's skills.",
+    }
+
+
 TOOL_SCHEMAS = [
     {
         "type": "function",
@@ -1471,6 +1559,41 @@ TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "get_my_profile",
+            "description": (
+                "Get the student's own profile details and how "
+                "complete it is. Use when the student asks about "
+                "their own profile or profile completion."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_my_skills",
+            "description": (
+                "Add one or more new skills directly to the "
+                "student's profile. Only use when the student "
+                "explicitly asks to add/update a skill on their "
+                "profile - never as a side effect of a general "
+                "conversation about skills."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "skills": {
+                        "type": "string",
+                        "description": "Comma-separated skill(s) to add, exactly as the student named them.",
+                    }
+                },
+                "required": ["skills"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_upcoming_drives",
             "description": "Get upcoming placement drives across all companies.",
             "parameters": {"type": "object", "properties": {}, "required": []},
@@ -1526,6 +1649,8 @@ TOOL_EXECUTORS = {
     "get_resume_feedback": _tool_get_resume_feedback,
     "check_ats_friendliness": _tool_check_ats_friendliness,
     "get_resume_download_link": _tool_get_resume_download_link,
+    "get_my_profile": _tool_get_my_profile,
+    "update_my_skills": _tool_update_my_skills,
     "get_saved_jobs": _tool_get_saved_jobs,
     "get_notifications": _tool_get_notifications,
     "get_upcoming_drives": _tool_get_upcoming_drives,
@@ -1810,6 +1935,25 @@ def _tool_get_company_analytics_summary(profile, user, args):
     }
 
 
+def _tool_get_company_profile_info(profile, user, args):
+    """
+    Covers the Company Profile tab - a read-only snapshot of the
+    company's own profile.
+    """
+
+    return {
+        "company_name": profile.company_name,
+        "industry": profile.industry,
+        "website": profile.website,
+        "description": profile.description,
+        "company_size": profile.company_size,
+        "verified": profile.verified,
+        "approval_status": profile.approval_status,
+        "navigate_to": "/company/profile",
+        "summary": f"{profile.company_name}'s profile information.",
+    }
+
+
 COMPANY_TOOL_SCHEMAS = [
     {
         "type": "function",
@@ -1913,6 +2057,17 @@ COMPANY_TOOL_SCHEMAS = [
             "parameters": {"type": "object", "properties": {}, "required": []},
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_company_profile_info",
+            "description": (
+                "Get the company's own profile details. Use when "
+                "the recruiter asks about their own company profile."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
 ]
 
 
@@ -1924,6 +2079,7 @@ COMPANY_TOOL_EXECUTORS = {
     "get_active_job_postings": _tool_get_active_job_postings,
     "list_all_job_postings": _tool_list_all_job_postings,
     "get_company_analytics_summary": _tool_get_company_analytics_summary,
+    "get_company_profile_info": _tool_get_company_profile_info,
 }
 
 
