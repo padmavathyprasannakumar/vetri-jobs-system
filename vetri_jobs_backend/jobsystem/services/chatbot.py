@@ -1334,6 +1334,338 @@ def _tool_update_my_skills(profile, user, args):
     }
 
 
+# =====================================================
+# MOCK INTERVIEW SUBSYSTEM
+#
+# A genuine state machine, not a single tool call: once a session
+# is "in_progress", every message the student sends is their ANSWER
+# to the current question, not a new general request. generate_reply()
+# checks for an active session before doing anything else (even
+# before the normal tool-calling flow) and routes entirely to
+# _handle_mock_interview_turn() below when one exists - see the
+# ACTIVE MOCK INTERVIEW block near the bottom of generate_reply().
+#
+# Uses the MockInterviewSession model's "turns" field: a list of
+# {"question": str, "answer": str|None} in order. The last turn
+# always has answer=None until the student replies to it.
+# =====================================================
+
+
+INTERVIEWER_SYSTEM_PROMPT = """You are conducting a live mock job interview for the
+role of {job_title}{company_clause}. Ask one interview question at a time - a mix
+of technical/role-specific questions and behavioral/communication questions,
+appropriate for this role. Keep each question focused and realistic, like a
+real interviewer would ask - not a wall of text, and not multiple questions
+at once.
+
+After the candidate answers, either ask a natural follow-up or move to the
+next question. Once you've asked a reasonable range of questions (typically
+5-8) covering both technical and behavioral areas, and have enough to fairly
+assess the candidate, call the end_interview tool to conclude - do not call
+it after fewer than 4 questions. Stay in character as an interviewer - do
+not break character to explain what you are doing or mention that this is
+an AI simulation."""
+
+
+END_INTERVIEW_TOOL_SCHEMA = [
+    {
+        "type": "function",
+        "function": {
+            "name": "end_interview",
+            "description": (
+                "Conclude the mock interview now that enough questions "
+                "have been asked to fairly assess the candidate."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    }
+]
+
+
+_INTERVIEW_EXIT_PATTERNS = [
+    r"\bstop\b.*interview", r"\bend\b.*interview", r"\bcancel\b.*interview",
+    r"\bquit\b.*interview", r"^\s*(stop|cancel|quit|exit)\s*[.!]?\s*$",
+]
+
+
+def _is_interview_exit(message):
+
+    text = (message or "").lower()
+
+    return any(re.search(p, text) for p in _INTERVIEW_EXIT_PATTERNS)
+
+
+def _tool_start_mock_interview(profile, user, args):
+
+    from jobsystem.models import MockInterviewSession, Job
+
+    job_title = (args.get("job_title") or "").strip()
+
+    if not job_title:
+
+        return {"summary": "No job role was given to practice for."}
+
+    company_name = (args.get("company_name") or "").strip()
+
+    # Only one active session at a time - stale ones from an
+    # abandoned earlier attempt are cancelled, not left orphaned.
+
+    MockInterviewSession.objects.filter(
+        student=profile, status="in_progress"
+    ).update(status="cancelled")
+
+    # Ground the opening question in a real posting's required
+    # skills when one matches, so the interview isn't purely generic.
+
+    skills_context = ""
+
+    real_job = Job.objects.filter(
+        status="active", is_active=True, title__icontains=job_title,
+    ).select_related("company").first()
+
+    if real_job:
+
+        skills_context = real_job.skills_required or ""
+
+        if not company_name and real_job.company:
+
+            company_name = real_job.company.company_name
+
+    company_clause = f" at {company_name}" if company_name else ""
+
+    system_prompt = INTERVIEWER_SYSTEM_PROMPT.format(
+        job_title=job_title, company_clause=company_clause
+    )
+
+    if skills_context:
+
+        system_prompt += (
+            f"\n\nThe real job posting lists these required skills: "
+            f"{skills_context}. Weight your technical questions toward these."
+        )
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": "Begin the interview with your first question."},
+    ]
+
+    try:
+
+        first_question = _call_groq_plain(messages)
+
+    except Exception as e:
+
+        return {"summary": f"Could not start the mock interview right now ({e})."}
+
+    session = MockInterviewSession.objects.create(
+        student=profile,
+        job_title=job_title,
+        turns=[{"question": first_question, "answer": None}],
+    )
+
+    return {
+        "mock_interview_started": True,
+        "session_id": session.id,
+        "question": first_question,
+        "summary": f"Mock interview started for {job_title}.",
+    }
+
+
+def _tool_get_mock_interview_report(profile, user, args):
+
+    from jobsystem.models import MockInterviewSession
+
+    session = MockInterviewSession.objects.filter(
+        student=profile, status="completed"
+    ).order_by("-completed_at").first()
+
+    if not session:
+
+        return {"summary": "No completed mock interview found yet."}
+
+    return {
+        "job_title": session.job_title,
+        "score_report": session.score_report,
+        "summary": f"Latest mock interview report for {session.job_title}.",
+    }
+
+
+def _handle_mock_interview_turn(session, user, message):
+    """
+    Called instead of the normal tool-calling flow whenever the
+    student has an in_progress MockInterviewSession - this message
+    IS their answer to the current question.
+    """
+
+    if _is_interview_exit(message):
+
+        session.status = "cancelled"
+
+        session.save()
+
+        return {
+            "reply": (
+                "Mock interview ended early - no problem, come back "
+                "anytime you want to practice again."
+            ),
+        }
+
+    turns = session.turns or []
+
+    if turns and turns[-1].get("answer") is None:
+
+        turns[-1]["answer"] = message
+
+    company_clause = ""
+
+    system_prompt = INTERVIEWER_SYSTEM_PROMPT.format(
+        job_title=session.job_title, company_clause=company_clause
+    )
+
+    messages = [{"role": "system", "content": system_prompt}]
+
+    for turn in turns:
+
+        messages.append({"role": "assistant", "content": turn["question"]})
+
+        if turn.get("answer") is not None:
+
+            messages.append({"role": "user", "content": turn["answer"]})
+
+    try:
+
+        response = _call_groq_with_tools(messages, END_INTERVIEW_TOOL_SCHEMA)
+
+    except Exception as e:
+
+        print("Mock interview turn error:", e)
+
+        session.turns = turns
+
+        session.save()
+
+        return {
+            "reply": (
+                "I'm having trouble continuing the interview right now. "
+                "Please try again in a moment."
+            ),
+        }
+
+    choice_message = response.choices[0].message
+
+    tool_calls = getattr(choice_message, "tool_calls", None)
+
+    if tool_calls and tool_calls[0].function.name == "end_interview":
+
+        return _finish_mock_interview(session, turns)
+
+    next_question = (choice_message.content or "").strip()
+
+    if not next_question:
+
+        return _finish_mock_interview(session, turns)
+
+    turns.append({"question": next_question, "answer": None})
+
+    session.turns = turns
+
+    session.save()
+
+    return {"reply": next_question}
+
+
+def _finish_mock_interview(session, turns):
+
+    scoring_prompt = f"""You just finished conducting a mock interview for the role of
+{session.job_title}. Below is the full transcript as JSON (a list of
+{{"question", "answer"}} pairs - "answer" may be null if the candidate never
+replied to that final question). Produce a JSON object ONLY, no other text,
+with this exact shape:
+
+{{
+  "overall_score": <0-100 integer>,
+  "communication_score": <0-100 integer>,
+  "technical_score": <0-100 integer>,
+  "strengths": ["...", "..."],
+  "areas_to_improve": ["...", "..."],
+  "question_feedback": [
+    {{"question": "...", "feedback": "..."}}
+  ]
+}}
+
+Be honest and specific, grounded in what the candidate actually said - do
+not be uniformly generous. If answers were vague, short, or missing,
+reflect that clearly in the score and feedback rather than inflating it."""
+
+    scoring_messages = [
+        {"role": "system", "content": scoring_prompt},
+        {"role": "user", "content": json.dumps(turns)},
+    ]
+
+    try:
+
+        raw = _call_groq_plain(scoring_messages).strip()
+
+        if raw.startswith("```"):
+
+            raw = re.sub(r"^```(json)?|```$", "", raw, flags=re.MULTILINE).strip()
+
+        report = json.loads(raw)
+
+    except Exception as e:
+
+        print("Mock interview scoring error:", e)
+
+        report = {
+            "overall_score": None,
+            "summary": (
+                "The interview finished, but I couldn't generate a "
+                "detailed score report this time."
+            ),
+        }
+
+    session.status = "completed"
+
+    session.score_report = report
+
+    session.turns = turns
+
+    session.completed_at = timezone.now()
+
+    session.save()
+
+    lines = ["Interview complete! Here's your report:\n"]
+
+    if report.get("overall_score") is not None:
+
+        lines.append(f"Overall score: {report['overall_score']}/100")
+
+        lines.append(f"Communication: {report.get('communication_score', '-')}/100")
+
+        lines.append(f"Technical: {report.get('technical_score', '-')}/100\n")
+
+    if report.get("strengths"):
+
+        lines.append("Strengths:")
+
+        for s in report["strengths"]:
+
+            lines.append(f"- {s}")
+
+    if report.get("areas_to_improve"):
+
+        lines.append("\nAreas to improve:")
+
+        for a in report["areas_to_improve"]:
+
+            lines.append(f"- {a}")
+
+    return {
+        "reply": "\n".join(lines),
+        "mock_interview_report": report,
+    }
+
+
 TOOL_SCHEMAS = [
     {
         "type": "function",
@@ -1594,6 +1926,42 @@ TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "start_mock_interview",
+            "description": (
+                "Start a live mock interview session for a specific "
+                "job role. Use when the student asks to practice for "
+                "an interview, do a mock interview, or role-play an "
+                "interview. Once started, the student's following "
+                "messages become their interview answers, not normal "
+                "chat, until the interview ends."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "job_title": {
+                        "type": "string",
+                        "description": "The job role to practice interviewing for.",
+                    },
+                    "company_name": {
+                        "type": "string",
+                        "description": "The target company, if the student mentioned one.",
+                    },
+                },
+                "required": ["job_title"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_mock_interview_report",
+            "description": "Get the student's most recent completed mock interview score report.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_upcoming_drives",
             "description": "Get upcoming placement drives across all companies.",
             "parameters": {"type": "object", "properties": {}, "required": []},
@@ -1651,6 +2019,8 @@ TOOL_EXECUTORS = {
     "get_resume_download_link": _tool_get_resume_download_link,
     "get_my_profile": _tool_get_my_profile,
     "update_my_skills": _tool_update_my_skills,
+    "start_mock_interview": _tool_start_mock_interview,
+    "get_mock_interview_report": _tool_get_mock_interview_report,
     "get_saved_jobs": _tool_get_saved_jobs,
     "get_notifications": _tool_get_notifications,
     "get_upcoming_drives": _tool_get_upcoming_drives,
@@ -2316,6 +2686,25 @@ def generate_reply(user, message, history=None):
 
             tool_executors = COMPANY_TOOL_EXECUTORS
 
+    # ---------------- ACTIVE MOCK INTERVIEW ----------------
+    # If the student has a mock interview in progress, THIS message
+    # is their answer to the current question - route entirely to
+    # the dedicated interview handler instead of the normal
+    # tool-calling flow below, since a normal LLM turn would treat
+    # their answer as a fresh, unrelated request.
+
+    if role == "student" and actor_profile:
+
+        from jobsystem.models import MockInterviewSession
+
+        active_session = MockInterviewSession.objects.filter(
+            student=actor_profile, status="in_progress"
+        ).order_by("-created_at").first()
+
+        if active_session:
+
+            return _handle_mock_interview_turn(active_session, user, message)
+
     context = build_context(user)
 
     knowledge = get_knowledge_base_snippets()
@@ -2440,23 +2829,34 @@ def generate_reply(user, message, history=None):
         "content": json.dumps(tool_result, default=str),
     })
 
-    try:
+    if tool_name == "start_mock_interview" and tool_result.get("question"):
 
-        final_response = _call_groq_with_tools(messages, tool_schemas)
+        # The interviewer question is already exactly what should be
+        # shown - skipping the second Groq pass here means it's never
+        # paraphrased, shortened, or mixed with commentary before the
+        # student sees the actual question they need to answer.
 
-        final_text = (final_response.choices[0].message.content or "").strip()
+        final_text = tool_result["question"]
 
-    except Exception as e:
+    else:
 
-        print("Chatbot follow-up error:", e)
+        try:
 
-        final_text = tool_result.get(
-            "summary", "Here's what I found."
-        )
+            final_response = _call_groq_with_tools(messages, tool_schemas)
 
-    if not final_text:
+            final_text = (final_response.choices[0].message.content or "").strip()
 
-        final_text = tool_result.get("summary", "Here's what I found.")
+        except Exception as e:
+
+            print("Chatbot follow-up error:", e)
+
+            final_text = tool_result.get(
+                "summary", "Here's what I found."
+            )
+
+        if not final_text:
+
+            final_text = tool_result.get("summary", "Here's what I found.")
 
     # Structured, agent-style data always comes straight from the
     # tool's own return value above - never from anything the model
@@ -2482,6 +2882,15 @@ def generate_reply(user, message, history=None):
             "resume_id": tool_result["resume_id"],
             "filename": tool_result.get("filename", "Resume"),
         }
+
+    # Mock interview score report - only ever present via the
+    # get_mock_interview_report tool path (the live session's own
+    # completion already returns "mock_interview_report" directly
+    # from _finish_mock_interview, bypassing this shared tail).
+
+    if tool_result.get("score_report"):
+
+        result_payload["mock_interview_report"] = tool_result["score_report"]
 
     if tool_result.get("navigate_to"):
 
