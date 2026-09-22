@@ -160,6 +160,15 @@ ChatbotHistoryAPIView,
 
 
 # =====================================================
+# BACKGROUND JOBS
+# =====================================================
+
+TempMakeMigrationsView,
+BackgroundJobMatchScanView,
+
+
+
+# =====================================================
 # WHATSAPP
 # =====================================================
 
@@ -1040,6 +1049,26 @@ path(
     "chatbot/settings/",
     ChatbotSettingView.as_view(),
     name="chat-settings"
+),
+
+
+
+# =====================================================
+# BACKGROUND JOBS
+# =====================================================
+
+
+path(
+    "background/temp-makemigrations/",
+    TempMakeMigrationsView.as_view(),
+    name="temp-makemigrations"
+),
+
+
+path(
+    "background/scan-job-matches/",
+    BackgroundJobMatchScanView.as_view(),
+    name="background-scan-job-matches"
 ),
 
 
