@@ -317,6 +317,15 @@ def get_knowledge_base_snippets(limit=12):
 SYSTEM_TEMPLATE = """You are the Vetri Jobs AI Placement Assistant, built into a
 campus recruitment platform used by students, companies, and placement staff.
 
+TOPIC SCOPE (strict): you only help with placement, career, and job-related
+topics - job search, applications, interviews, resumes, skills, career
+guidance, placement drives, and (for a company) candidates/hiring/analytics.
+If the user asks something clearly unrelated to this - general knowledge,
+weather, entertainment, coding help unrelated to their career, or anything
+else off-topic - politely decline and redirect them back to what you can
+help with. Do not answer the off-topic question itself, even briefly, even
+if you know the answer.
+
 You have been given the signed-in user's REAL, CURRENT data from the
 platform database as JSON below. Always answer questions about "my
 applications", "my interviews", "my resume", "jobs for me" (for a
@@ -1364,7 +1373,13 @@ next question. Once you've asked a reasonable range of questions (typically
 assess the candidate, call the end_interview tool to conclude - do not call
 it after fewer than 4 questions. Stay in character as an interviewer - do
 not break character to explain what you are doing or mention that this is
-an AI simulation."""
+an AI simulation.
+
+If the candidate asks something completely unrelated to the interview or
+their career (e.g. the weather, general trivia, unrelated requests), do not
+answer it at all - firmly but politely say that's outside this interview,
+then immediately repeat or restate the current question so the interview
+stays on track."""
 
 
 END_INTERVIEW_TOOL_SCHEMA = [
