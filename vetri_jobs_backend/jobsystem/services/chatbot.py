@@ -373,6 +373,19 @@ preparation immediately rather than waiting to be asked. If an
 application shows the student was selected, congratulate them. If
 rejected, be encouraging and offer to find more matching jobs.
 
+NO DUPLICATE LISTINGS: when a tool result includes matched_jobs,
+candidates, applications, interviews, jobs, drives, or notifications,
+those render as their own visual cards/list right below your reply -
+do NOT also write them out again as a table, a bulleted list of each
+one, or markdown links like [text](url). Never write a raw URL or a
+markdown-style link anywhere in your reply - links only ever appear
+as the real buttons on those cards. Your reply text should just be
+one or two short sentences introducing what's shown below (e.g. "Here
+are 3 new jobs you haven't applied to yet.") - the cards carry all the
+detail, so repeating it in text is redundant and, since this chat
+doesn't render markdown tables or links, would show up as broken
+formatting.
+
 JOB REQUIREMENTS: when get_job_details returns missing_skills, point
 those out clearly as what the student should focus on for that
 specific role, alongside skills_required.
@@ -484,27 +497,59 @@ def _serialize_matched_job(job, match_score=None, reasons=None, already_applied=
 
 def _tool_find_matching_jobs(profile, user, args):
 
+    from datetime import timedelta
+
     from jobsystem.models import Job, Application
     from jobsystem.services.job_matching import rank_jobs_for_student
 
-    jobs = Job.objects.filter(
+    # "Any new jobs?" / "what's newly updated" means recently POSTED
+    # jobs the student hasn't acted on yet - not a full re-listing of
+    # every match including ones already applied to. recent_only
+    # restricts to postings from the last 14 days and always excludes
+    # already-applied jobs, since the whole point is "what's new that
+    # I haven't seen/acted on".
+
+    recent_only = bool(args.get("recent_only"))
+
+    jobs_qs = Job.objects.filter(
         status="active", is_active=True
-    ).select_related("company")[:40]
+    ).select_related("company")
+
+    if recent_only:
+
+        jobs_qs = jobs_qs.filter(
+            created_at__gte=timezone.now() - timedelta(days=14)
+        )
+
+    jobs = jobs_qs[:40]
 
     ranked = rank_jobs_for_student(profile, jobs)[:5]
-
-    if not ranked:
-
-        return {
-            "matched_jobs": [],
-            "summary": "No active job postings found right now.",
-        }
 
     applied_job_ids = set(
         Application.objects.filter(
             student=profile
         ).values_list("job_id", flat=True)
     )
+
+    if recent_only:
+
+        ranked = [
+            (job, score, reasons)
+            for job, score, reasons in ranked
+            if job.id not in applied_job_ids
+        ]
+
+    if not ranked:
+
+        return {
+            "matched_jobs": [],
+            "summary": (
+                "No newly posted jobs in the last two weeks that the "
+                "student hasn't already applied to."
+                if recent_only else
+                "No active job postings found right now."
+            ),
+        }
 
     matched_jobs = [
         _serialize_matched_job(
@@ -517,7 +562,11 @@ def _tool_find_matching_jobs(profile, user, args):
     return {
         "matched_jobs": matched_jobs,
         "navigate_to": "/student/jobs",
-        "summary": f"Found {len(matched_jobs)} jobs matching the student's profile.",
+        "summary": (
+            f"Found {len(matched_jobs)} newly posted job(s) the student hasn't applied to yet."
+            if recent_only else
+            f"Found {len(matched_jobs)} jobs matching the student's profile."
+        ),
     }
 
 
@@ -1718,7 +1767,24 @@ TOOL_SCHEMAS = [
                 "suitable/recommended jobs for themselves. Results "
                 "include an already_applied flag per job."
             ),
-            "parameters": {"type": "object", "properties": {}, "required": []},
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "recent_only": {
+                        "type": "boolean",
+                        "description": (
+                            "Set true when the student specifically "
+                            "asks about NEW, newly posted, newly "
+                            "updated, or recently added jobs - this "
+                            "restricts to postings from the last two "
+                            "weeks and excludes jobs already applied "
+                            "to. Leave false/omitted for a general "
+                            "'find jobs for me' request."
+                        ),
+                    }
+                },
+                "required": [],
+            },
         },
     },
     {
