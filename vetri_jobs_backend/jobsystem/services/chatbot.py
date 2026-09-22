@@ -365,6 +365,17 @@ JOB REQUIREMENTS: when get_job_details returns missing_skills, point
 those out clearly as what the student should focus on for that
 specific role, alongside skills_required.
 
+SKILL ROADMAPS: when get_company_skill_gap or get_skill_suggestions
+returns missing skills, build the student a short learning roadmap -
+which skill to learn first and why, and a realistic order for the
+rest - grounded in the real missing_skills list. Do NOT invent or
+name specific courses, certifications, instructors, prices, or URLs
+(e.g. a specific Udemy/Coursera course title or link) - you cannot
+verify these exist or are current, and a wrong link is worse than no
+link. Instead, point to general resource types (official
+documentation, hands-on practice projects, open-source contributions)
+without naming a specific product.
+
 You also have a Knowledge Base of placement policies, FAQs, and
 guidelines maintained by placement staff - use it for policy/process
 questions. If something isn't covered by the data, tools, or
@@ -684,6 +695,93 @@ def _tool_get_skill_suggestions(profile, user, args):
         ) if top_missing else (
             "The student's current skills already cover most open "
             "job requirements on the platform."
+        ),
+    }
+
+
+def _tool_get_company_skill_gap(profile, user, args):
+    """
+    Covers "what skills do I need for [company]?" - combines the
+    required skills across EVERY active job posting from one company
+    (get_job_details only covers a single job), compared against the
+    student's real skills. The model builds the learning roadmap
+    itself from this real gap list - see the ROADMAPS guidance in
+    SYSTEM_TEMPLATE for why it's told not to invent specific course
+    names or links.
+    """
+
+    from jobsystem.models import Job
+    from collections import Counter
+
+    company_name = (args.get("company_name") or "").strip()
+
+    if not company_name:
+
+        return {"summary": "No company name was given."}
+
+    jobs = Job.objects.filter(
+        status="active", is_active=True,
+        company__company_name__icontains=company_name,
+    ).select_related("company")
+
+    if not jobs.exists():
+
+        return {
+            "summary": (
+                f"No active job postings found from a company matching "
+                f"\"{company_name}\"."
+            ),
+        }
+
+    real_company_name = jobs.first().company.company_name
+
+    student_skills = set(
+        s.strip().lower()
+        for s in (getattr(profile, "skills", "") or "").split(",")
+        if s.strip()
+    )
+
+    required_counter = Counter()
+
+    job_titles = []
+
+    for job in jobs:
+
+        job_titles.append(job.title)
+
+        for skill in (job.skills_required or "").split(","):
+
+            skill = skill.strip()
+
+            if skill:
+
+                required_counter[skill] += 1
+
+    all_required = [skill for skill, _ in required_counter.most_common()]
+
+    missing_skills = [
+        s for s in all_required
+        if s.lower() not in student_skills
+    ]
+
+    matching_skills = [
+        s for s in all_required
+        if s.lower() in student_skills
+    ]
+
+    return {
+        "company": real_company_name,
+        "job_titles": job_titles[:8],
+        "skills_required": all_required,
+        "matching_skills": matching_skills,
+        "missing_skills": missing_skills,
+        "summary": (
+            f"{real_company_name} has {len(missing_skills)} skill(s) "
+            f"the student is missing, across {len(job_titles)} open "
+            f"role(s)."
+        ) if missing_skills else (
+            f"The student already has every skill "
+            f"{real_company_name}'s open roles require."
         ),
     }
 
@@ -1216,6 +1314,29 @@ TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "get_company_skill_gap",
+            "description": (
+                "Get the skill gap between the student and ALL of one "
+                "specific company's open roles combined (not just one "
+                "job). Use when the student names a target company "
+                "and asks what skills they need for it, or wants a "
+                "roadmap to prepare for that company."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "company_name": {
+                        "type": "string",
+                        "description": "The company name the student is targeting.",
+                    }
+                },
+                "required": ["company_name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "apply_to_job",
             "description": (
                 "Submit a job application for the student to a "
@@ -1397,6 +1518,7 @@ TOOL_EXECUTORS = {
     "check_job_eligibility": _tool_check_job_eligibility,
     "get_job_details": _tool_get_job_details,
     "get_skill_suggestions": _tool_get_skill_suggestions,
+    "get_company_skill_gap": _tool_get_company_skill_gap,
     "apply_to_job": _tool_apply_to_job,
     "get_application_status": _tool_get_application_status,
     "get_upcoming_interviews": _tool_get_upcoming_interviews,
