@@ -9493,9 +9493,14 @@ class StudentDashboardView(APIView):
 
 
 
-            "notifications":
+                        "notifications":
 
-            list(notifications)
+            list(notifications),
+
+
+            "next_interview":
+
+            next_interview
 
 
 
