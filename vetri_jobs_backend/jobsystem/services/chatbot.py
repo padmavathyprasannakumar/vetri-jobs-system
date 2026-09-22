@@ -1410,6 +1410,31 @@ def _is_interview_exit(message):
     return any(re.search(p, text) for p in _INTERVIEW_EXIT_PATTERNS)
 
 
+# A genuine platform request (checking applications, jobs, resume, etc.)
+# made mid-interview is NOT the same as idle off-topic chat (weather,
+# trivia) - the interviewer prompt is told to refuse and redirect for
+# the latter, but a real question like this should actually get
+# answered, not swallowed into "interview answer" or "stay on topic"
+# handling. Matching one of these ends the interview and lets the
+# message fall through to the normal tool-calling flow instead.
+
+_PLATFORM_INTENT_PATTERNS = [
+    r"\bjobs? (i|you|ve)?\s*applied", r"\bmy applications?\b",
+    r"\bapplication status\b", r"\bmy interviews?\b",
+    r"\bcheck my\b", r"\bshow (me )?my\b", r"\bnew jobs?\b",
+    r"\bfind (me )?(a )?jobs?\b", r"\bsearch (for )?jobs?\b",
+    r"\bmy resume\b", r"\bnotifications?\b", r"\bsaved jobs?\b",
+    r"\bmy profile\b", r"\bskill(s)? (i|should)\b",
+]
+
+
+def _looks_like_platform_request(message):
+
+    text = (message or "").lower()
+
+    return any(re.search(p, text) for p in _PLATFORM_INTENT_PATTERNS)
+
+
 def _tool_start_mock_interview(profile, user, args):
 
     from jobsystem.models import MockInterviewSession, Job
@@ -2718,7 +2743,22 @@ def generate_reply(user, message, history=None):
 
         if active_session:
 
-            return _handle_mock_interview_turn(active_session, user, message)
+            if _looks_like_platform_request(message):
+
+                # A real question about jobs/applications/resume/etc -
+                # not idle chat, and not an interview answer. End the
+                # session cleanly and let this message continue into
+                # the normal tool-calling flow below so it actually
+                # gets answered, instead of being swallowed into
+                # "interview answer" or "stay on topic" handling.
+
+                active_session.status = "cancelled"
+
+                active_session.save()
+
+            else:
+
+                return _handle_mock_interview_turn(active_session, user, message)
 
     context = build_context(user)
 
