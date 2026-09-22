@@ -9399,6 +9399,41 @@ class StudentDashboardView(APIView):
         ]
 
 
+        # -------------------------------------------------
+        # Next upcoming interview (real date/time/mode) - the
+        # Dashboard's "Upcoming Interview" card previously tried to
+        # infer this from the 5 most recent applications' status
+        # text under a "recent_applications" key this view never
+        # actually returns (it's "applications"), so it always
+        # showed "No upcoming interviews scheduled" regardless of
+        # what was really booked. This queries the real Interview
+        # record directly instead.
+        # -------------------------------------------------
+
+        from django.utils import timezone
+
+        upcoming_interview_obj = Interview.objects.filter(
+            application__student=profile,
+            interview_date__gte=timezone.now(),
+            status__in=["scheduled", "rescheduled"],
+        ).select_related(
+            "application__job", "application__job__company"
+        ).order_by("interview_date").first()
+
+        next_interview = None
+
+        if upcoming_interview_obj:
+
+            next_interview = {
+                "job_title": upcoming_interview_obj.application.job.title,
+                "company": (
+                    upcoming_interview_obj.application.job.company.company_name
+                    if upcoming_interview_obj.application.job.company else ""
+                ),
+                "date": upcoming_interview_obj.interview_date.strftime("%b %d, %Y"),
+                "time": upcoming_interview_obj.interview_date.strftime("%I:%M %p"),
+                "mode": upcoming_interview_obj.get_interview_mode_display(),
+            }
 
 
         return Response({
@@ -9460,7 +9495,12 @@ class StudentDashboardView(APIView):
 
             "notifications":
 
-            list(notifications)
+            list(notifications),
+
+
+            "next_interview":
+
+            next_interview
 
 
 
@@ -10453,3 +10493,234 @@ class StudentResumeAnalyseView(APIView):
         return Response(
             serializer.data
         )
+
+
+# =====================================================
+# TEMPORARY - REMOTE MIGRATION HELPER
+#
+# Only needed because there's no local Python/Django setup and no
+# Render Shell access, so `python manage.py makemigrations` isn't
+# reachable any other way. Generates the migration for JobMatchAlert
+# directly on the live server, applies it immediately, and hands
+# back the exact file content to commit permanently to GitHub.
+#
+# SECURITY: change MIGRATION_HELPER_SECRET below before deploying.
+# Use this ONCE, then delete this whole class and its URL line, and
+# redeploy - leaving a command-running endpoint live is a real risk.
+# =====================================================
+
+
+MIGRATION_HELPER_SECRET = "change-me-to-something-long-and-random"
+
+
+class TempMakeMigrationsView(APIView):
+
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+
+        if request.data.get("secret") != MIGRATION_HELPER_SECRET:
+
+            return Response({"detail": "Not found."}, status=404)
+
+        import glob
+        import os
+
+        from django.core.management import call_command
+        from io import StringIO
+
+        before = set(glob.glob("jobsystem/migrations/*.py"))
+
+        makemigrations_output = StringIO()
+
+        try:
+
+            call_command(
+                "makemigrations", "jobsystem",
+                stdout=makemigrations_output, stderr=makemigrations_output,
+            )
+
+        except Exception as e:
+
+            return Response(
+                {
+                    "error": str(e),
+                    "output": makemigrations_output.getvalue(),
+                },
+                status=500,
+            )
+
+        after = set(glob.glob("jobsystem/migrations/*.py"))
+
+        new_files = after - before
+
+        new_file_contents = {}
+
+        for path in new_files:
+
+            with open(path) as f:
+
+                new_file_contents[os.path.basename(path)] = f.read()
+
+        migrate_output = StringIO()
+
+        try:
+
+            call_command(
+                "migrate",
+                stdout=migrate_output, stderr=migrate_output,
+            )
+
+        except Exception as e:
+
+            return Response(
+                {
+                    "makemigrations_output": makemigrations_output.getvalue(),
+                    "new_files": new_file_contents,
+                    "migrate_error": str(e),
+                },
+                status=500,
+            )
+
+        return Response({
+
+            "makemigrations_output": makemigrations_output.getvalue(),
+
+            "new_files": new_file_contents,
+
+            "migrate_output": migrate_output.getvalue(),
+
+            "message": (
+                "Done - the table now exists on this live instance. "
+                "Copy each file under new_files into your repo's "
+                "jobsystem/migrations/ folder using the EXACT filename "
+                "shown as the key, commit, and push - this makes it "
+                "permanent so future deploys don't try to recreate it."
+            ),
+
+        })
+
+
+# =====================================================
+# BACKGROUND JOB-MATCH SCAN (permanent feature)
+#
+# POST /background/scan-job-matches/
+#
+# Meant to be called periodically by a free external scheduler (this
+# Render plan has no built-in Cron Jobs) - e.g. cron-job.org hitting
+# this URL every few hours with the secret in the POST body. For
+# every verified student, checks every active job posted in the last
+# 7 days they haven't already been alerted about; if the AI match
+# score clears the threshold, sends a real notification (reusing the
+# existing "new_job_alert" notification_engine event) and records a
+# JobMatchAlert so the same pair is never alerted twice.
+# =====================================================
+
+
+BACKGROUND_SCAN_SECRET = "change-me-to-a-different-long-random-string"
+
+JOB_MATCH_ALERT_THRESHOLD = 60
+
+
+class BackgroundJobMatchScanView(APIView):
+
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+
+        if request.data.get("secret") != BACKGROUND_SCAN_SECRET:
+
+            return Response({"detail": "Not found."}, status=404)
+
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from jobsystem.models import (
+            StudentProfile, Job, JobMatchAlert,
+        )
+
+        from jobsystem.services.job_matching import compute_job_match
+
+        from jobsystem.services.notification_engine import dispatch
+
+        recent_cutoff = timezone.now() - timedelta(days=7)
+
+        candidate_jobs = list(
+            Job.objects.filter(
+                status="active", is_active=True,
+                created_at__gte=recent_cutoff,
+            ).select_related("company")
+        )
+
+        students = StudentProfile.objects.filter(
+            verified=True
+        ).select_related("user")
+
+        already_alerted = set(
+            JobMatchAlert.objects.values_list("student_id", "job_id")
+        )
+
+        alerts_sent = 0
+
+        for student in students:
+
+            for job in candidate_jobs:
+
+                if (student.id, job.id) in already_alerted:
+
+                    continue
+
+                try:
+
+                    score, reasons = compute_job_match(student, job)
+
+                except Exception as e:
+
+                    print(
+                        "BackgroundJobMatchScanView match error:",
+                        student.id, job.id, e,
+                    )
+
+                    continue
+
+                if score < JOB_MATCH_ALERT_THRESHOLD:
+
+                    continue
+
+                JobMatchAlert.objects.create(student=student, job=job)
+
+                try:
+
+                    dispatch(
+                        "new_job_alert",
+                        student.user,
+                        {
+                            "job_title": job.title,
+                            "company_name": (
+                                job.company.company_name
+                                if job.company else "a company"
+                            ),
+                            "location": job.location or "Not specified",
+                        },
+                    )
+
+                except Exception as e:
+
+                    print(
+                        "BackgroundJobMatchScanView dispatch error:", e
+                    )
+
+                alerts_sent += 1
+
+        return Response({
+
+            "message": "Background job-match scan complete.",
+
+            "students_checked": students.count(),
+
+            "jobs_checked": len(candidate_jobs),
+
+            "alerts_sent": alerts_sent,
+
+        })
