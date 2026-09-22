@@ -4764,3 +4764,37 @@ class PasswordResetOTP(models.Model):
 
     def __str__(self):
         return f"OTP for {self.user.email}"
+
+
+# =====================================================
+# BACKGROUND JOB-MATCH ALERTS
+# Tracks which (student, job) pairs have already triggered
+# a background "smart match" notification, so the periodic
+# scan (BackgroundJobMatchScanView) never alerts the same
+# student about the same job twice.
+# =====================================================
+
+
+class JobMatchAlert(models.Model):
+
+    student = models.ForeignKey(
+        StudentProfile,
+        on_delete=models.CASCADE,
+        related_name="job_match_alerts",
+    )
+
+    job = models.ForeignKey(
+        Job,
+        on_delete=models.CASCADE,
+        related_name="match_alerts",
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    class Meta:
+        unique_together = ("student", "job")
+
+    def __str__(self):
+        return f"{self.student} <- {self.job}"
