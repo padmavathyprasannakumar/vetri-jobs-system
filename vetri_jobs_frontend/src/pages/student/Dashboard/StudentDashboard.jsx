@@ -511,7 +511,18 @@ strokeDasharray={`${dashboard?.skills_match_score || (dashboard?.resume?.resume_
 <h4>Upcoming Interview</h4>
 
 {
-dashboard?.recent_applications?.find(a=>a.status==="Interview") ?
+/*
+    Reads dashboard.next_interview - real data computed
+    from the actual Interview model by StudentDashboardView,
+    rather than the old (broken) lookup that checked a
+    "recent_applications" field this endpoint never actually
+    returns, against a "status==='Interview'" string that
+    never matched the real status label either.
+*/
+}
+
+{
+dashboard?.next_interview ?
 
 <div className="upcoming-interview-info">
 
@@ -519,9 +530,15 @@ dashboard?.recent_applications?.find(a=>a.status==="Interview") ?
 
 <div>
 
-<strong>{dashboard.recent_applications.find(a=>a.status==="Interview")?.job}</strong>
+<strong>{dashboard.next_interview.job_title}</strong>
 
-<p>{dashboard.recent_applications.find(a=>a.status==="Interview")?.company}</p>
+<p>{dashboard.next_interview.company}</p>
+
+<p className="chart-caption">
+
+{dashboard.next_interview.date} • {dashboard.next_interview.time} • {dashboard.next_interview.mode}
+
+</p>
 
 </div>
 
