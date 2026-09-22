@@ -65,7 +65,7 @@ const getGreeting = (role)=>{
 
     if(role==="student"){
 
-        return "Hello 👋 How can I help you today? You can also attach your resume and ask me to check it or make it ATS-friendly.";
+        return "Hello 👋 How can I help you today? You can also attach your resume and ask me to check it or make it ATS-friendly, or ask for a mock interview.";
 
     }
 
@@ -153,10 +153,6 @@ function Chatbot(){
 
     const [loading,setLoading] = useState(false);
 
-
-    // Per-message download state, keyed by message index, so a
-    // download button can show "Downloading..." without affecting
-    // the rest of the chat's loading state.
 
     const [downloadingIndex,setDownloadingIndex] = useState(null);
 
@@ -246,14 +242,6 @@ function Chatbot(){
 
     // ===============================
     // IN-CHAT RESUME DOWNLOAD
-    //
-    // Uses the exact same authenticated blob-download flow the
-    // Resume Management page already uses (downloadResume() hits
-    // /student/resume/<id>/download/ through the authenticated axios
-    // instance, responseType "blob"). The file saves directly from
-    // this button - nothing is rendered as a clickable URL, since a
-    // plain link would either 404 (frontend has no matching route)
-    // or leave the app entirely (backend is a different domain).
     // ===============================
 
 
@@ -409,25 +397,25 @@ function Chatbot(){
                     "Sorry, I could not understand.",
 
 
-                    // Job-matching results (student tools)
-
                     matchedJobs: data.matched_jobs || null,
 
-
-                    // Candidate-matching results (company tools)
 
                     candidates: data.candidates || null,
 
 
-                    // Resume ready to download - renders a real
-                    // button, never a plain link/URL.
-
                     resumeDownload: data.resume_download || null,
 
 
-                    // Recent notifications, shown as a simple list.
+                    notifications: data.notifications || null,
 
-                    notifications: data.notifications || null
+
+                    // Present only right after a mock interview
+                    // session concludes - renders a scored report
+                    // card (overall/communication/technical scores,
+                    // strengths, areas to improve) instead of
+                    // leaving the score buried in plain text.
+
+                    mockInterviewReport: data.mock_interview_report || null
 
 
                 }
@@ -959,6 +947,125 @@ function Chatbot(){
 
                                 ))
                                 }
+
+                            </div>
+                            }
+
+
+
+
+                            {/* MOCK INTERVIEW SCORE REPORT */}
+
+                            {
+                            item.mockInterviewReport &&
+
+                            <div className="chat-interview-report">
+
+                                {
+                                item.mockInterviewReport.overall_score !== null &&
+                                item.mockInterviewReport.overall_score !== undefined &&
+
+                                <div className="chat-interview-report-scores">
+
+                                    <div className="chat-interview-report-score-box overall">
+
+                                        <span className="chat-interview-report-score-value">
+
+                                            {item.mockInterviewReport.overall_score}
+
+                                        </span>
+
+                                        <span className="chat-interview-report-score-label">
+
+                                            Overall
+
+                                        </span>
+
+                                    </div>
+
+
+                                    <div className="chat-interview-report-score-box">
+
+                                        <span className="chat-interview-report-score-value">
+
+                                            {item.mockInterviewReport.communication_score ?? "-"}
+
+                                        </span>
+
+                                        <span className="chat-interview-report-score-label">
+
+                                            Communication
+
+                                        </span>
+
+                                    </div>
+
+
+                                    <div className="chat-interview-report-score-box">
+
+                                        <span className="chat-interview-report-score-value">
+
+                                            {item.mockInterviewReport.technical_score ?? "-"}
+
+                                        </span>
+
+                                        <span className="chat-interview-report-score-label">
+
+                                            Technical
+
+                                        </span>
+
+                                    </div>
+
+                                </div>
+                                }
+
+
+                                {
+                                item.mockInterviewReport.strengths?.length > 0 &&
+
+                                <div className="chat-interview-report-section">
+
+                                    <strong>Strengths</strong>
+
+                                    <ul>
+
+                                        {
+                                        item.mockInterviewReport.strengths.map((s,i)=>(
+
+                                            <li key={i}>{s}</li>
+
+                                        ))
+                                        }
+
+                                    </ul>
+
+                                </div>
+                                }
+
+
+                                {
+                                item.mockInterviewReport.areas_to_improve?.length > 0 &&
+
+                                <div className="chat-interview-report-section">
+
+                                    <strong>Areas to improve</strong>
+
+                                    <ul>
+
+                                        {
+                                        item.mockInterviewReport.areas_to_improve.map((a,i)=>(
+
+                                            <li key={i}>{a}</li>
+
+                                        ))
+                                        }
+
+                                    </ul>
+
+                                </div>
+                                }
+
 
                             </div>
                             }
