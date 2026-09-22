@@ -4798,3 +4798,67 @@ class JobMatchAlert(models.Model):
 
     def __str__(self):
         return f"{self.student} <- {self.job}"
+
+
+# =====================================================
+# MOCK INTERVIEW SESSIONS
+# Tracks a live, in-progress (or finished) mock interview: the
+# question/answer turns so far, and the final AI-generated score
+# report once it concludes. chatbot.py's mock interview subsystem
+# reads and writes this model directly.
+# =====================================================
+
+
+class MockInterviewSession(models.Model):
+
+    STATUS_CHOICES = (
+        ("in_progress", "In Progress"),
+        ("completed", "Completed"),
+        ("cancelled", "Cancelled"),
+    )
+
+    student = models.ForeignKey(
+        StudentProfile,
+        on_delete=models.CASCADE,
+        related_name="mock_interview_sessions",
+    )
+
+    job_title = models.CharField(
+        max_length=200,
+        blank=True,
+    )
+
+    turns = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="List of {'question': str, 'answer': str|None} in order.",
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default="in_progress",
+    )
+
+    score_report = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Set once the session concludes: overall_score, "
+                   "technical_score, communication_score, strengths, "
+                   "improvements, question_feedback.",
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    completed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Mock interview: {self.student} - {self.job_title}"
