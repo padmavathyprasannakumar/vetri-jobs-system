@@ -37,7 +37,6 @@ ResumeAPIView,
 
 StudentDashboardView,
 
-    ResumeUploadView,
     ResumeListView,
     ResumeDownloadView,
     ResumeDeleteView,
@@ -156,14 +155,6 @@ ChatbotSettingView,
 WhatsAppWebhookView,
 ChatbotMessageAPIView,
 ChatbotHistoryAPIView,
-
-
-
-# =====================================================
-# BACKGROUND JOBS
-# =====================================================
-
-BackgroundJobMatchScanView,
 
 
 
@@ -422,15 +413,10 @@ path(
 
 
 
-
- path(
-
+path(
     "student/dashboard/",
-
     StudentDashboardView.as_view(),
-
     name="student-dashboard"
-
 ),
 
 
@@ -441,61 +427,41 @@ path(
 
 
 path(
-
     "resume/upload/",
-
     ResumeUploadView.as_view(),
-
     name="resume-upload"
-
 ),
 
 
 
 path(
-
     "resume/list/",
-
     ResumeListView.as_view(),
-
     name="resume-list"
-
 ),
 
 
 
 path(
-
     "resume/download/<int:id>/",
-
     ResumeDownloadView.as_view(),
-
     name="resume-download"
-
 ),
 
 
 
 path(
-
     "resume/delete/<int:id>/",
-
     ResumeDeleteView.as_view(),
-
     name="resume-delete"
-
 ),
 
 
 
 path(
-
     "resume/analyze/<int:id>/",
-
     ResumeAnalyzeView.as_view(),
-
     name="resume-analyze"
-
 ),
 
 
@@ -1048,19 +1014,6 @@ path(
     "chatbot/settings/",
     ChatbotSettingView.as_view(),
     name="chat-settings"
-),
-
-
-
-# =====================================================
-# BACKGROUND JOBS
-# =====================================================
-
-
-path(
-    "background/scan-job-matches/",
-    BackgroundJobMatchScanView.as_view(),
-    name="background-scan-job-matches"
 ),
 
 
