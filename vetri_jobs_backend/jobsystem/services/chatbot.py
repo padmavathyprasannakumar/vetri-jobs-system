@@ -422,6 +422,19 @@ already happened - do not keep repeating its date/time as if it's still
 upcoming just because you said so previously in this chat. Always trust
 this fresh data over your own prior messages.
 
+CAREER PLAN: when get_career_plan runs, do not just list resume score,
+missing skills, job matches, and application status as separate,
+disconnected facts - build ONE prioritized action plan that actually
+cross-references them. For example, if the resume score is low AND a
+missing skill also appears as a requirement on one of the top job
+matches, call that out explicitly as the highest priority, since
+fixing it helps both at once. A sensible default order: (1) resume
+fixes if the score is weak, (2) the single most-recommended skill to
+learn next, (3) which specific matched job to prioritize applying to
+and why, (4) interview prep if next_interview is present. Keep it to
+4-6 concrete, numbered steps - not a wall of text repeating every
+field in the data.
+
 JOB REQUIREMENTS: when get_job_details returns missing_skills, point
 those out clearly as what the student should focus on for that
 specific role, alongside skills_required.
@@ -1791,6 +1804,123 @@ reflect that clearly in the score and feedback rather than inflating it."""
     }
 
 
+def _tool_get_career_plan(profile, user, args):
+    """
+    A full placement readiness snapshot in ONE tool call, combining
+    what would otherwise take 3-4 separate questions: resume score
+    and gaps, top in-demand skills the student is missing, the best
+    currently-matching unapplied jobs, and a summary of where their
+    real applications/interviews stand. Returned together so the
+    model can build a single prioritized, cross-referenced action
+    plan (see the CAREER PLAN guidance in SYSTEM_TEMPLATE) instead of
+    a disconnected list of facts.
+    """
+
+    from collections import Counter
+
+    from jobsystem.models import Resume, Job, Application, Interview
+    from jobsystem.services.job_matching import rank_jobs_for_student
+
+    # ---- Resume ----
+
+    resume = Resume.objects.filter(
+        student=user, is_active=True
+    ).first()
+
+    resume_data = None
+
+    if resume:
+
+        resume_data = {
+            "score": resume.resume_score,
+            "missing_information": resume.missing_information,
+        }
+
+    # ---- Skill gap (in-demand skills the student doesn't have) ----
+
+    active_jobs = Job.objects.filter(status="active", is_active=True)[:50]
+
+    student_skills = set(
+        s.strip().lower()
+        for s in (getattr(profile, "skills", "") or "").split(",")
+        if s.strip()
+    )
+
+    missing_counter = Counter()
+
+    for job in active_jobs:
+
+        for skill in (job.skills_required or "").split(","):
+
+            skill = skill.strip()
+
+            if skill and skill.lower() not in student_skills:
+
+                missing_counter[skill] += 1
+
+    top_missing_skills = [
+        skill for skill, _ in missing_counter.most_common(6)
+    ]
+
+    # ---- Top unapplied job matches ----
+
+    applied_job_ids = set(
+        Application.objects.filter(
+            student=profile
+        ).values_list("job_id", flat=True)
+    )
+
+    candidate_jobs = Job.objects.filter(
+        status="active", is_active=True
+    ).exclude(id__in=applied_job_ids).select_related("company")[:40]
+
+    ranked = rank_jobs_for_student(profile, candidate_jobs)[:3]
+
+    top_matches = [
+        _serialize_matched_job(job, score, reasons, already_applied=False)
+        for job, score, reasons in ranked
+    ]
+
+    # ---- Application / interview status ----
+
+    applications = Application.objects.filter(student=profile)
+
+    upcoming_interview = Interview.objects.filter(
+        application__student=profile,
+        interview_date__gte=timezone.now(),
+        status__in=["scheduled", "rescheduled"],
+    ).select_related(
+        "application__job", "application__job__company"
+    ).order_by("interview_date").first()
+
+    next_interview_info = None
+
+    if upcoming_interview:
+
+        next_interview_info = {
+            "job_title": upcoming_interview.application.job.title,
+            "company": (
+                upcoming_interview.application.job.company.company_name
+                if upcoming_interview.application.job.company else ""
+            ),
+            "date": upcoming_interview.interview_date.strftime("%b %d, %Y"),
+        }
+
+    return {
+        "resume": resume_data,
+        "top_missing_skills": top_missing_skills,
+        "top_job_matches": top_matches,
+        "matched_jobs": top_matches,
+        "total_applied": applications.count(),
+        "interview_stage_count": applications.filter(status="interview").count(),
+        "selected_count": applications.filter(status="selected").count(),
+        "next_interview": next_interview_info,
+        "profile_completion": getattr(profile, "profile_completion", 0),
+        "navigate_to": "/student/dashboard",
+        "summary": "Full placement readiness snapshot compiled.",
+    }
+
+
 TOOL_SCHEMAS = [
     {
         "type": "function",
@@ -2045,6 +2175,24 @@ TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "get_career_plan",
+            "description": (
+                "Get a full placement readiness snapshot in one "
+                "call - resume score/gaps, top missing skills, best "
+                "current job matches, and application/interview "
+                "status - to build ONE prioritized, cross-referenced "
+                "action plan. Use for broad requests like 'help me "
+                "get placed', 'what should I do next', 'give me a "
+                "career plan', or 'how am I doing overall' - prefer "
+                "this over calling several separate tools when the "
+                "student's question is this broad."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "update_my_skills",
             "description": (
                 "Add one or more new skills directly to the "
@@ -2160,6 +2308,7 @@ TOOL_EXECUTORS = {
     "check_ats_friendliness": _tool_check_ats_friendliness,
     "get_resume_download_link": _tool_get_resume_download_link,
     "get_my_profile": _tool_get_my_profile,
+    "get_career_plan": _tool_get_career_plan,
     "update_my_skills": _tool_update_my_skills,
     "start_mock_interview": _tool_start_mock_interview,
     "get_mock_interview_report": _tool_get_mock_interview_report,
