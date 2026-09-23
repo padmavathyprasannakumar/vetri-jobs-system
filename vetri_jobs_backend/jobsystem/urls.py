@@ -163,7 +163,6 @@ ChatbotHistoryAPIView,
 # BACKGROUND JOBS
 # =====================================================
 
-TempMakeMigrationsView,
 BackgroundJobMatchScanView,
 
 
@@ -1056,13 +1055,6 @@ path(
 # =====================================================
 # BACKGROUND JOBS
 # =====================================================
-
-
-path(
-    "background/temp-makemigrations/",
-    TempMakeMigrationsView.as_view(),
-    name="temp-makemigrations"
-),
 
 
 path(
