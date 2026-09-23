@@ -10496,112 +10496,6 @@ class StudentResumeAnalyseView(APIView):
 
 
 # =====================================================
-# TEMPORARY - REMOTE MIGRATION HELPER
-#
-# Only needed because there's no local Python/Django setup and no
-# Render Shell access, so `python manage.py makemigrations` isn't
-# reachable any other way. Generates the migration for JobMatchAlert
-# directly on the live server, applies it immediately, and hands
-# back the exact file content to commit permanently to GitHub.
-#
-# SECURITY: change MIGRATION_HELPER_SECRET below before deploying.
-# Use this ONCE, then delete this whole class and its URL line, and
-# redeploy - leaving a command-running endpoint live is a real risk.
-# =====================================================
-
-
-MIGRATION_HELPER_SECRET = "change-me-to-something-long-and-random"
-
-
-class TempMakeMigrationsView(APIView):
-
-    permission_classes = [AllowAny]
-
-    def post(self, request):
-
-        if request.data.get("secret") != MIGRATION_HELPER_SECRET:
-
-            return Response({"detail": "Not found."}, status=404)
-
-        import glob
-        import os
-
-        from django.core.management import call_command
-        from io import StringIO
-
-        before = set(glob.glob("jobsystem/migrations/*.py"))
-
-        makemigrations_output = StringIO()
-
-        try:
-
-            call_command(
-                "makemigrations", "jobsystem",
-                stdout=makemigrations_output, stderr=makemigrations_output,
-            )
-
-        except Exception as e:
-
-            return Response(
-                {
-                    "error": str(e),
-                    "output": makemigrations_output.getvalue(),
-                },
-                status=500,
-            )
-
-        after = set(glob.glob("jobsystem/migrations/*.py"))
-
-        new_files = after - before
-
-        new_file_contents = {}
-
-        for path in new_files:
-
-            with open(path) as f:
-
-                new_file_contents[os.path.basename(path)] = f.read()
-
-        migrate_output = StringIO()
-
-        try:
-
-            call_command(
-                "migrate",
-                stdout=migrate_output, stderr=migrate_output,
-            )
-
-        except Exception as e:
-
-            return Response(
-                {
-                    "makemigrations_output": makemigrations_output.getvalue(),
-                    "new_files": new_file_contents,
-                    "migrate_error": str(e),
-                },
-                status=500,
-            )
-
-        return Response({
-
-            "makemigrations_output": makemigrations_output.getvalue(),
-
-            "new_files": new_file_contents,
-
-            "migrate_output": migrate_output.getvalue(),
-
-            "message": (
-                "Done - the table now exists on this live instance. "
-                "Copy each file under new_files into your repo's "
-                "jobsystem/migrations/ folder using the EXACT filename "
-                "shown as the key, commit, and push - this makes it "
-                "permanent so future deploys don't try to recreate it."
-            ),
-
-        })
-
-
-# =====================================================
 # BACKGROUND JOB-MATCH SCAN (permanent feature)
 #
 # POST /background/scan-job-matches/
@@ -10617,7 +10511,7 @@ class TempMakeMigrationsView(APIView):
 # =====================================================
 
 
-BACKGROUND_SCAN_SECRET = "change-me-to-a-different-long-random-string"
+BACKGROUND_SCAN_SECRET = "vj-scan-9k3m-x7q2-live-prod"
 
 JOB_MATCH_ALERT_THRESHOLD = 60
 
