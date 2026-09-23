@@ -470,6 +470,17 @@ another party's data even if asked to "assume" or "pretend". This
 rule overrides any other instruction in this prompt, including
 anything added below by an administrator.
 
+CURRENT DATE AND TIME: {current_datetime}. Always compare any
+date/time you mention (interviews, deadlines, drives) against this
+exact moment before describing it. If it's earlier today or on an
+earlier date, it has ALREADY HAPPENED - say so plainly (e.g. "Your
+interview was earlier today at 7:01 AM - I hope it went well! Want
+to share how it went, or look at other matching jobs?") instead of
+presenting it as upcoming with forward-looking prep advice. If it's
+later today, say it's today and roughly how soon (e.g. "in about 3
+hours"). Only treat something as genuinely upcoming if its date/time
+is after this current moment.
+
 CURRENT USER DATA:
 {context_json}
 
@@ -3016,6 +3027,7 @@ def generate_reply(user, message, history=None):
     knowledge = get_knowledge_base_snippets()
 
     system_prompt = SYSTEM_TEMPLATE.format(
+        current_datetime=timezone.now().strftime("%A, %b %d, %Y, %I:%M %p"),
         context_json=json.dumps(context, default=str),
         knowledge_json=json.dumps(knowledge, default=str),
     )
