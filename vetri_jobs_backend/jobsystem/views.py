@@ -17,14 +17,11 @@ from django.contrib.auth.models import AnonymousUser
 
 from rest_framework.views import APIView
 
-
 from rest_framework.response import Response
-
 
 from rest_framework import status
 
 from django.contrib.auth import get_user_model
-
 
 from rest_framework.permissions import (
     AllowAny,
@@ -38,14 +35,11 @@ from rest_framework.parsers import (
     JSONParser,
 )
 
-
-
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import StudentResume
 
 from .serializers import ResumeSerializer
-
 
 import json
 
@@ -54,7 +48,6 @@ from groq import Groq
 from django.conf import settings
 
 from PyPDF2 import PdfReader
-
 
 from .models import (
 
@@ -71,8 +64,6 @@ from .models import (
     ResumeAnalysis,
 
 )
-
-
 
 from .serializers import (
 
@@ -156,11 +147,6 @@ Return ONLY JSON:
     return json.loads(result)
 
 
-
-
-
-
-
 # =====================================================
 # JWT TOKEN GENERATOR
 # =====================================================
@@ -168,33 +154,19 @@ Return ONLY JSON:
 
 def generate_tokens(user):
 
-
     refresh = RefreshToken.for_user(user)
 
-
-
     return {
-
 
         "refresh":
 
             str(refresh),
 
-
-
         "access":
 
             str(refresh.access_token)
 
-
     }
-
-
-
-
-
-
-
 
 
 # =====================================================
@@ -204,20 +176,13 @@ def generate_tokens(user):
 
 class RegisterView(APIView):
 
-
     permission_classes = [
 
         AllowAny
 
     ]
 
-
-
-
-
     def post(self,request):
-
-
 
         serializer = RegisterSerializer(
 
@@ -225,11 +190,7 @@ class RegisterView(APIView):
 
         )
 
-
-
-
         if not serializer.is_valid():
-
 
             return Response(
 
@@ -237,55 +198,33 @@ class RegisterView(APIView):
 
                     "success":False,
 
-
                     "errors":
 
                     serializer.errors
 
                 },
 
-
                 status=status.HTTP_400_BAD_REQUEST
 
             )
 
-
-
-
-
         try:
-
-
 
             with transaction.atomic():
 
-
-
                 user = serializer.save()
-
-
-
-
-
 
                 # ===============================
                 # CREATE PROFILE AUTOMATICALLY
                 # ===============================
 
-
-
                 if user.role == "student":
-
-
 
                     StudentProfile.objects.get_or_create(
 
-
                         user=user,
 
-
                         defaults={
-
 
                             "full_name":
 
@@ -305,12 +244,9 @@ class RegisterView(APIView):
 
                             None
 
-
                         }
 
-
                     )
-
 
                     # ===============================
                     # WELCOME NOTIFICATION + WHATSAPP
@@ -332,136 +268,71 @@ class RegisterView(APIView):
 
                         print("RegisterView welcome notification error:", e)
 
-
-
-
-
-
                 elif user.role == "company":
-
-
 
                     CompanyProfile.objects.get_or_create(
 
-
                         user=user,
 
-
                         defaults={
-
 
                             "company_name":
 
                             user.username
 
-
                         }
-
 
                     )
 
-
-
-
-
-
                 elif user.role == "placement_admin":
-
-
 
                     PlacementAdminProfile.objects.get_or_create(
 
-
                         user=user,
 
-
                         defaults={
-
 
                             "full_name":
 
                             user.username
 
-
                         }
-
 
                     )
 
-
-
-
-
-
-
                 tokens = generate_tokens(user)
-
-
-
-
-
-
-
 
                 return Response(
 
                     {
 
-
-
                         "success":True,
-
-
 
                         "message":
 
                         "Registration successful",
 
-
-
-
-
                         "user":
 
                         UserSerializer(user).data,
-
-
-
-
 
                         "access":
 
                         tokens["access"],
 
-
-
-
-
                         "refresh":
 
                         tokens["refresh"]
 
-
-
                     },
-
 
                     status=status.HTTP_201_CREATED
 
-
                 )
-
-
-
-
-
 
         except Exception as e:
 
-
-
             print("RegisterView error:", e)
-
 
             error_text = str(e).lower()
 
@@ -488,42 +359,25 @@ class RegisterView(APIView):
 
                 friendly_message = "Registration failed. Please try again."
 
-
             return Response(
-
 
                 {
 
-
                     "success":False,
-
 
                     "message":
 
                     friendly_message,
 
-
-
                     "error":
 
                     str(e)
 
-
-
                 },
-
 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
 
-
             )
-
-
-
-
-
-
-
 
 
 # =====================================================
@@ -728,7 +582,6 @@ class CompanyRegistrationStatusView(APIView):
         )
 
 
-
 # =====================================================
 # LOGIN USER
 # =====================================================
@@ -905,20 +758,13 @@ class ResetPasswordConfirmView(APIView):
 
 class LoginView(APIView):
 
-
     permission_classes=[
 
         AllowAny
 
     ]
 
-
-
-
-
     def post(self,request):
-
-
 
         email = request.data.get(
 
@@ -926,22 +772,13 @@ class LoginView(APIView):
 
         )
 
-
-
         password = request.data.get(
 
             "password"
 
         )
 
-
-
-
-
-
         try:
-
-
 
             user_obj = User.objects.get(
 
@@ -949,105 +786,61 @@ class LoginView(APIView):
 
             )
 
-
-
         except User.DoesNotExist:
-
-
 
             return Response(
 
-
                 {
-
 
                     "message":
 
                     "Invalid email or password"
 
-
                 },
-
 
                 status=status.HTTP_401_UNAUTHORIZED
 
-
             )
-
-
-
-
-
-
 
         user = authenticate(
 
-
             username=email,
-
 
             password=password
 
-
         )
-
-
-
-
-
 
         if not user:
 
-
-
             return Response(
 
-
                 {
-
 
                     "message":
 
                     "Invalid email or password"
 
-
                 },
-
 
                 status=status.HTTP_401_UNAUTHORIZED
 
-
             )
-
-
-
-
-
-
 
         if not user.is_active:
 
-
-
             return Response(
 
-
                 {
-
 
                     "message":
 
                     "Account disabled"
 
-
                 },
-
 
                 status=status.HTTP_403_FORBIDDEN
 
-
             )
-
 
         if user.role == "company":
 
@@ -1084,65 +877,35 @@ class LoginView(APIView):
 
                 )
 
-
         tokens = generate_tokens(user)
-
-
-
-
-
-
 
         return Response(
 
             {
 
-
                 "success":True,
-
-
 
                 "message":
 
                 "Login successful",
 
-
-
-
                 "user":
 
                 UserSerializer(user).data,
-
-
-
 
                 "access":
 
                 tokens["access"],
 
-
-
-
                 "refresh":
 
                 tokens["refresh"]
 
-
-
             },
-
 
             status=status.HTTP_200_OK
 
-
         )
-
-
-
-
-
-
-
 
 
 # =====================================================
@@ -1152,24 +915,15 @@ class LoginView(APIView):
 
 class CurrentUserView(APIView):
 
-
     permission_classes=[
 
         IsAuthenticated
 
     ]
 
-
-
-
-
     def get(self,request):
 
-
-
         return Response(
-
-
 
             UserSerializer(
 
@@ -1177,16 +931,7 @@ class CurrentUserView(APIView):
 
             ).data
 
-
-
         )
-
-
-
-
-
-
-
 
 
 # =====================================================
@@ -1196,101 +941,55 @@ class CurrentUserView(APIView):
 
 class UpdateProfileView(APIView):
 
-
     permission_classes=[
 
         IsAuthenticated
 
     ]
 
-
-
-
-
     def put(self,request):
-
 
         user=request.user
 
-
-
-
-
         serializer = UserSerializer(
-
 
             user,
 
-
             data=request.data,
-
 
             partial=True
 
-
         )
-
-
-
-
-
 
         if serializer.is_valid():
 
-
-
             serializer.save()
-
-
 
             return Response(
 
-
                 {
 
-
                     "success":True,
-
-
 
                     "message":
 
                     "Profile updated",
 
-
-
                     "user":
 
                     serializer.data
 
-
                 }
-
 
             )
 
-
-
-
-
-
         return Response(
-
 
             serializer.errors,
 
-
             status=status.HTTP_400_BAD_REQUEST
 
-
         )
-
-
-
-
-
-
-
 
 
 # =====================================================
@@ -1300,24 +999,15 @@ class UpdateProfileView(APIView):
 
 class LogoutView(APIView):
 
-
     permission_classes=[
 
         IsAuthenticated
 
     ]
 
-
-
-
-
     def post(self,request):
 
-
-
         try:
-
-
 
             refresh = request.data.get(
 
@@ -1325,12 +1015,7 @@ class LogoutView(APIView):
 
             )
 
-
-
-
             if refresh:
-
-
 
                 token = RefreshToken(
 
@@ -1338,60 +1023,39 @@ class LogoutView(APIView):
 
                 )
 
-
-
                 token.blacklist()
-
-
-
-
 
             return Response(
 
                 {
 
-
                     "success":True,
-
-
 
                     "message":
 
                     "Logout successful"
 
-
                 }
 
             )
 
-
-
-
         except Exception as e:
-
-
 
             return Response(
 
                 {
 
-
                     "success":False,
-
 
                     "error":
 
                     str(e)
 
-
                 },
-
 
                 status=status.HTTP_400_BAD_REQUEST
 
-
             )
-
 
         from django.shortcuts import get_object_or_404
 
@@ -1452,20 +1116,15 @@ from .serializers import (
 
 class StudentProfileView(APIView):
 
-
     permission_classes=[
 
         IsAuthenticated
 
     ]
 
-
-
     def get(self,request):
 
-
         if request.user.role != "student":
-
 
             return Response(
 
@@ -1478,11 +1137,7 @@ class StudentProfileView(APIView):
 
             )
 
-
-
         profile = request.user.student_profile
-
-
 
         serializer = StudentProfileSerializer(
 
@@ -1490,23 +1145,15 @@ class StudentProfileView(APIView):
 
         )
 
-
         return Response(
 
             serializer.data
 
         )
 
-
-
-
-
     def put(self,request):
 
-
         profile = request.user.student_profile
-
-
 
         serializer = StudentProfileUpdateSerializer(
 
@@ -1518,13 +1165,9 @@ class StudentProfileView(APIView):
 
         )
 
-
-
         if serializer.is_valid():
 
             serializer.save()
-
-
 
             return Response(
 
@@ -1538,7 +1181,6 @@ class StudentProfileView(APIView):
 
             )
 
-
         return Response(
 
             serializer.errors,
@@ -1548,13 +1190,12 @@ class StudentProfileView(APIView):
         )
 
 
-    # =====================================================
+# =====================================================
 # EDUCATION
 # =====================================================
 
 
 class EducationListCreateView(APIView):
-
 
     permission_classes=[
 
@@ -1562,17 +1203,13 @@ class EducationListCreateView(APIView):
 
     ]
 
-
-
     def get(self,request):
-
 
         education = Education.objects.filter(
 
             student=request.user.student_profile
 
         )
-
 
         serializer = EducationSerializer(
 
@@ -1582,19 +1219,13 @@ class EducationListCreateView(APIView):
 
         )
 
-
         return Response(
 
             serializer.data
 
         )
 
-
-
-
-
     def post(self,request):
-
 
         serializer = EducationSerializer(
 
@@ -1602,17 +1233,13 @@ class EducationListCreateView(APIView):
 
         )
 
-
-
         if serializer.is_valid():
-
 
             serializer.save(
 
                 student=request.user.student_profile
 
             )
-
 
             return Response(
 
@@ -1621,7 +1248,6 @@ class EducationListCreateView(APIView):
                 status=201
 
             )
-
 
         return Response(
 
@@ -1632,13 +1258,12 @@ class EducationListCreateView(APIView):
         )
 
 
-    # =====================================================
+# =====================================================
 # SKILLS
 # =====================================================
 
 
 class SkillCreateView(APIView):
-
 
     permission_classes=[
 
@@ -1646,17 +1271,13 @@ class SkillCreateView(APIView):
 
     ]
 
-
-
     def get(self,request):
-
 
         skills = Skill.objects.filter(
 
             student=request.user.student_profile
 
         )
-
 
         serializer = SkillSerializer(
 
@@ -1666,19 +1287,13 @@ class SkillCreateView(APIView):
 
         )
 
-
         return Response(
 
             serializer.data
 
         )
 
-
-
-
-
     def post(self,request):
-
 
         serializer = SkillSerializer(
 
@@ -1686,18 +1301,13 @@ class SkillCreateView(APIView):
 
         )
 
-
-
         if serializer.is_valid():
-
 
             serializer.save(
 
                 student=request.user.student_profile
 
             )
-
-
 
             return Response(
 
@@ -1706,7 +1316,6 @@ class SkillCreateView(APIView):
                 status=201
 
             )
-
 
         return Response(
 
@@ -1727,8 +1336,6 @@ class ResumeUploadView(APIView):
         IsAuthenticated
     ]
 
-
-
     def get(self,request):
 
         resumes = Resume.objects.filter(
@@ -1736,7 +1343,6 @@ class ResumeUploadView(APIView):
             student=request.user.student_profile
 
         ).order_by("-uploaded_at")
-
 
         serializer=ResumeSerializer(
 
@@ -1746,16 +1352,11 @@ class ResumeUploadView(APIView):
 
         )
 
-
         return Response(
             serializer.data
         )
 
-
-
-
     def post(self,request):
-
 
         serializer=ResumeSerializer(
 
@@ -1763,9 +1364,7 @@ class ResumeUploadView(APIView):
 
         )
 
-
         if serializer.is_valid():
-
 
             resume=serializer.save(
 
@@ -1773,9 +1372,7 @@ class ResumeUploadView(APIView):
 
             )
 
-
             try:
-
 
                 text=extract_resume_text(
 
@@ -1783,14 +1380,11 @@ class ResumeUploadView(APIView):
 
                 )
 
-
                 analysis=analyse_resume_with_ai(
 
                     text
 
                 )
-
-
 
                 ResumeAnalysis.objects.create(
 
@@ -1806,36 +1400,30 @@ class ResumeUploadView(APIView):
                         []
                     ),
 
-
                     education=analysis.get(
                         "education",
                         []
                     ),
-
 
                     certifications=analysis.get(
                         "certifications",
                         []
                     ),
 
-
                     projects=analysis.get(
                         "projects",
                         []
                     ),
-
 
                     missing_information=analysis.get(
                         "missing_information",
                         []
                     ),
 
-
                     job_categories=analysis.get(
                         "job_categories",
                         []
                     ),
-
 
                     resume_score=analysis.get(
                         "resume_score",
@@ -1844,39 +1432,29 @@ class ResumeUploadView(APIView):
 
                 )
 
-
-
             except Exception as e:
-
 
                 print(
                     "AI ERROR:",
                     e
                 )
 
-
                 analysis={
                     "error":str(e)
                 }
-
-
 
             return Response({
 
                 "message":
                 "Resume uploaded and analysed",
 
-
                 "resume":
                 serializer.data,
-
 
                 "analysis":
                 analysis
 
             },status=201)
-
-
 
         return Response(
 
@@ -1886,7 +1464,8 @@ class ResumeUploadView(APIView):
 
         )
 
-    # =====================================================
+
+# =====================================================
 # STUDENT JOB LIST
 # =====================================================
 
@@ -1897,18 +1476,14 @@ class StudentJobListView(APIView):
         IsAuthenticated
     ]
 
-
     def get(self,request):
-
 
         jobs = Job.objects.filter(
             status="active",
             is_active=True
         ).order_by("-created_at")
 
-
         data=[]
-
 
         try:
 
@@ -1927,23 +1502,18 @@ class StudentJobListView(APIView):
 
             saved_job_ids = set()
 
-
         for job in jobs:
-
 
             try:
 
                 serializer = JobSerializer(job).data
-
 
                 serializer["is_applied"] = Application.objects.filter(
                     student=request.user.student_profile,
                     job=job
                 ).exists()
 
-
                 serializer["is_saved"] = job.id in saved_job_ids
-
 
                 match_score, match_reasons = compute_job_match(
                     request.user.student_profile,
@@ -1953,7 +1523,6 @@ class StudentJobListView(APIView):
                 serializer["match_score"] = match_score
 
                 serializer["match_reasons"] = match_reasons
-
 
                 data.append(serializer)
 
@@ -1965,15 +1534,14 @@ class StudentJobListView(APIView):
 
                 continue
 
-
         return Response(data)
 
 
-    # =====================================================
-    # SAVE / UNSAVE A JOB
-    # POST   /student/jobs/<id>/save/   -> bookmark it
-    # DELETE /student/jobs/<id>/save/   -> remove bookmark
-    # =====================================================
+# =====================================================
+# SAVE / UNSAVE A JOB
+# POST   /student/jobs/<id>/save/   -> bookmark it
+# DELETE /student/jobs/<id>/save/   -> remove bookmark
+# =====================================================
 
 
 class SaveJobView(APIView):
@@ -2048,13 +1616,13 @@ class SaveJobView(APIView):
         )
 
 
-    # =====================================================
-    # LIST SAVED JOBS
-    # GET /student/saved-jobs/
-    # Returns flat Job objects (same shape as the main job
-    # list) so the Saved Jobs page can reuse the same card
-    # fields (title/company/location/salary/job_type/id).
-    # =====================================================
+# =====================================================
+# LIST SAVED JOBS
+# GET /student/saved-jobs/
+# Returns flat Job objects (same shape as the main job
+# list) so the Saved Jobs page can reuse the same card
+# fields (title/company/location/salary/job_type/id).
+# =====================================================
 
 
 class StudentSavedJobsView(APIView):
@@ -2105,12 +1673,12 @@ class StudentSavedJobsView(APIView):
         return Response(data)
 
 
-    # =====================================================
-    # SINGLE JOB DETAILS
-    # GET /student/jobs/<id>/
-    # Includes is_applied/is_saved, AI match score + reasons,
-    # and a short "similar jobs" list.
-    # =====================================================
+# =====================================================
+# SINGLE JOB DETAILS
+# GET /student/jobs/<id>/
+# Includes is_applied/is_saved, AI match score + reasons,
+# and a short "similar jobs" list.
+# =====================================================
 
 
 class StudentJobDetailView(APIView):
@@ -2179,7 +1747,6 @@ class StudentJobDetailView(APIView):
 
         data["match_reasons"] = match_reasons
 
-
         try:
 
             similar_qs = Job.objects.filter(
@@ -2209,16 +1776,15 @@ class StudentJobDetailView(APIView):
 
             data["similar_jobs"] = []
 
-
         return Response(data)
 
-    # =====================================================
-    # APPLY JOB
-    # =====================================================
+
+# =====================================================
+# APPLY JOB
+# =====================================================
 
 
 class ApplyJobView(APIView):
-
 
     permission_classes=[
 
@@ -2226,13 +1792,9 @@ class ApplyJobView(APIView):
 
     ]
 
-
-
     def post(self,request,job_id):
 
-
         if request.user.role != "student":
-
 
             return Response(
 
@@ -2245,8 +1807,6 @@ class ApplyJobView(APIView):
 
             )
 
-
-
         job = get_object_or_404(
 
             Job,
@@ -2255,22 +1815,15 @@ class ApplyJobView(APIView):
 
         )
 
-
-
         resume_id=request.data.get(
 
             "resume"
 
         )
 
-
-
         resume=None
 
-
-
         if resume_id:
-
 
             resume=get_object_or_404(
 
@@ -2281,10 +1834,6 @@ class ApplyJobView(APIView):
                 student=request.user
 
             )
-
-
-
-
 
         application,created = Application.objects.get_or_create(
 
@@ -2310,12 +1859,7 @@ class ApplyJobView(APIView):
 
         )
 
-
-
-
-
         if not created:
-
 
             return Response(
 
@@ -2327,12 +1871,6 @@ class ApplyJobView(APIView):
                 status=400
 
             )
-
-
-
-
-
-
 
         try:
 
@@ -2354,7 +1892,6 @@ class ApplyJobView(APIView):
 
             print("Notification dispatch error:", e)
 
-
         return Response(
 
             {
@@ -2367,13 +1904,13 @@ class ApplyJobView(APIView):
 
         )
 
-    # =====================================================
+
+# =====================================================
 # MY APPLICATIONS
 # =====================================================
 
 
 class StudentApplicationsView(APIView):
-
 
     permission_classes=[
 
@@ -2381,18 +1918,13 @@ class StudentApplicationsView(APIView):
 
     ]
 
-
-
     def get(self,request):
-
 
         applications = Application.objects.filter(
 
             student=request.user.student_profile
 
         )
-
-
 
         serializer = ApplicationSerializer(
 
@@ -2402,21 +1934,19 @@ class StudentApplicationsView(APIView):
 
         )
 
-
-
         return Response(
 
             serializer.data
 
         )
 
-    # =====================================================
+
+# =====================================================
 # STUDENT INTERVIEWS
 # =====================================================
 
 
 class StudentInterviewView(APIView):
-
 
     permission_classes=[
 
@@ -2424,18 +1954,13 @@ class StudentInterviewView(APIView):
 
     ]
 
-
-
     def get(self,request):
-
 
         interviews = Interview.objects.filter(
 
             application__student=request.user.student_profile
 
         )
-
-
 
         serializer = InterviewSerializer(
 
@@ -2445,21 +1970,19 @@ class StudentInterviewView(APIView):
 
         )
 
-
-
         return Response(
 
             serializer.data
 
         )
 
-    # =====================================================
+
+# =====================================================
 # STUDENT NOTIFICATIONS
 # =====================================================
 
 
 class StudentNotificationView(APIView):
-
 
     permission_classes=[
 
@@ -2467,18 +1990,13 @@ class StudentNotificationView(APIView):
 
     ]
 
-
-
     def get(self,request):
-
 
         notifications = Notification.objects.filter(
 
             user=request.user
 
         )
-
-
 
         serializer = NotificationSerializer(
 
@@ -2487,7 +2005,6 @@ class StudentNotificationView(APIView):
             many=True
 
         )
-
 
         return Response(
 
@@ -2593,7 +2110,6 @@ class CompanyDashboardView(APIView):
             status="scheduled"
         ).count()
 
-
         # -------------------------------------------------
         # Applications overview - last 30 days, one point
         # per day, so the frontend can draw a simple line
@@ -2616,7 +2132,6 @@ class CompanyDashboardView(APIView):
                 "date": day.strftime("%b %d"),
                 "count": count,
             })
-
 
         # -------------------------------------------------
         # Applications by status (donut chart)
@@ -2656,7 +2171,6 @@ class CompanyDashboardView(APIView):
             },
         ]
 
-
         # -------------------------------------------------
         # Recent job postings (with live application counts)
         # -------------------------------------------------
@@ -2672,7 +2186,6 @@ class CompanyDashboardView(APIView):
                 "status": job.get_status_display(),
                 "posted_on": job.created_at,
             })
-
 
         # -------------------------------------------------
         # Recent applications (candidates)
@@ -2692,11 +2205,9 @@ class CompanyDashboardView(APIView):
                 "applied_date": app.applied_date,
             })
 
-
         profile_completion = getattr(
             company, "profile_completion", 0
         )
-
 
         # -------------------------------------------------
         # AI Recommended Candidates - top applicants by
@@ -2738,7 +2249,6 @@ class CompanyDashboardView(APIView):
             print("CompanyDashboardView top_candidates error:", e)
 
             top_candidates = []
-
 
         return Response({
 
@@ -2813,7 +2323,6 @@ class CompanyAnalyticsView(APIView):
             application__job__company=company
         )
 
-
         stats = {
 
             "total_jobs_posted": jobs_qs.count(),
@@ -2827,7 +2336,6 @@ class CompanyAnalyticsView(APIView):
             ).count(),
 
         }
-
 
         # -------------------------------------------------
         # Job Posting & Applications Trend - last 7 days
@@ -2854,7 +2362,6 @@ class CompanyAnalyticsView(APIView):
                 ).count(),
 
             })
-
 
         # -------------------------------------------------
         # Applications by Job Type
@@ -2895,7 +2402,6 @@ class CompanyAnalyticsView(APIView):
 
             })
 
-
         # -------------------------------------------------
         # Top Departments
         # -------------------------------------------------
@@ -2915,7 +2421,6 @@ class CompanyAnalyticsView(APIView):
             }
             for row in dept_counts
         ]
-
 
         # -------------------------------------------------
         # Recent Activity feed
@@ -2968,7 +2473,6 @@ class CompanyAnalyticsView(APIView):
 
         activity = activity[:8]
 
-
         return Response({
 
             "stats": stats,
@@ -2991,20 +2495,15 @@ class CompanyAnalyticsView(APIView):
 
 class CompanyProfileView(APIView):
 
-
     permission_classes=[
 
         IsAuthenticated
 
     ]
 
-
-
     def get(self,request):
 
-
         if request.user.role != "company":
-
 
             return Response(
 
@@ -3017,10 +2516,7 @@ class CompanyProfileView(APIView):
 
             )
 
-
         profile = request.user.company_profile
-
-
 
         serializer = CompanyProfileSerializer(
 
@@ -3029,23 +2525,15 @@ class CompanyProfileView(APIView):
 
         )
 
-
         return Response(
 
             serializer.data
 
         )
 
-
-
-
-
     def put(self,request):
 
-
         profile = request.user.company_profile
-
-
 
         serializer = CompanyProfileUpdateSerializer(
 
@@ -3057,14 +2545,9 @@ class CompanyProfileView(APIView):
 
         )
 
-
-
         if serializer.is_valid():
 
-
             serializer.save()
-
-
 
             return Response(
 
@@ -3083,8 +2566,6 @@ class CompanyProfileView(APIView):
 
             )
 
-
-
         return Response(
 
             serializer.errors,
@@ -3094,10 +2575,10 @@ class CompanyProfileView(APIView):
         )
 
 
-    # =====================================================
-    # UPLOAD COMPANY LOGO
-    # POST /company/profile/logo/
-    # =====================================================
+# =====================================================
+# UPLOAD COMPANY LOGO
+# POST /company/profile/logo/
+# =====================================================
 
 
 class CompanyLogoUploadView(APIView):
@@ -3151,9 +2632,9 @@ class CompanyLogoUploadView(APIView):
         )
 
 
-    # =====================================================
-    # CREATE JOB
-    # =====================================================
+# =====================================================
+# CREATE JOB
+# =====================================================
 
 
 class CompanyCreateJobView(APIView):
@@ -3162,9 +2643,7 @@ class CompanyCreateJobView(APIView):
         IsAuthenticated
     ]
 
-
     def post(self,request):
-
 
         user_role = request.user.role
 
@@ -3212,20 +2691,17 @@ class CompanyCreateJobView(APIView):
                 status=403
             )
 
-
         serializer = JobCreateSerializer(
             data=request.data
         )
-
 
         if serializer.is_valid():
 
             job = serializer.save(
 
-    company=target_company
+                company=target_company
 
             )
-
 
             # Respect the "Is this job active?" toggle from the
             # Post Job form instead of always forcing it active.
@@ -3278,29 +2754,26 @@ class CompanyCreateJobView(APIView):
                 status=201
             )
 
-
         return Response(
 
             serializer.errors,
 
             status=400
         )
-   # =====================================================
+
+
+# =====================================================
 # COMPANY JOB LIST
 # =====================================================
 
 
 class CompanyJobListView(APIView):
 
-
     permission_classes=[
         IsAuthenticated
     ]
 
-
-
     def get(self,request):
-
 
         if request.user.role != "company":
 
@@ -3312,22 +2785,16 @@ class CompanyJobListView(APIView):
                 status=403
             )
 
-
-
         jobs = Job.objects.filter(
             company=request.user.company_profile
         ).order_by(
             "-created_at"
         )
 
-
-
         serializer = JobSerializer(
             jobs,
             many=True
         )
-
-
 
         return Response(
             serializer.data,
@@ -3335,7 +2802,7 @@ class CompanyJobListView(APIView):
         )
 
 
-    # =====================================================
+# =====================================================
 # UPDATE JOB
 # =====================================================
 
@@ -3346,15 +2813,12 @@ class CompanyJobUpdateView(APIView):
         IsAuthenticated
     ]
 
-
     def put(self,request,job_id):
-
 
         job = Job.objects.get(
             id=job_id,
             company=request.user.company_profile
         )
-
 
         serializer = JobSerializer(
             job,
@@ -3362,11 +2826,9 @@ class CompanyJobUpdateView(APIView):
             partial=True
         )
 
-
         if serializer.is_valid():
 
             serializer.save()
-
 
             return Response({
 
@@ -3378,19 +2840,18 @@ class CompanyJobUpdateView(APIView):
 
             })
 
-
         return Response(
             serializer.errors,
             status=400
         )
 
-    # =====================================================
+
+# =====================================================
 # DELETE JOB
 # =====================================================
 
 
 class CompanyJobDeleteView(APIView):
-
 
     permission_classes=[
 
@@ -3398,10 +2859,7 @@ class CompanyJobDeleteView(APIView):
 
     ]
 
-
-
     def delete(self,request,job_id):
-
 
         job = get_object_or_404(
 
@@ -3413,11 +2871,7 @@ class CompanyJobDeleteView(APIView):
 
         )
 
-
-
         job.delete()
-
-
 
         return Response(
 
@@ -3429,10 +2883,6 @@ class CompanyJobDeleteView(APIView):
             }
 
         )
-
-    # =====================================================
-# COMPANY CANDIDATES
-# =====================================================
 
 
 # =====================================================
@@ -3521,8 +2971,12 @@ class CompanyCandidateSearchView(APIView):
         })
 
 
-class CompanyCandidatesView(APIView):
+# =====================================================
+# COMPANY CANDIDATES
+# =====================================================
 
+
+class CompanyCandidatesView(APIView):
 
     permission_classes=[
 
@@ -3530,18 +2984,13 @@ class CompanyCandidatesView(APIView):
 
     ]
 
-
-
     def get(self,request):
-
 
         from django.utils import timezone
         from datetime import timedelta
         from jobsystem.services.job_matching import compute_job_match
 
-
         company = request.user.company_profile
-
 
         applications = Application.objects.filter(
 
@@ -3553,13 +3002,11 @@ class CompanyCandidatesView(APIView):
 
         ).order_by("-applied_date")
 
-
         candidates = []
 
         for app in applications:
 
             try:
-
 
                 match_score, match_reasons = compute_job_match(
                     app.student, app.job
@@ -3691,9 +3138,7 @@ class CompanyCandidatesView(APIView):
 
                 continue
 
-
         thirty_days_ago = timezone.now() - timedelta(days=30)
-
 
         stats = {
 
@@ -3713,7 +3158,6 @@ class CompanyCandidatesView(APIView):
 
         }
 
-
         jobs = list(
 
             Job.objects.filter(
@@ -3721,7 +3165,6 @@ class CompanyCandidatesView(APIView):
             ).values("id", "title")
 
         )
-
 
         return Response({
 
@@ -3734,13 +3177,12 @@ class CompanyCandidatesView(APIView):
         })
 
 
-    # =====================================================
+# =====================================================
 # REVIEW CANDIDATE
 # =====================================================
 
 
 class CandidateReviewCreateView(APIView):
-
 
     permission_classes=[
 
@@ -3748,10 +3190,7 @@ class CandidateReviewCreateView(APIView):
 
     ]
 
-
-
     def post(self,request,application_id):
-
 
         application = get_object_or_404(
 
@@ -3763,18 +3202,13 @@ class CandidateReviewCreateView(APIView):
 
         )
 
-
-
         serializer = CandidateReviewSerializer(
 
             data=request.data
 
         )
 
-
-
         if serializer.is_valid():
-
 
             serializer.save(
 
@@ -3783,8 +3217,6 @@ class CandidateReviewCreateView(APIView):
                 recruiter=request.user
 
             )
-
-
 
             return Response(
 
@@ -3802,8 +3234,6 @@ class CandidateReviewCreateView(APIView):
 
             )
 
-
-
         return Response(
 
             serializer.errors,
@@ -3812,13 +3242,13 @@ class CandidateReviewCreateView(APIView):
 
         )
 
-    # =====================================================
+
+# =====================================================
 # SHORTLIST CANDIDATE
 # =====================================================
 
 
 class ShortlistCandidateView(APIView):
-
 
     permission_classes=[
 
@@ -3826,10 +3256,7 @@ class ShortlistCandidateView(APIView):
 
     ]
 
-
-
     def patch(self,request,review_id):
-
 
         review = get_object_or_404(
 
@@ -3841,8 +3268,6 @@ class ShortlistCandidateView(APIView):
 
         )
 
-
-
         serializer = CandidateShortlistSerializer(
 
             review,
@@ -3853,14 +3278,9 @@ class ShortlistCandidateView(APIView):
 
         )
 
-
-
         if serializer.is_valid():
 
-
             serializer.save()
-
-
 
             return Response(
 
@@ -3876,7 +3296,6 @@ class ShortlistCandidateView(APIView):
 
             )
 
-
         return Response(
 
             serializer.errors,
@@ -3885,13 +3304,13 @@ class ShortlistCandidateView(APIView):
 
         )
 
-    # =====================================================
+
+# =====================================================
 # UPDATE APPLICATION STATUS
 # =====================================================
 
 
 class CompanyApplicationStatusView(APIView):
-
 
     permission_classes=[
 
@@ -3899,10 +3318,7 @@ class CompanyApplicationStatusView(APIView):
 
     ]
 
-
-
     def patch(self,request,application_id):
-
 
         application = get_object_or_404(
 
@@ -3914,8 +3330,6 @@ class CompanyApplicationStatusView(APIView):
 
         )
 
-
-
         serializer = ApplicationStatusSerializer(
 
             application,
@@ -3926,17 +3340,13 @@ class CompanyApplicationStatusView(APIView):
 
         )
 
-
-
         if serializer.is_valid():
-
 
             serializer.save(
 
                 updated_by=request.user
 
             )
-
 
             # If this update moved the application to "interview"
             # and no Interview record exists for it yet, create
@@ -3990,7 +3400,6 @@ class CompanyApplicationStatusView(APIView):
 
                     )
 
-
             # Route through the centralized Notification Engine
             # instead of calling WhatsApp/in-app separately - this
             # is what makes the admin's per-event channel toggles
@@ -4028,7 +3437,6 @@ class CompanyApplicationStatusView(APIView):
 
                     print("Notification dispatch error:", e)
 
-
             return Response(
 
                 {
@@ -4043,7 +3451,6 @@ class CompanyApplicationStatusView(APIView):
 
             )
 
-
         return Response(
 
             serializer.errors,
@@ -4053,10 +3460,10 @@ class CompanyApplicationStatusView(APIView):
         )
 
 
-    # =====================================================
-    # RECRUITER NOTES (private, company-only)
-    # PATCH /company/candidates/<application_id>/notes/
-    # =====================================================
+# =====================================================
+# RECRUITER NOTES (private, company-only)
+# PATCH /company/candidates/<application_id>/notes/
+# =====================================================
 
 
 class CompanyCandidateNotesView(APIView):
@@ -4085,10 +3492,10 @@ class CompanyCandidateNotesView(APIView):
         })
 
 
-    # =====================================================
-    # NOTIFY STUDENT THEIR PROFILE WAS VIEWED
-    # POST /company/candidates/<application_id>/viewed/
-    # =====================================================
+# =====================================================
+# NOTIFY STUDENT THEIR PROFILE WAS VIEWED
+# POST /company/candidates/<application_id>/viewed/
+# =====================================================
 
 
 class CandidateProfileViewedView(APIView):
@@ -4165,13 +3572,12 @@ class CandidateProfileViewedView(APIView):
         })
 
 
-    # =====================================================
-    # CREATE INTERVIEW
-    # =====================================================
+# =====================================================
+# CREATE INTERVIEW
+# =====================================================
 
 
 class CompanyInterviewCreateView(APIView):
-
 
     permission_classes=[
 
@@ -4179,10 +3585,7 @@ class CompanyInterviewCreateView(APIView):
 
     ]
 
-
-
     def post(self,request):
-
 
         serializer = InterviewCreateSerializer(
 
@@ -4190,17 +3593,11 @@ class CompanyInterviewCreateView(APIView):
 
         )
 
-
-
         if serializer.is_valid():
-
 
             application = serializer.validated_data["application"]
 
-
-
             if application.job.company != request.user.company_profile:
-
 
                 return Response(
 
@@ -4213,14 +3610,11 @@ class CompanyInterviewCreateView(APIView):
 
                 )
 
-
-
             serializer.save(
 
                 interviewer=request.user
 
             )
-
 
             # Scheduling an interview should also move the
             # candidate's application status to "interview" - this
@@ -4247,7 +3641,6 @@ class CompanyInterviewCreateView(APIView):
                 application.status = "interview"
 
                 application.save()
-
 
             # Route through the centralized Notification Engine,
             # so the interview_date/time/mode are included exactly
@@ -4291,7 +3684,6 @@ class CompanyInterviewCreateView(APIView):
 
                 print("Notification dispatch error:", e)
 
-
             return Response(
 
                 {
@@ -4308,8 +3700,6 @@ class CompanyInterviewCreateView(APIView):
 
             )
 
-
-
         return Response(
 
             serializer.errors,
@@ -4318,10 +3708,11 @@ class CompanyInterviewCreateView(APIView):
 
         )
 
-    # =====================================================
-    # LIST COMPANY INTERVIEWS
-    # GET /company/interviews/
-    # =====================================================
+
+# =====================================================
+# LIST COMPANY INTERVIEWS
+# GET /company/interviews/
+# =====================================================
 
 
 class CompanyInterviewListView(APIView):
@@ -4351,7 +3742,6 @@ class CompanyInterviewListView(APIView):
             "application__student__user", "application__job"
 
         ).order_by("-interview_date")
-
 
         interviews = []
 
@@ -4387,7 +3777,6 @@ class CompanyInterviewListView(APIView):
 
             })
 
-
         stats = {
 
             "total": interviews_qs.count(),
@@ -4406,7 +3795,6 @@ class CompanyInterviewListView(APIView):
 
         }
 
-
         jobs = list(
 
             Job.objects.filter(
@@ -4414,7 +3802,6 @@ class CompanyInterviewListView(APIView):
             ).values("id", "title")
 
         )
-
 
         return Response({
 
@@ -4427,10 +3814,10 @@ class CompanyInterviewListView(APIView):
         })
 
 
-    # =====================================================
-    # UPDATE INTERVIEW STATUS
-    # PATCH /company/interviews/<id>/status/
-    # =====================================================
+# =====================================================
+# UPDATE INTERVIEW STATUS
+# PATCH /company/interviews/<id>/status/
+# =====================================================
 
 
 class CompanyInterviewStatusUpdateView(APIView):
@@ -4516,6 +3903,7 @@ from .serializers import (
 
 )
 
+
 # =====================================================
 # PLACEMENT ADMIN ACCESS CHECK
 # =====================================================
@@ -4552,7 +3940,6 @@ class PlacementDashboardView(APIView):
         from django.db.models import Count
         from calendar import month_abbr
 
-
         total_students = StudentProfile.objects.count()
 
         active_students = StudentProfile.objects.filter(
@@ -4576,7 +3963,6 @@ class PlacementDashboardView(APIView):
             if total_students else 0
         )
 
-
         # ---------------- DEPARTMENT-WISE PLACEMENTS ----------------
 
         dept_counts = (
@@ -4591,7 +3977,6 @@ class PlacementDashboardView(APIView):
             {"department": row["student__department"], "count": row["total"]}
             for row in dept_counts
         ]
-
 
         # ---------------- COMPANY-WISE HIRING ----------------
 
@@ -4609,7 +3994,6 @@ class PlacementDashboardView(APIView):
             }
             for row in company_counts
         ]
-
 
         # ---------------- MONTHLY APPLICATIONS (last 6 months) ----------------
 
@@ -4638,7 +4022,6 @@ class PlacementDashboardView(APIView):
                 "count": count,
             })
 
-
         # ---------------- SELECTION CONVERSION FUNNEL ----------------
 
         selection_conversion = [
@@ -4658,7 +4041,6 @@ class PlacementDashboardView(APIView):
             {"stage": "Selected", "count": selected_candidates},
         ]
 
-
         # ---------------- JOB-WISE APPLICATIONS ----------------
 
         job_counts = (
@@ -4671,7 +4053,6 @@ class PlacementDashboardView(APIView):
             {"job_title": row["job__title"], "count": row["total"]}
             for row in job_counts
         ]
-
 
         # ---------------- PLACEMENT TRENDS (last 6 months) ----------------
 
@@ -4708,7 +4089,6 @@ class PlacementDashboardView(APIView):
                 "placement_rate": rate,
             })
 
-
         # ---------------- RECENT DRIVES ----------------
 
         recent_drives = []
@@ -4730,7 +4110,6 @@ class PlacementDashboardView(APIView):
                 "applied": drive_applications.count(),
                 "selected": drive_applications.filter(status="selected").count(),
             })
-
 
         # ---------------- STUDENT PLACEMENT STATUS (donut) ----------------
 
@@ -4756,7 +4135,6 @@ class PlacementDashboardView(APIView):
             {"label": "Shortlisted", "count": shortlisted_count},
             {"label": "Not Placed", "count": not_placed_count},
         ]
-
 
         return Response({
 
@@ -4809,7 +4187,6 @@ class PlacementDashboardView(APIView):
                 ).order_by("drive_date")[:5]
             ],
 
-
             # richer data for the KPI-cards + charts dashboard
             "kpis": {
 
@@ -4855,20 +4232,15 @@ class PlacementDashboardView(APIView):
 
 class PlacementStudentListView(APIView):
 
-
     permission_classes=[
 
         IsAuthenticated
 
     ]
 
-
-
     def get(self,request):
 
-
         if not is_placement_admin(request.user):
-
 
             return Response(
 
@@ -4881,11 +4253,7 @@ class PlacementStudentListView(APIView):
 
             )
 
-
-
         students = StudentProfile.objects.all()
-
-
 
         serializer = StudentProfileSerializer(
 
@@ -4894,7 +4262,6 @@ class PlacementStudentListView(APIView):
             many=True
 
         )
-
 
         # StudentProfileSerializer's "resume" field is the old,
         # unused StudentProfile.resume FileField - actual resume
@@ -4925,20 +4292,19 @@ class PlacementStudentListView(APIView):
 
                 item["resume_score"] = active_resume.resume_score
 
-
         return Response(
 
             data
 
         )
 
-    # =====================================================
+
+# =====================================================
 # VERIFY STUDENT
 # =====================================================
 
 
 class VerifyStudentView(APIView):
-
 
     permission_classes=[
 
@@ -4946,13 +4312,9 @@ class VerifyStudentView(APIView):
 
     ]
 
-
-
     def patch(self,request,student_id):
 
-
         if not is_placement_admin(request.user):
-
 
             return Response(
 
@@ -4965,8 +4327,6 @@ class VerifyStudentView(APIView):
 
             )
 
-
-
         student=get_object_or_404(
 
             StudentProfile,
@@ -4975,12 +4335,9 @@ class VerifyStudentView(APIView):
 
         )
 
-
-
         student.verified=True
 
         student.save()
-
 
         try:
 
@@ -4995,7 +4352,6 @@ class VerifyStudentView(APIView):
         except Exception as e:
 
             print("VerifyStudentView notification error:", e)
-
 
         return Response(
 
@@ -5148,16 +4504,13 @@ class PlacementStudentCreateView(APIView):
 
 class PlacementStudentUpdateView(APIView):
 
-
     permission_classes=[
 
         IsAuthenticated
 
     ]
 
-
     def patch(self,request,student_id):
-
 
         if not is_placement_admin(request.user):
 
@@ -5172,7 +4525,6 @@ class PlacementStudentUpdateView(APIView):
 
             )
 
-
         student=get_object_or_404(
 
             StudentProfile,
@@ -5181,9 +4533,7 @@ class PlacementStudentUpdateView(APIView):
 
         )
 
-
         data = request.data
-
 
         editable_fields = [
 
@@ -5198,16 +4548,13 @@ class PlacementStudentUpdateView(APIView):
 
         ]
 
-
         for field in editable_fields:
 
             if field in data:
 
                 setattr(student, field, data.get(field))
 
-
         student.save()
-
 
         phone = data.get("phone")
 
@@ -5217,9 +4564,7 @@ class PlacementStudentUpdateView(APIView):
 
             student.user.save()
 
-
         serializer = StudentProfileSerializer(student)
-
 
         return Response(serializer.data)
 
@@ -5276,7 +4621,7 @@ class PlacementStudentStatusUpdateView(APIView):
         return Response(serializer.data)
 
 
-    # =====================================================
+# =====================================================
 # COMPANY LIST
 # =====================================================
 
@@ -5491,17 +4836,13 @@ class PlacementJobStatusUpdateView(APIView):
 
 class PlacementCompanyListView(APIView):
 
-
     permission_classes=[
 
         IsAuthenticated
 
     ]
 
-
-
     def get(self,request):
-
 
         if not is_placement_admin(request.user):
 
@@ -5516,11 +4857,7 @@ class PlacementCompanyListView(APIView):
 
             )
 
-
-
         companies = CompanyProfile.objects.all()
-
-
 
         serializer = CompanyProfileSerializer(
 
@@ -5532,14 +4869,11 @@ class PlacementCompanyListView(APIView):
 
         )
 
-
-
         return Response(
 
             serializer.data
 
         )
-
 
     def post(self,request):
 
@@ -5612,13 +4946,13 @@ class PlacementCompanyListView(APIView):
             status=201
         )
 
-    # =====================================================
+
+# =====================================================
 # VERIFY COMPANY
 # =====================================================
 
 
 class VerifyCompanyView(APIView):
-
 
     permission_classes=[
 
@@ -5626,13 +4960,9 @@ class VerifyCompanyView(APIView):
 
     ]
 
-
-
     def patch(self,request,company_id):
 
-
         if not is_placement_admin(request.user):
-
 
             return Response(
 
@@ -5645,8 +4975,6 @@ class VerifyCompanyView(APIView):
 
             )
 
-
-
         company=get_object_or_404(
 
             CompanyProfile,
@@ -5655,16 +4983,11 @@ class VerifyCompanyView(APIView):
 
         )
 
-
-
         company.verified=True
 
         company.approval_status="approved"
 
-
         company.save()
-
-
 
         return Response(
 
@@ -5675,7 +4998,8 @@ class VerifyCompanyView(APIView):
 
         )
 
-    # =====================================================
+
+# =====================================================
 # REJECT COMPANY REGISTRATION
 # =====================================================
 
@@ -5716,13 +5040,13 @@ class RejectCompanyView(APIView):
             }
         )
 
-    # =====================================================
+
+# =====================================================
 # CREATE DRIVE
 # =====================================================
 
 
 class CreatePlacementDriveView(APIView):
-
 
     permission_classes=[
 
@@ -5730,13 +5054,9 @@ class CreatePlacementDriveView(APIView):
 
     ]
 
-
-
     def post(self,request):
 
-
         if not is_placement_admin(request.user):
-
 
             return Response(
 
@@ -5749,25 +5069,19 @@ class CreatePlacementDriveView(APIView):
 
             )
 
-
-
         serializer = PlacementDriveCreateSerializer(
 
             data=request.data
 
         )
 
-
-
         if serializer.is_valid():
-
 
             serializer.save(
 
                 created_by=request.user
 
             )
-
 
             return Response(
 
@@ -5785,8 +5099,6 @@ class CreatePlacementDriveView(APIView):
 
             )
 
-
-
         return Response(
 
             serializer.errors,
@@ -5795,7 +5107,8 @@ class CreatePlacementDriveView(APIView):
 
         )
 
-    # =====================================================
+
+# =====================================================
 # PLACEMENT DRIVES
 # =====================================================
 
@@ -5853,9 +5166,7 @@ def _normalize_drive_payload(data):
     return data
 
 
-
 class PlacementDriveListView(APIView):
-
 
     permission_classes=[
 
@@ -5863,14 +5174,9 @@ class PlacementDriveListView(APIView):
 
     ]
 
-
-
     def get(self,request):
 
-
         drives = PlacementDrive.objects.all().order_by("-drive_date")
-
-
 
         serializer = PlacementDriveSerializer(
 
@@ -5880,14 +5186,11 @@ class PlacementDriveListView(APIView):
 
         )
 
-
-
         return Response(
 
             serializer.data
 
         )
-
 
     def post(self, request):
 
@@ -5924,9 +5227,9 @@ class PlacementDriveListView(APIView):
         )
 
 
-    # =====================================================
-    # SINGLE DRIVE - GET / UPDATE / DELETE
-    # =====================================================
+# =====================================================
+# SINGLE DRIVE - GET / UPDATE / DELETE
+# =====================================================
 
 
 class PlacementDriveDetailView(APIView):
@@ -6007,13 +5310,14 @@ class PlacementDriveDetailView(APIView):
         return Response({
             "message": "Placement drive deleted"
         })
-    # =====================================================
+
+
+# =====================================================
 # ALL APPLICATIONS
 # =====================================================
 
 
 class PlacementApplicationListView(APIView):
-
 
     permission_classes=[
 
@@ -6021,13 +5325,9 @@ class PlacementApplicationListView(APIView):
 
     ]
 
-
-
     def get(self,request):
 
-
         if not is_placement_admin(request.user):
-
 
             return Response(
 
@@ -6040,11 +5340,7 @@ class PlacementApplicationListView(APIView):
 
             )
 
-
-
         applications = Application.objects.all()
-
-
 
         serializer = ApplicationSerializer(
 
@@ -6054,23 +5350,17 @@ class PlacementApplicationListView(APIView):
 
         )
 
-
-
         return Response(
 
             serializer.data
 
         )
 
-    # =====================================================
-# PLACEMENT STATUS UPDATE
+
 # =====================================================
-
-
-    # =====================================================
-    # CANDIDATE PIPELINE (placement-wide, across all companies)
-    # GET /placement/candidates/pipeline/
-    # =====================================================
+# CANDIDATE PIPELINE (placement-wide, across all companies)
+# GET /placement/candidates/pipeline/
+# =====================================================
 
 
 class PlacementCandidatePipelineView(APIView):
@@ -6177,8 +5467,12 @@ class PlacementCandidatePipelineView(APIView):
         })
 
 
-class PlacementUpdateApplicationView(APIView):
+# =====================================================
+# PLACEMENT STATUS UPDATE
+# =====================================================
 
+
+class PlacementUpdateApplicationView(APIView):
 
     permission_classes=[
 
@@ -6186,13 +5480,9 @@ class PlacementUpdateApplicationView(APIView):
 
     ]
 
-
-
     def patch(self,request,application_id):
 
-
         if not is_placement_admin(request.user):
-
 
             return Response(
 
@@ -6205,8 +5495,6 @@ class PlacementUpdateApplicationView(APIView):
 
             )
 
-
-
         application=get_object_or_404(
 
             Application,
@@ -6215,23 +5503,15 @@ class PlacementUpdateApplicationView(APIView):
 
         )
 
-
-
         application.status = request.data.get(
 
             "status"
 
         )
 
-
-
         application.updated_by=request.user
 
-
-
         application.save()
-
-
 
         return Response(
 
@@ -6247,13 +5527,13 @@ class PlacementUpdateApplicationView(APIView):
 
         )
 
-    # =====================================================
+
+# =====================================================
 # SEND NOTIFICATION
 # =====================================================
 
 
 class PlacementNotificationCreateView(APIView):
-
 
     permission_classes=[
 
@@ -6261,13 +5541,9 @@ class PlacementNotificationCreateView(APIView):
 
     ]
 
-
-
     def post(self,request):
 
-
         if not is_placement_admin(request.user):
-
 
             return Response(
 
@@ -6280,22 +5556,15 @@ class PlacementNotificationCreateView(APIView):
 
             )
 
-
-
         serializer = NotificationCreateSerializer(
 
             data=request.data
 
         )
 
-
-
         if serializer.is_valid():
 
-
             serializer.save()
-
-
 
             return Response(
 
@@ -6309,7 +5578,6 @@ class PlacementNotificationCreateView(APIView):
                 status=201
 
             )
-
 
         return Response(
 
@@ -6460,7 +5728,7 @@ class SendNotificationView(APIView):
         )
 
 
-    # =====================================================
+# =====================================================
 # PLACEMENT REPORTS
 # =====================================================
 
@@ -6546,20 +5814,15 @@ class ScheduleReportView(APIView):
 
 class PlacementReportView(APIView):
 
-
     permission_classes=[
 
         IsAuthenticated
 
     ]
 
-
-
     def get(self,request):
 
-
         if not is_placement_admin(request.user):
-
 
             return Response(
 
@@ -6571,7 +5834,6 @@ class PlacementReportView(APIView):
                 status=403
 
             )
-
 
         total_students = StudentProfile.objects.count()
 
@@ -6585,7 +5847,6 @@ class PlacementReportView(APIView):
             round((selected_students / total_students) * 100, 1)
             if total_students else 0
         )
-
 
         company_reports = []
 
@@ -6617,7 +5878,6 @@ class PlacementReportView(APIView):
 
         company_reports.sort(key=lambda c: c["hired"], reverse=True)
 
-
         # ---------------- APPLICATION STATUS BREAKDOWN ----------------
 
         status_breakdown = [
@@ -6627,7 +5887,6 @@ class PlacementReportView(APIView):
             }
             for key, label in Application.STATUS_CHOICES
         ] if hasattr(Application, "STATUS_CHOICES") else []
-
 
         # ---------------- PLACEMENT BY INDUSTRY ----------------
 
@@ -6647,7 +5906,6 @@ class PlacementReportView(APIView):
             {"industry": row["industry"], "count": row["total"]}
             for row in industry_rows
         ]
-
 
         # ---------------- MONTHLY PLACEMENT TREND (last 6 months) ----------------
 
@@ -6688,7 +5946,6 @@ class PlacementReportView(APIView):
                 "placed": placed_count,
             })
 
-
         # ---------------- RECENT PLACEMENT ACTIVITY ----------------
 
         recent_activity = [
@@ -6706,7 +5963,6 @@ class PlacementReportView(APIView):
                 "student", "job", "job__company"
             ).order_by("-applied_date")[:6]
         ]
-
 
         drive_reports = []
 
@@ -6726,15 +5982,11 @@ class PlacementReportView(APIView):
                 "selected": selected_count,
             })
 
-
         data={
-
 
             "total_students":
 
             total_students,
-
-
 
             "verified_students":
 
@@ -6744,20 +5996,13 @@ class PlacementReportView(APIView):
 
             ).count(),
 
-
-
-
             "total_companies":
 
             total_companies,
 
-
-
             "companies":
 
             total_companies,
-
-
 
             "verified_companies":
 
@@ -6767,52 +6012,33 @@ class PlacementReportView(APIView):
 
             ).count(),
 
-
-
-
             "total_jobs":
 
             Job.objects.count(),
-
-
-
 
             "total_applications":
 
             Application.objects.count(),
 
-
-
-
             "selected_students":
 
             selected_students,
-
-
 
             "placed_students":
 
             selected_students,
 
-
-
             "unplaced_students":
 
             max(total_students - selected_students, 0),
-
-
 
             "placement_percentage":
 
             placement_percentage,
 
-
-
             "company_reports":
 
             company_reports,
-
-
 
             "drive_reports":
 
@@ -6826,10 +6052,7 @@ class PlacementReportView(APIView):
 
             "recent_activity": recent_activity,
 
-
         }
-
-
 
         return Response(
 
@@ -6867,7 +6090,6 @@ from .models import (
 )
 
 
-
 from .serializers import (
 
     UserSerializer,
@@ -6898,6 +6120,7 @@ from .serializers import (
 
 
 User=get_user_model()
+
 
 # =====================================================
 # SUPER ADMIN CHECK
@@ -7014,7 +6237,6 @@ class AdminDashboardView(APIView):
                 for u in User.objects.order_by("-date_joined")[:6]
             ],
 
-
             # richer data
             "kpis": {
 
@@ -7052,17 +6274,13 @@ class AdminDashboardView(APIView):
 
 class AdminUserListView(APIView):
 
-
     permission_classes=[
 
         IsAuthenticated
 
     ]
 
-
-
     def get(self,request):
-
 
         if not is_super_admin(request.user):
 
@@ -7077,10 +6295,7 @@ class AdminUserListView(APIView):
 
             )
 
-
         users = User.objects.all()
-
-
 
         serializer = UserSerializer(
 
@@ -7090,21 +6305,19 @@ class AdminUserListView(APIView):
 
         )
 
-
-
         return Response(
 
             serializer.data
 
         )
 
-    # =====================================================
+
+# =====================================================
 # UPDATE USER
 # =====================================================
 
 
 class AdminUserUpdateView(APIView):
-
 
     permission_classes=[
 
@@ -7112,10 +6325,7 @@ class AdminUserUpdateView(APIView):
 
     ]
 
-
-
     def patch(self,request,user_id):
-
 
         if not is_super_admin(request.user):
 
@@ -7130,8 +6340,6 @@ class AdminUserUpdateView(APIView):
 
             )
 
-
-
         user=get_object_or_404(
 
             User,
@@ -7139,8 +6347,6 @@ class AdminUserUpdateView(APIView):
             id=user_id
 
         )
-
-
 
         serializer=UserSerializer(
 
@@ -7152,12 +6358,9 @@ class AdminUserUpdateView(APIView):
 
         )
 
-
         if serializer.is_valid():
 
             serializer.save()
-
-
 
             return Response(
 
@@ -7172,7 +6375,6 @@ class AdminUserUpdateView(APIView):
 
             )
 
-
         return Response(
 
             serializer.errors,
@@ -7181,13 +6383,13 @@ class AdminUserUpdateView(APIView):
 
         )
 
-    # =====================================================
+
+# =====================================================
 # DELETE USER
 # =====================================================
 
 
 class AdminDeleteUserView(APIView):
-
 
     permission_classes=[
 
@@ -7195,10 +6397,7 @@ class AdminDeleteUserView(APIView):
 
     ]
 
-
-
     def delete(self,request,user_id):
-
 
         if not is_super_admin(request.user):
 
@@ -7213,8 +6412,6 @@ class AdminDeleteUserView(APIView):
 
             )
 
-
-
         user=get_object_or_404(
 
             User,
@@ -7223,11 +6420,7 @@ class AdminDeleteUserView(APIView):
 
         )
 
-
-
         user.delete()
-
-
 
         return Response(
 
@@ -7238,13 +6431,13 @@ class AdminDeleteUserView(APIView):
 
         )
 
-    # =====================================================
+
+# =====================================================
 # CREATE PERMISSION
 # =====================================================
 
 
 class PermissionCreateView(APIView):
-
 
     permission_classes=[
 
@@ -7252,10 +6445,7 @@ class PermissionCreateView(APIView):
 
     ]
 
-
-
     def post(self,request):
-
 
         if not is_super_admin(request.user):
 
@@ -7270,18 +6460,15 @@ class PermissionCreateView(APIView):
 
             )
 
-
         serializer=PermissionSerializer(
 
             data=request.data
 
         )
 
-
         if serializer.is_valid():
 
             serializer.save()
-
 
             return Response(
 
@@ -7291,7 +6478,6 @@ class PermissionCreateView(APIView):
 
             )
 
-
         return Response(
 
             serializer.errors,
@@ -7300,13 +6486,13 @@ class PermissionCreateView(APIView):
 
         )
 
-    # =====================================================
+
+# =====================================================
 # LIST PERMISSIONS
 # =====================================================
 
 
 class PermissionListView(APIView):
-
 
     permission_classes=[
 
@@ -7314,14 +6500,9 @@ class PermissionListView(APIView):
 
     ]
 
-
-
     def get(self,request):
 
-
         permissions=Permission.objects.all()
-
-
 
         serializer=PermissionSerializer(
 
@@ -7331,21 +6512,19 @@ class PermissionListView(APIView):
 
         )
 
-
-
         return Response(
 
             serializer.data
 
         )
 
-    # =====================================================
+
+# =====================================================
 # ROLE PERMISSION
 # =====================================================
 
 
 class RolePermissionCreateView(APIView):
-
 
     permission_classes=[
 
@@ -7353,10 +6532,7 @@ class RolePermissionCreateView(APIView):
 
     ]
 
-
-
     def post(self,request):
-
 
         if not is_super_admin(request.user):
 
@@ -7371,18 +6547,15 @@ class RolePermissionCreateView(APIView):
 
             )
 
-
         serializer=RolePermissionSerializer(
 
             data=request.data
 
         )
 
-
         if serializer.is_valid():
 
             serializer.save()
-
 
             return Response(
 
@@ -7392,7 +6565,6 @@ class RolePermissionCreateView(APIView):
 
             )
 
-
         return Response(
 
             serializer.errors,
@@ -7401,13 +6573,13 @@ class RolePermissionCreateView(APIView):
 
         )
 
-    # =====================================================
+
+# =====================================================
 # CUSTOM ROLES
 # =====================================================
 
 
 class CustomRoleListCreateView(APIView):
-
 
     permission_classes=[
 
@@ -7415,14 +6587,9 @@ class CustomRoleListCreateView(APIView):
 
     ]
 
-
-
     def get(self,request):
 
-
         roles=CustomRole.objects.all()
-
-
 
         serializer=CustomRoleSerializer(
 
@@ -7432,19 +6599,13 @@ class CustomRoleListCreateView(APIView):
 
         )
 
-
-
         return Response(
 
             serializer.data
 
         )
 
-
-
-
     def post(self,request):
-
 
         serializer=CustomRoleSerializer(
 
@@ -7452,12 +6613,9 @@ class CustomRoleListCreateView(APIView):
 
         )
 
-
         if serializer.is_valid():
 
             serializer.save()
-
-
 
             return Response(
 
@@ -7467,7 +6625,6 @@ class CustomRoleListCreateView(APIView):
 
             )
 
-
         return Response(
 
             serializer.errors,
@@ -7476,13 +6633,13 @@ class CustomRoleListCreateView(APIView):
 
         )
 
-    # =====================================================
+
+# =====================================================
 # ADMIN STUDENTS
 # =====================================================
 
 
 class AdminStudentListView(APIView):
-
 
     permission_classes=[
 
@@ -7490,14 +6647,9 @@ class AdminStudentListView(APIView):
 
     ]
 
-
-
     def get(self,request):
 
-
         students=StudentProfile.objects.all()
-
-
 
         serializer=StudentProfileSerializer(
 
@@ -7507,21 +6659,19 @@ class AdminStudentListView(APIView):
 
         )
 
-
-
         return Response(
 
             serializer.data
 
         )
 
-    # =====================================================
+
+# =====================================================
 # ADMIN COMPANIES
 # =====================================================
 
 
 class AdminCompanyListView(APIView):
-
 
     permission_classes=[
 
@@ -7529,14 +6679,9 @@ class AdminCompanyListView(APIView):
 
     ]
 
-
-
     def get(self,request):
 
-
         companies=CompanyProfile.objects.all()
-
-
 
         serializer=CompanyProfileSerializer(
 
@@ -7548,21 +6693,19 @@ class AdminCompanyListView(APIView):
 
         )
 
-
-
         return Response(
 
             serializer.data
 
         )
 
-    # =====================================================
+
+# =====================================================
 # ADMIN JOBS
 # =====================================================
 
 
 class AdminJobListView(APIView):
-
 
     permission_classes=[
 
@@ -7570,14 +6713,9 @@ class AdminJobListView(APIView):
 
     ]
 
-
-
     def get(self,request):
 
-
         jobs=Job.objects.all()
-
-
 
         serializer=JobSerializer(
 
@@ -7587,21 +6725,19 @@ class AdminJobListView(APIView):
 
         )
 
-
-
         return Response(
 
             serializer.data
 
         )
 
-    # =====================================================
+
+# =====================================================
 # ADMIN ANALYTICS
 # =====================================================
 
 
 class AdminAnalyticsView(APIView):
-
 
     permission_classes=[
 
@@ -7609,10 +6745,7 @@ class AdminAnalyticsView(APIView):
 
     ]
 
-
-
     def get(self,request):
-
 
         if not is_super_admin(request.user):
 
@@ -7627,34 +6760,23 @@ class AdminAnalyticsView(APIView):
 
             )
 
-
-
         data={
-
 
             "users":
 
             User.objects.count(),
 
-
-
             "students":
 
             StudentProfile.objects.count(),
-
-
 
             "companies":
 
             CompanyProfile.objects.count(),
 
-
-
             "jobs":
 
             Job.objects.count(),
-
-
 
             "verified_students":
 
@@ -7663,8 +6785,6 @@ class AdminAnalyticsView(APIView):
                 verified=True
 
             ).count(),
-
-
 
             "verified_companies":
 
@@ -7676,21 +6796,19 @@ class AdminAnalyticsView(APIView):
 
         }
 
-
-
         return Response(
 
             data
 
         )
 
-    # =====================================================
+
+# =====================================================
 # AUDIT LOGS
 # =====================================================
 
 
 class AdminAuditLogView(APIView):
-
 
     permission_classes=[
 
@@ -7698,10 +6816,7 @@ class AdminAuditLogView(APIView):
 
     ]
 
-
-
     def get(self,request):
-
 
         if not is_super_admin(request.user):
 
@@ -7716,11 +6831,7 @@ class AdminAuditLogView(APIView):
 
             )
 
-
-
         logs=AuditLog.objects.all()
-
-
 
         serializer=AuditLogSerializer(
 
@@ -7730,21 +6841,19 @@ class AdminAuditLogView(APIView):
 
         )
 
-
-
         return Response(
 
             serializer.data
 
         )
 
-    # =====================================================
+
+# =====================================================
 # SYSTEM SETTINGS
 # =====================================================
 
 
 class SystemSettingView(APIView):
-
 
     permission_classes=[
 
@@ -7752,14 +6861,9 @@ class SystemSettingView(APIView):
 
     ]
 
-
-
     def get(self,request):
 
-
         settings=SystemSetting.objects.all()
-
-
 
         serializer=SystemSettingSerializer(
 
@@ -7769,19 +6873,13 @@ class SystemSettingView(APIView):
 
         )
 
-
         return Response(
 
             serializer.data
 
         )
 
-
-
-
-
     def post(self,request):
-
 
         serializer=SystemSettingSerializer(
 
@@ -7789,12 +6887,9 @@ class SystemSettingView(APIView):
 
         )
 
-
         if serializer.is_valid():
 
             serializer.save()
-
-
 
             return Response(
 
@@ -7803,7 +6898,6 @@ class SystemSettingView(APIView):
                 status=201
 
             )
-
 
         return Response(
 
@@ -7837,7 +6931,6 @@ from .models import (
 )
 
 
-
 from .serializers import (
 
     NotificationSerializer,
@@ -7857,6 +6950,8 @@ from .serializers import (
     CMSContentSerializer
 
 )
+
+
 # =====================================================
 # USER NOTIFICATIONS
 # =====================================================
@@ -7864,25 +6959,19 @@ from .serializers import (
 
 class NotificationListView(APIView):
 
-
     permission_classes=[
 
         IsAuthenticated
 
     ]
 
-
-
     def get(self,request):
-
 
         notifications = Notification.objects.filter(
 
             user=request.user
 
         )
-
-
 
         serializer = NotificationSerializer(
 
@@ -7892,20 +6981,19 @@ class NotificationListView(APIView):
 
         )
 
-
         return Response(
 
             serializer.data
 
         )
 
-    # =====================================================
+
+# =====================================================
 # MARK NOTIFICATION READ
 # =====================================================
 
 
 class NotificationReadView(APIView):
-
 
     permission_classes=[
 
@@ -7913,10 +7001,7 @@ class NotificationReadView(APIView):
 
     ]
 
-
-
     def patch(self,request,notification_id):
-
 
         notification=get_object_or_404(
 
@@ -7928,14 +7013,9 @@ class NotificationReadView(APIView):
 
         )
 
-
-
         notification.is_read=True
 
-
         notification.save()
-
-
 
         return Response(
 
@@ -7994,13 +7074,13 @@ class NotificationMarkAllReadView(APIView):
             }
         )
 
-    # =====================================================
+
+# =====================================================
 # CREATE NOTIFICATION
 # =====================================================
 
 
 class CreateNotificationView(APIView):
-
 
     permission_classes=[
 
@@ -8008,10 +7088,7 @@ class CreateNotificationView(APIView):
 
     ]
 
-
-
     def post(self,request):
-
 
         if request.user.role not in [
 
@@ -8020,7 +7097,6 @@ class CreateNotificationView(APIView):
             "super_admin"
 
         ]:
-
 
             return Response(
 
@@ -8036,22 +7112,15 @@ class CreateNotificationView(APIView):
 
             )
 
-
-
         serializer = NotificationCreateSerializer(
 
             data=request.data
 
         )
 
-
-
         if serializer.is_valid():
 
-
             serializer.save()
-
-
 
             return Response(
 
@@ -8071,8 +7140,6 @@ class CreateNotificationView(APIView):
 
             )
 
-
-
         return Response(
 
             serializer.errors,
@@ -8082,35 +7149,35 @@ class CreateNotificationView(APIView):
         )
 
 
-    # =====================================================
-    # AI PLACEMENT CHATBOT - unified endpoint
-    # POST   /chatbot/          - send a message, get a reply
-    # GET    /chatbot/history/  - this user's saved conversation
-    # DELETE /chatbot/history/  - clear this user's conversation
-    #
-    # Reachable without login (AllowAny) so it works on the public
-    # landing page for generic questions; personal data is only ever
-    # pulled from request.user's own records (see services/chatbot.py).
-    # =====================================================
+# =====================================================
+# AI PLACEMENT CHATBOT - unified endpoint
+# POST   /chatbot/          - send a message, get a reply
+# GET    /chatbot/history/  - this user's saved conversation
+# DELETE /chatbot/history/  - clear this user's conversation
+#
+# Reachable without login (AllowAny) so it works on the public
+# landing page for generic questions; personal data is only ever
+# pulled from request.user's own records (see services/chatbot.py).
+# =====================================================
 
 
-    # =====================================================
-    # WHATSAPP CHATBOT (Requirements 20-21)
-    # GET  /whatsapp/webhook/  - Meta's verification handshake
-    # POST /whatsapp/webhook/  - incoming WhatsApp messages
-    #
-    # Reuses the exact same generate_reply()/handle_action()
-    # logic as the in-app chatbot - the only new part is
-    # identifying WHICH student is messaging (by matching
-    # their WhatsApp sender number against a registered
-    # phone/whatsapp_number), which doubles as the
-    # "sensitive actions require authentication" requirement:
-    # only a number that matches an existing account can
-    # trigger account-specific actions (application status,
-    # apply for a job, etc). An unrecognized number gets
-    # generic/guest-level answers only, same as a logged-out
-    # visitor on the website.
-    # =====================================================
+# =====================================================
+# WHATSAPP CHATBOT (Requirements 20-21)
+# GET  /whatsapp/webhook/  - Meta's verification handshake
+# POST /whatsapp/webhook/  - incoming WhatsApp messages
+#
+# Reuses the exact same generate_reply()/handle_action()
+# logic as the in-app chatbot - the only new part is
+# identifying WHICH student is messaging (by matching
+# their WhatsApp sender number against a registered
+# phone/whatsapp_number), which doubles as the
+# "sensitive actions require authentication" requirement:
+# only a number that matches an existing account can
+# trigger account-specific actions (application status,
+# apply for a job, etc). An unrecognized number gets
+# generic/guest-level answers only, same as a logged-out
+# visitor on the website.
+# =====================================================
 
 
 class WhatsAppWebhookView(APIView):
@@ -8360,7 +7427,6 @@ class ChatbotMessageAPIView(APIView):
         return Response(response_payload)
 
 
-
 class ChatbotHistoryAPIView(APIView):
 
     permission_classes = [IsAuthenticated]
@@ -8400,13 +7466,12 @@ class ChatbotHistoryAPIView(APIView):
         })
 
 
-    # =====================================================
-    # CREATE CHAT SESSION
-    # =====================================================
+# =====================================================
+# CREATE CHAT SESSION
+# =====================================================
 
 
 class ChatConversationCreateView(APIView):
-
 
     permission_classes=[
 
@@ -8414,14 +7479,9 @@ class ChatConversationCreateView(APIView):
 
     ]
 
-
-
     def post(self,request):
 
-
         import uuid
-
-
 
         conversation = ChatConversation.objects.create(
 
@@ -8431,14 +7491,11 @@ class ChatConversationCreateView(APIView):
 
         )
 
-
-
         serializer = ChatConversationSerializer(
 
             conversation
 
         )
-
 
         return Response(
 
@@ -8449,13 +7506,12 @@ class ChatConversationCreateView(APIView):
         )
 
 
-    # =====================================================
+# =====================================================
 # CHAT MESSAGE
 # =====================================================
 
 
 class ChatMessageCreateView(APIView):
-
 
     permission_classes=[
 
@@ -8463,10 +7519,7 @@ class ChatMessageCreateView(APIView):
 
     ]
 
-
-
     def post(self,request):
-
 
         conversation_id=request.data.get(
 
@@ -8474,15 +7527,11 @@ class ChatMessageCreateView(APIView):
 
         )
 
-
-
         message=request.data.get(
 
             "message"
 
         )
-
-
 
         conversation=get_object_or_404(
 
@@ -8494,8 +7543,6 @@ class ChatMessageCreateView(APIView):
 
         )
 
-
-
         user_message=ChatMessage.objects.create(
 
             conversation=conversation,
@@ -8506,15 +7553,10 @@ class ChatMessageCreateView(APIView):
 
         )
 
-
-
-
-
         # AI RESPONSE PLACEHOLDER
         #
         # Later connect:
         # OpenAI API / Gemini API
-
 
         bot_reply = (
 
@@ -8523,8 +7565,6 @@ class ChatMessageCreateView(APIView):
             "Our career assistant will help you."
 
         )
-
-
 
         ChatMessage.objects.create(
 
@@ -8536,12 +7576,9 @@ class ChatMessageCreateView(APIView):
 
         )
 
-
-
         return Response(
 
             {
-
 
             "user_message":
 
@@ -8551,24 +7588,21 @@ class ChatMessageCreateView(APIView):
 
             ).data,
 
-
-
             "bot_message":
 
             bot_reply
-
 
             }
 
         )
 
-    # =====================================================
+
+# =====================================================
 # CHAT HISTORY
 # =====================================================
 
 
 class ChatHistoryView(APIView):
-
 
     permission_classes=[
 
@@ -8576,10 +7610,7 @@ class ChatHistoryView(APIView):
 
     ]
 
-
-
     def get(self,request,conversation_id):
-
 
         messages=ChatMessage.objects.filter(
 
@@ -8589,8 +7620,6 @@ class ChatHistoryView(APIView):
 
         )
 
-
-
         serializer=ChatMessageSerializer(
 
             messages,
@@ -8599,36 +7628,29 @@ class ChatHistoryView(APIView):
 
         )
 
-
-
         return Response(
 
             serializer.data
 
         )
 
-    # =====================================================
+
+# =====================================================
 # CHATBOT SETTINGS
 # =====================================================
 
 
 class ChatbotSettingView(APIView):
 
-
     permission_classes=[
 
         IsAuthenticated
 
     ]
 
-
-
     def get(self,request):
 
-
         settings=ChatbotSetting.objects.all()
-
-
 
         serializer=ChatbotSettingSerializer(
 
@@ -8638,22 +7660,15 @@ class ChatbotSettingView(APIView):
 
         )
 
-
-
         return Response(
 
             serializer.data
 
         )
 
-
-
-
     def post(self,request):
 
-
         if request.user.role!="super_admin":
-
 
             return Response(
 
@@ -8669,19 +7684,15 @@ class ChatbotSettingView(APIView):
 
             )
 
-
-
         serializer=ChatbotSettingSerializer(
 
             data=request.data
 
         )
 
-
         if serializer.is_valid():
 
             serializer.save()
-
 
             return Response(
 
@@ -8691,7 +7702,6 @@ class ChatbotSettingView(APIView):
 
             )
 
-
         return Response(
 
             serializer.errors,
@@ -8700,28 +7710,23 @@ class ChatbotSettingView(APIView):
 
         )
 
-    # =====================================================
+
+# =====================================================
 # WHATSAPP SETTINGS
 # =====================================================
 
 
 class WhatsAppSettingView(APIView):
 
-
     permission_classes=[
 
         IsAuthenticated
 
     ]
 
-
-
     def get(self,request):
 
-
         settings=WhatsAppSetting.objects.all()
-
-
 
         serializer=WhatsAppSettingSerializer(
 
@@ -8731,21 +7736,15 @@ class WhatsAppSettingView(APIView):
 
         )
 
-
         return Response(
 
             serializer.data
 
         )
 
-
-
-
     def post(self,request):
 
-
         if request.user.role!="super_admin":
-
 
             return Response(
 
@@ -8761,19 +7760,15 @@ class WhatsAppSettingView(APIView):
 
             )
 
-
-
         serializer=WhatsAppSettingSerializer(
 
             data=request.data
 
         )
 
-
         if serializer.is_valid():
 
             serializer.save()
-
 
             return Response(
 
@@ -8783,7 +7778,6 @@ class WhatsAppSettingView(APIView):
 
             )
 
-
         return Response(
 
             serializer.errors,
@@ -8792,13 +7786,13 @@ class WhatsAppSettingView(APIView):
 
         )
 
-    # =====================================================
+
+# =====================================================
 # WHATSAPP MESSAGE LOG
 # =====================================================
 
 
 class WhatsAppMessageCreateView(APIView):
-
 
     permission_classes=[
 
@@ -8806,10 +7800,7 @@ class WhatsAppMessageCreateView(APIView):
 
     ]
 
-
-
     def post(self,request):
-
 
         serializer=WhatsAppMessageSerializer(
 
@@ -8817,29 +7808,20 @@ class WhatsAppMessageCreateView(APIView):
 
         )
 
-
-
         if serializer.is_valid():
 
-
             message=serializer.save()
-
-
 
             # API integration goes here
             #
             # Meta WhatsApp Cloud API
             #
 
-
-
             message.status="sent"
 
             message.sent_at=timezone.now()
 
             message.save()
-
-
 
             return Response(
 
@@ -8859,7 +7841,6 @@ class WhatsAppMessageCreateView(APIView):
 
             )
 
-
         return Response(
 
             serializer.errors,
@@ -8868,13 +7849,13 @@ class WhatsAppMessageCreateView(APIView):
 
         )
 
-    # =====================================================
+
+# =====================================================
 # CMS CONTENT
 # =====================================================
 
 
 class CMSContentView(APIView):
-
 
     permission_classes=[
 
@@ -8882,18 +7863,13 @@ class CMSContentView(APIView):
 
     ]
 
-
-
     def get(self,request):
-
 
         contents=CMSContent.objects.filter(
 
             is_active=True
 
         )
-
-
 
         serializer=CMSContentSerializer(
 
@@ -8903,22 +7879,15 @@ class CMSContentView(APIView):
 
         )
 
-
         return Response(
 
             serializer.data
 
         )
 
-
-
-
-
     def post(self,request):
 
-
         if request.user.role!="super_admin":
-
 
             return Response(
 
@@ -8934,22 +7903,15 @@ class CMSContentView(APIView):
 
             )
 
-
-
         serializer=CMSContentSerializer(
 
             data=request.data
 
         )
 
-
-
         if serializer.is_valid():
 
-
             serializer.save()
-
-
 
             return Response(
 
@@ -8959,7 +7921,6 @@ class CMSContentView(APIView):
 
             )
 
-
         return Response(
 
             serializer.errors,
@@ -8967,6 +7928,8 @@ class CMSContentView(APIView):
             status=400
 
         )
+
+
 # =====================================================
 # RESUME MANAGEMENT API
 # =====================================================
@@ -8974,19 +7937,15 @@ class CMSContentView(APIView):
 
 class ResumeAPIView(APIView):
 
-
     permission_classes=[
 
         IsAuthenticated
 
     ]
 
-
-
     # GET RESUME
 
     def get(self,request):
-
 
         resume = StudentResume.objects.filter(
 
@@ -8996,10 +7955,7 @@ class ResumeAPIView(APIView):
 
         ).last()
 
-
-
         if not resume:
-
 
             return Response(
 
@@ -9008,8 +7964,6 @@ class ResumeAPIView(APIView):
                 status=status.HTTP_200_OK
 
             )
-
-
 
         serializer=ResumeSerializer(
 
@@ -9023,23 +7977,15 @@ class ResumeAPIView(APIView):
 
         )
 
-
         return Response(
 
             serializer.data
 
         )
 
-
-
-
-
-
     # UPLOAD / REPLACE RESUME
 
-
     def post(self,request):
-
 
         file=request.FILES.get(
 
@@ -9047,9 +7993,7 @@ class ResumeAPIView(APIView):
 
         )
 
-
         if not file:
-
 
             return Response(
 
@@ -9065,9 +8009,6 @@ class ResumeAPIView(APIView):
 
             )
 
-
-
-
         # deactivate old resume
 
         StudentResume.objects.filter(
@@ -9082,19 +8023,11 @@ class ResumeAPIView(APIView):
 
         )
 
-
-
-
-
-
         resume=StudentResume.objects.create(
-
 
             student=request.user,
 
-
             resume=file,
-
 
             version=
 
@@ -9104,11 +8037,7 @@ class ResumeAPIView(APIView):
 
             ).count()+1
 
-
         )
-
-
-
 
         serializer=ResumeSerializer(
 
@@ -9122,8 +8051,6 @@ class ResumeAPIView(APIView):
 
         )
 
-
-
         return Response(
 
             serializer.data,
@@ -9132,18 +8059,9 @@ class ResumeAPIView(APIView):
 
         )
 
-
-
-
-
-
-
-
     # DELETE RESUME
 
-
     def delete(self,request):
-
 
         StudentResume.objects.filter(
 
@@ -9154,7 +8072,6 @@ class ResumeAPIView(APIView):
             is_active=False
 
         )
-
 
         return Response(
 
@@ -9169,13 +8086,12 @@ class ResumeAPIView(APIView):
         )
 
 
-    # =====================================================
+# =====================================================
 # STUDENT DASHBOARD
 # =====================================================
 
 
 class StudentDashboardView(APIView):
-
 
     permission_classes=[
 
@@ -9183,13 +8099,9 @@ class StudentDashboardView(APIView):
 
     ]
 
-
-
     def get(self,request):
 
-
         user=request.user
-
 
         # -------------------------------------------------
         # Guard against a missing StudentProfile instead of
@@ -9202,7 +8114,6 @@ class StudentDashboardView(APIView):
             user=user
         ).first()
 
-
         if not profile:
 
             return Response(
@@ -9214,11 +8125,9 @@ class StudentDashboardView(APIView):
                 status=404
             )
 
-
         total_jobs = Job.objects.filter(
             status="active"
         ).count()
-
 
         # NOTE: Application.student is a FK to StudentProfile,
         # not to the User model - filtering by "student=profile"
@@ -9228,34 +8137,27 @@ class StudentDashboardView(APIView):
             student=profile
         )
 
-
         applied_jobs = applied_qs.count()
-
 
         shortlisted = applied_qs.filter(
             status="shortlisted"
         ).count()
 
-
         interviews = applied_qs.filter(
             status="interview"
         ).count()
-
 
         pending = applied_qs.filter(
             status__in=["applied", "reviewing"]
         ).count()
 
-
         selected = applied_qs.filter(
             status="selected"
         ).count()
 
-
         rejected = applied_qs.filter(
             status="rejected"
         ).count()
-
 
         # -------------------------------------------------
         # Recommended jobs - shaped the way the dashboard
@@ -9267,7 +8169,6 @@ class StudentDashboardView(APIView):
             "job_id", flat=True
         )
 
-
         job_qs = Job.objects.filter(
             status="active"
         ).exclude(
@@ -9276,9 +8177,7 @@ class StudentDashboardView(APIView):
             "company"
         )[:30]
 
-
         recommended_jobs = []
-
 
         scored_jobs = []
 
@@ -9297,7 +8196,6 @@ class StudentDashboardView(APIView):
             key=lambda item: item[1],
             reverse=True
         )
-
 
         for job, match_score, match_reasons in scored_jobs[:5]:
 
@@ -9318,13 +8216,11 @@ class StudentDashboardView(APIView):
                 "match_reasons": match_reasons,
             })
 
-
         # -------------------------------------------------
         # Recent applications
         # -------------------------------------------------
 
         recent_applications = []
-
 
         for app in applied_qs.select_related(
             "job", "job__company"
@@ -9340,7 +8236,6 @@ class StudentDashboardView(APIView):
                 "status": app.get_status_display(),
             })
 
-
         # -------------------------------------------------
         # Skills
         # -------------------------------------------------
@@ -9351,7 +8246,6 @@ class StudentDashboardView(APIView):
             )
         )
 
-
         # -------------------------------------------------
         # Resume summary (latest active resume, if any)
         # -------------------------------------------------
@@ -9361,9 +8255,7 @@ class StudentDashboardView(APIView):
             is_active=True
         ).first()
 
-
         resume_summary = None
-
 
         if resume_obj:
 
@@ -9375,7 +8267,6 @@ class StudentDashboardView(APIView):
                 "job_categories": resume_obj.job_categories,
                 "updated_at": resume_obj.updated_at,
             }
-
 
         notifications = Notification.objects.filter(
 
@@ -9391,13 +8282,11 @@ class StudentDashboardView(APIView):
 
         )[:5]
 
-
         student_skills = [
             s.strip()
             for s in (getattr(profile, "skills", "") or "").split(",")
             if s.strip()
         ]
-
 
         # -------------------------------------------------
         # Next upcoming interview (real date/time/mode) - the
@@ -9435,15 +8324,11 @@ class StudentDashboardView(APIView):
                 "mode": upcoming_interview_obj.get_interview_mode_display(),
             }
 
-
         return Response({
-
 
             "profile_completion":
 
             getattr(profile, "profile_completion", 0),
-
-
 
             "stats": {
 
@@ -9461,50 +8346,36 @@ class StudentDashboardView(APIView):
 
             },
 
-
-
             "total_jobs":
 
             total_jobs,
-
-
 
             "recommended_jobs":
 
             recommended_jobs,
 
-
-
             "applications":
 
             recent_applications,
-
-
 
             "skills":
 
             student_skills,
 
-
-
             "resume":
 
             resume_summary,
-
-
 
             "notifications":
 
             list(notifications),
 
-
             "next_interview":
 
             next_interview
 
-
-
         })
+
 
 from rest_framework.generics import ListAPIView
 
@@ -9514,11 +8385,7 @@ from .models import Job
 from .serializers import JobSerializer
 
 
-
-
-
 class JobListAPIView(ListAPIView):
-
 
     queryset=Job.objects.filter(
 
@@ -9526,21 +8393,7 @@ class JobListAPIView(ListAPIView):
 
     )
 
-
     serializer_class=JobSerializer
-
-# =====================================================
-# STUDENT JOB DETAIL
-# =====================================================
-
-
-# =====================================================
-# PUBLIC LOOKUP LISTS (Requirement 28 -> frontend link)
-# Read-only, no auth required - these power the dropdowns
-# on registration/profile/job-posting forms, and are fully
-# controlled by whatever the Super Admin configures in
-# Django Admin (Departments / Courses / Job Categories).
-# =====================================================
 
 
 # =====================================================
@@ -9680,6 +8533,15 @@ class SiteBrandingView(APIView):
         })
 
 
+# =====================================================
+# PUBLIC LOOKUP LISTS (Requirement 28 -> frontend link)
+# Read-only, no auth required - these power the dropdowns
+# on registration/profile/job-posting forms, and are fully
+# controlled by whatever the Super Admin configures in
+# Django Admin (Departments / Courses / Job Categories).
+# =====================================================
+
+
 class LookupListsView(APIView):
 
     permission_classes = [AllowAny]
@@ -9764,7 +8626,8 @@ class EligibilityCheckView(APIView):
 
         return Response(result)
 
-    # =====================================================
+
+# =====================================================
 # DELETE COMPANY JOB
 # =====================================================
 
@@ -9774,9 +8637,7 @@ class CompanyDeleteJobView(APIView):
         IsAuthenticated
     ]
 
-
     def delete(self,request,id):
-
 
         try:
 
@@ -9785,9 +8646,7 @@ class CompanyDeleteJobView(APIView):
                 company=request.user.company_profile
             )
 
-
             job.delete()
-
 
             return Response(
                 {
@@ -9797,9 +8656,7 @@ class CompanyDeleteJobView(APIView):
                 status=200
             )
 
-
         except Job.DoesNotExist:
-
 
             return Response(
                 {
@@ -9841,7 +8698,6 @@ class ResumeUploadView(APIView):
         IsAuthenticated
     ]
 
-
     # -------------------------------------------------
     # GET /student/resume/
     # Returns the student's current ACTIVE resume
@@ -9856,7 +8712,6 @@ class ResumeUploadView(APIView):
             is_active=True
         ).first()
 
-
         if not resume:
 
             return Response(
@@ -9867,7 +8722,6 @@ class ResumeUploadView(APIView):
                 status=404
             )
 
-
         serializer = ResumeSerializer(
             resume,
             context={
@@ -9875,11 +8729,9 @@ class ResumeUploadView(APIView):
             }
         )
 
-
         return Response(
             serializer.data
         )
-
 
     # -------------------------------------------------
     # POST /student/resume/
@@ -9898,7 +8750,6 @@ class ResumeUploadView(APIView):
             "resume"
         )
 
-
         if not file:
 
             return Response(
@@ -9908,7 +8759,6 @@ class ResumeUploadView(APIView):
                 },
                 status=400
             )
-
 
         allowed_extensions = (".pdf", ".doc", ".docx")
 
@@ -9922,9 +8772,7 @@ class ResumeUploadView(APIView):
                 status=400
             )
 
-
         student = request.user
-
 
         # deactivate previous resume
 
@@ -9934,7 +8782,6 @@ class ResumeUploadView(APIView):
         ).update(
             is_active=False
         )
-
 
         resume = Resume.objects.create(
 
@@ -9948,16 +8795,13 @@ class ResumeUploadView(APIView):
 
         )
 
-
         # ==========================
         # AI ANALYSIS
         # ==========================
 
-
         try:
 
             start=time.time()
-
 
             # analyze_resume() takes the resume's Django file
             # object (works with any storage backend - local
@@ -9970,74 +8814,59 @@ class ResumeUploadView(APIView):
                 resume.file
             )
 
-
             resume.resume_score = result.get(
                 "resume_score",
                 0
             )
-
 
             resume.skills = result.get(
                 "skills",
                 []
             )
 
-
             resume.experience = result.get(
                 "experience",
                 []
             )
-
 
             resume.education = result.get(
                 "education",
                 []
             )
 
-
             resume.certifications = result.get(
                 "certifications",
                 []
             )
-
 
             resume.projects = result.get(
                 "projects",
                 []
             )
 
-
             resume.missing_information = result.get(
                 "missing_information",
                 []
             )
-
 
             resume.job_categories = result.get(
                 "job_categories",
                 []
             )
 
-
             resume.extracted_text = result.get(
                 "text",
                 ""
             )
 
-
             resume.save()
 
-
-
         except Exception as e:
-
 
             print(
                 "AI Error:",
                 e
             )
-
-
 
         serializer = ResumeSerializer(
             resume,
@@ -10046,12 +8875,10 @@ class ResumeUploadView(APIView):
             }
         )
 
-
         return Response(
             serializer.data,
             status=201
         )
-
 
 
 # ==================================
@@ -10064,13 +8891,11 @@ class ResumeListView(APIView):
         IsAuthenticated
     ]
 
-
     def get(self,request):
 
         resumes = Resume.objects.filter(
             student=request.user
         )
-
 
         serializer = ResumeSerializer(
             resumes,
@@ -10080,11 +8905,9 @@ class ResumeListView(APIView):
             }
         )
 
-
         return Response(
             serializer.data
         )
-
 
 
 # ==================================
@@ -10097,15 +8920,12 @@ class ResumeDownloadView(APIView):
         IsAuthenticated
     ]
 
-
     def get(self,request,id):
-
 
         resume = Resume.objects.get(
             id=id,
             student=request.user
         )
-
 
         return FileResponse(
 
@@ -10120,7 +8940,6 @@ class ResumeDownloadView(APIView):
         )
 
 
-
 # ==================================
 # Delete Resume
 # ==================================
@@ -10131,15 +8950,12 @@ class ResumeDeleteView(APIView):
         IsAuthenticated
     ]
 
-
     def delete(self,request,id):
-
 
         resume = Resume.objects.get(
             id=id,
             student=request.user
         )
-
 
         # remove file
         #
@@ -10154,9 +8970,7 @@ class ResumeDeleteView(APIView):
 
             resume.file.delete(save=False)
 
-
         resume.delete()
-
 
         return Response(
             {
@@ -10164,7 +8978,6 @@ class ResumeDeleteView(APIView):
                 "Resume deleted successfully"
             }
         )
-
 
 
 # ==================================
@@ -10177,9 +8990,7 @@ class ResumeAnalyzeView(APIView):
         IsAuthenticated
     ]
 
-
     def post(self,request,id):
-
 
         resume = Resume.objects.get(
 
@@ -10189,7 +9000,6 @@ class ResumeAnalyzeView(APIView):
 
         )
 
-
         # analyze_resume() takes the resume's Django file object,
         # not a filesystem path - see the note in ResumeUploadView
         # above for why resume.file.path breaks under Cloudinary.
@@ -10198,58 +9008,47 @@ class ResumeAnalyzeView(APIView):
             resume.file
         )
 
-
         resume.resume_score = result.get(
             "resume_score",
             0
         )
-
 
         resume.skills=result.get(
             "skills",
             []
         )
 
-
         resume.experience=result.get(
             "experience",
             []
         )
-
 
         resume.education=result.get(
             "education",
             []
         )
 
-
         resume.certifications=result.get(
             "certifications",
             []
         )
-
 
         resume.projects=result.get(
             "projects",
             []
         )
 
-
         resume.missing_information=result.get(
             "missing_information",
             []
         )
-
 
         resume.job_categories=result.get(
             "job_categories",
             []
         )
 
-
         resume.save()
-
-
 
         return Response(
 
@@ -10261,6 +9060,7 @@ class ResumeAnalyzeView(APIView):
             ).data
 
         )
+
 
 # =====================================================
 # STUDENT RESUME PAGE - EXTRA ENDPOINTS
@@ -10493,128 +9293,3 @@ class StudentResumeAnalyseView(APIView):
         return Response(
             serializer.data
         )
-
-
-# =====================================================
-# BACKGROUND JOB-MATCH SCAN (permanent feature)
-#
-# POST /background/scan-job-matches/
-#
-# Meant to be called periodically by a free external scheduler (this
-# Render plan has no built-in Cron Jobs) - e.g. cron-job.org hitting
-# this URL every few hours with the secret in the POST body. For
-# every verified student, checks every active job posted in the last
-# 7 days they haven't already been alerted about; if the AI match
-# score clears the threshold, sends a real notification (reusing the
-# existing "new_job_alert" notification_engine event) and records a
-# JobMatchAlert so the same pair is never alerted twice.
-# =====================================================
-
-
-BACKGROUND_SCAN_SECRET = "vj-scan-9k3m-x7q2-live-prod"
-
-JOB_MATCH_ALERT_THRESHOLD = 60
-
-
-class BackgroundJobMatchScanView(APIView):
-
-    permission_classes = [AllowAny]
-
-    def post(self, request):
-
-        if request.data.get("secret") != BACKGROUND_SCAN_SECRET:
-
-            return Response({"detail": "Not found."}, status=404)
-
-        from datetime import timedelta
-
-        from django.utils import timezone
-
-        from jobsystem.models import (
-            StudentProfile, Job, JobMatchAlert,
-        )
-
-        from jobsystem.services.job_matching import compute_job_match
-
-        from jobsystem.services.notification_engine import dispatch
-
-        recent_cutoff = timezone.now() - timedelta(days=7)
-
-        candidate_jobs = list(
-            Job.objects.filter(
-                status="active", is_active=True,
-                created_at__gte=recent_cutoff,
-            ).select_related("company")
-        )
-
-        students = StudentProfile.objects.filter(
-            verified=True
-        ).select_related("user")
-
-        already_alerted = set(
-            JobMatchAlert.objects.values_list("student_id", "job_id")
-        )
-
-        alerts_sent = 0
-
-        for student in students:
-
-            for job in candidate_jobs:
-
-                if (student.id, job.id) in already_alerted:
-
-                    continue
-
-                try:
-
-                    score, reasons = compute_job_match(student, job)
-
-                except Exception as e:
-
-                    print(
-                        "BackgroundJobMatchScanView match error:",
-                        student.id, job.id, e,
-                    )
-
-                    continue
-
-                if score < JOB_MATCH_ALERT_THRESHOLD:
-
-                    continue
-
-                JobMatchAlert.objects.create(student=student, job=job)
-
-                try:
-
-                    dispatch(
-                        "new_job_alert",
-                        student.user,
-                        {
-                            "job_title": job.title,
-                            "company_name": (
-                                job.company.company_name
-                                if job.company else "a company"
-                            ),
-                            "location": job.location or "Not specified",
-                        },
-                    )
-
-                except Exception as e:
-
-                    print(
-                        "BackgroundJobMatchScanView dispatch error:", e
-                    )
-
-                alerts_sent += 1
-
-        return Response({
-
-            "message": "Background job-match scan complete.",
-
-            "students_checked": students.count(),
-
-            "jobs_checked": len(candidate_jobs),
-
-            "alerts_sent": alerts_sent,
-
-        })
