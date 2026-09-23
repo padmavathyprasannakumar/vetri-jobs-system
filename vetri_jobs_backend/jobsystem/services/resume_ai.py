@@ -38,6 +38,20 @@ GROQ_MODEL_FALLBACKS = [
 
 
 # =====================================================
+# CONSISTENT SCORING
+# =====================================================
+# temperature=0 makes the AI as deterministic as possible, so
+# analysing the SAME resume again gives the same (or nearly the
+# same) score instead of a slightly different number each time.
+# The chatbot never re-scores the resume itself - it always reads
+# the resume_score saved from this analysis - so the Resume page
+# and the chatbot always show one identical, official score.
+# =====================================================
+
+AI_TEMPERATURE = 0
+
+
+# =====================================================
 # TEXT EXTRACTION
 # =====================================================
 # Takes a Django FieldFile (e.g. resume.file), NOT a filesystem
@@ -66,11 +80,9 @@ def extract_resume_text(file):
 
         file.close()
 
-
     if ext == ".docx":
 
         return _extract_text_from_docx(data)
-
 
     if ext == ".doc":
 
@@ -87,11 +99,9 @@ def extract_resume_text(file):
 
             return ""
 
-
     # default: PDF (and anything PyMuPDF can open)
 
     return _extract_text_from_pdf_like(data)
-
 
 
 def _extract_text_from_pdf_like(data):
@@ -102,41 +112,33 @@ def _extract_text_from_pdf_like(data):
 
     text = ""
 
-
     document = fitz.open(
         stream=data,
         filetype="pdf",
     )
 
-
     for page in document:
 
         text += page.get_text()
 
-
     document.close()
 
-
     return text
-
 
 
 def _extract_text_from_docx(data):
 
     import docx  # python-docx
 
-
     document = docx.Document(
         io.BytesIO(data)
     )
-
 
     parts = [
         p.text
         for p in document.paragraphs
         if p.text and p.text.strip()
     ]
-
 
     # Also pull text out of any tables (skills/experience are
     # sometimes laid out in table form in resume templates).
@@ -151,9 +153,7 @@ def _extract_text_from_docx(data):
 
                     parts.append(cell.text)
 
-
     return "\n".join(parts)
-
 
 
 # =====================================================
@@ -170,7 +170,6 @@ def _parse_ai_json(raw_text):
 
     text = (raw_text or "").strip()
 
-
     # strip ```json ... ``` or ``` ... ``` fences
 
     if text.startswith("```"):
@@ -181,7 +180,6 @@ def _parse_ai_json(raw_text):
 
         text = text.strip()
 
-
     try:
 
         return json.loads(text)
@@ -190,11 +188,9 @@ def _parse_ai_json(raw_text):
 
         pass
 
-
     # fall back to grabbing the first {...} block in the text
 
     match = re.search(r"\{.*\}", text, re.DOTALL)
-
 
     if match:
 
@@ -208,9 +204,7 @@ def _parse_ai_json(raw_text):
 
             pass
 
-
     return None
-
 
 
 # =====================================================
@@ -222,11 +216,9 @@ def _parse_ai_json(raw_text):
 
 def analyse_resume_with_ai(file):
 
-
     resume_text = extract_resume_text(
         file
     )
-
 
     if not resume_text or not resume_text.strip():
 
@@ -256,12 +248,10 @@ def analyse_resume_with_ai(file):
 
         }
 
-
     # Groq/most LLM context windows comfortably fit a resume,
     # but trim extreme outliers so we never blow the token limit.
 
     resume_text = resume_text[:12000]
-
 
     prompt = f"""
 You are an expert AI Resume Analyzer used inside a campus
@@ -308,9 +298,7 @@ Rules:
   empty list for it rather than guessing.
 """
 
-
     last_error = None
-
 
     for model_name in GROQ_MODEL_FALLBACKS:
 
@@ -329,7 +317,7 @@ Rules:
 
                 ],
 
-                temperature=0.2,
+                temperature=AI_TEMPERATURE,
 
                 response_format={
                     "type": "json_object"
@@ -337,12 +325,9 @@ Rules:
 
             )
 
-
             raw_content = response.choices[0].message.content
 
-
             parsed = _parse_ai_json(raw_content)
-
 
             if parsed:
 
@@ -373,9 +358,7 @@ Rules:
 
                 }
 
-
             last_error = "AI returned a response that wasn't valid JSON"
-
 
         except Exception as e:
 
@@ -398,15 +381,13 @@ Rules:
 
                     ],
 
-                    temperature=0.2,
+                    temperature=AI_TEMPERATURE,
 
                 )
-
 
                 raw_content = response.choices[0].message.content
 
                 parsed = _parse_ai_json(raw_content)
-
 
                 if parsed:
 
@@ -438,11 +419,9 @@ Rules:
 
                     }
 
-
             except Exception as inner_e:
 
                 last_error = str(inner_e)
-
 
             print(
                 "AI Resume Analysis error on model",
@@ -452,7 +431,6 @@ Rules:
             )
 
             traceback.print_exc()
-
 
     # Every model attempt failed - surface *why* instead of a
     # silent zero score, so this is debuggable from the terminal
@@ -507,6 +485,11 @@ def analyze_resume(file):
 # System (ATS) compatibility - formatting, structure,
 # keyword usage - separate from the general quality/score
 # analysis above, and returns concrete rewrite suggestions.
+#
+# NOTE: the chatbot only uses the "issues", "suggestions" and
+# "rewritten_bullets" from this check. It never shows this
+# check's "ats_score" - the only score shown anywhere is the
+# official resume_score from analyse_resume_with_ai() above.
 #
 # file: a Django FieldFile (e.g. resume.file), not a path.
 # =====================================================
@@ -598,7 +581,7 @@ Rules:
                     {"role": "user", "content": prompt}
                 ],
 
-                temperature=0.3,
+                temperature=AI_TEMPERATURE,
 
                 response_format={"type": "json_object"},
 
