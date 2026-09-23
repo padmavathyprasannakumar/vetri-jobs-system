@@ -30,6 +30,14 @@ what the model writes - so the frontend's result cards, download
 buttons, and auto-navigation always reflect real data. Guests and
 any other role (placement_admin/super_admin) get the plain
 grounded-context chat, same as before - no tools are offered to them.
+
+RESUME SCORE (single source of truth):
+The resume is scored by AI exactly once per upload/"Analyse Resume"
+click (services/resume_ai.py), and that resume_score is saved on the
+Resume record. Every chatbot path (context, get_resume_feedback,
+check_ats_friendliness, get_career_plan) reads that SAME saved score
+and never asks the AI to produce a new one, so the chatbot and the
+Resume page always show the identical number.
 """
 
 import json
@@ -149,6 +157,10 @@ def build_student_context(user):
 
         resume_data = {
             "score": resume.resume_score,
+            "score_note": (
+                "Official AI resume score - identical to the Resume "
+                "page. Always quote this exact number."
+            ),
             "skills_detected": resume.skills,
             "missing_information": resume.missing_information,
             "suggested_job_categories": resume.job_categories,
@@ -420,7 +432,9 @@ conversation. If an interview you mentioned in an earlier reply is no
 longer listed in upcoming_interviews/interviews_this_week here, it has
 already happened - do not keep repeating its date/time as if it's still
 upcoming just because you said so previously in this chat. Always trust
-this fresh data over your own prior messages.
+this fresh data over your own prior messages. This also applies to the
+resume score - if an earlier reply in this chat mentioned a different
+resume score, ignore it and use the current official score below.
 
 CAREER PLAN: when get_career_plan runs, do not just list resume score,
 missing skills, job matches, and application status as separate,
@@ -434,6 +448,17 @@ learn next, (3) which specific matched job to prioritize applying to
 and why, (4) interview prep if next_interview is present. Keep it to
 4-6 concrete, numbered steps - not a wall of text repeating every
 field in the data.
+
+RESUME SCORE (critical): the student's resume has exactly ONE official
+score - the resume_score saved by the AI analysis on the Resume page.
+It appears in CURRENT USER DATA under resume.score, and as
+resume_score or resume.score in the get_resume_feedback,
+check_ats_friendliness and get_career_plan results. Always quote that
+exact number. Never calculate, estimate, adjust or invent a different
+resume score or percentage yourself, and never present an ATS check
+as a separate score - it only provides issues and suggestions. If the
+student wants a new score after editing their resume, tell them to
+upload the new version or click "Analyse Resume" on the Resume page.
 
 JOB REQUIREMENTS: when get_job_details returns missing_skills, point
 those out clearly as what the student should focus on for that
@@ -1138,6 +1163,11 @@ def _tool_get_interview_prep(profile, user, args):
 
 
 def _tool_get_resume_feedback(profile, user, args):
+    """
+    Returns the OFFICIAL resume score - the one saved by the AI
+    analysis on the Resume page - never a newly calculated one, so
+    the chatbot always shows the same number as the Resume page.
+    """
 
     from jobsystem.models import Resume
 
@@ -1154,14 +1184,24 @@ def _tool_get_resume_feedback(profile, user, args):
 
     return {
         "has_resume": True,
-        "score": resume.resume_score,
+        "resume_score": resume.resume_score,
+        "skills_detected": resume.skills,
         "missing_information": resume.missing_information,
         "suggested_job_categories": resume.job_categories,
-        "summary": f"Resume score is {resume.resume_score}/100.",
+        "summary": (
+            f"Official resume score (same as the Resume page): "
+            f"{resume.resume_score}/100."
+        ),
     }
 
 
 def _tool_check_ats_friendliness(profile, user, args):
+    """
+    Uses AI to find ATS problems and suggestions, but NEVER returns
+    its own separate score - the only score shown anywhere is the
+    official resume_score saved by the Resume page's AI analysis,
+    so the chatbot and the Resume page always show the same number.
+    """
 
     from jobsystem.models import Resume
     from jobsystem.services.resume_ai import analyze_ats_friendliness
@@ -1193,16 +1233,21 @@ def _tool_check_ats_friendliness(profile, user, args):
 
         return {
             "has_resume": True,
+            "resume_score": resume.resume_score,
             "summary": f"Could not run the ATS check right now ({e}).",
         }
 
     return {
         "has_resume": True,
-        "ats_score": result.get("ats_score"),
+        "resume_score": resume.resume_score,
         "issues": result.get("issues", []),
         "suggestions": result.get("suggestions", []),
         "rewritten_bullets": result.get("rewritten_bullets", []),
-        "summary": f"ATS-friendliness score is {result.get('ats_score')}/100.",
+        "summary": (
+            f"Official resume score (same as the Resume page): "
+            f"{resume.resume_score}/100. ATS check found "
+            f"{len(result.get('issues', []))} issue(s) to fix."
+        ),
     }
 
 
@@ -1832,7 +1877,7 @@ def _tool_get_career_plan(profile, user, args):
     from jobsystem.models import Resume, Job, Application, Interview
     from jobsystem.services.job_matching import rank_jobs_for_student
 
-    # ---- Resume ----
+    # ---- Resume (official saved score - same as Resume page) ----
 
     resume = Resume.objects.filter(
         student=user, is_active=True
@@ -2117,7 +2162,12 @@ TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "get_resume_feedback",
-            "description": "Get the student's resume score and suggestions for improving it.",
+            "description": (
+                "Get the student's official resume score (the same "
+                "score shown on the Resume page) and suggestions for "
+                "improving it. Use for any question about the resume "
+                "score."
+            ),
             "parameters": {"type": "object", "properties": {}, "required": []},
         },
     },
@@ -2126,9 +2176,12 @@ TOOL_SCHEMAS = [
         "function": {
             "name": "check_ats_friendliness",
             "description": (
-                "Check how ATS (Applicant Tracking System) friendly "
-                "the student's resume is, optionally against a "
-                "specific target job role."
+                "Check the student's resume for ATS (Applicant "
+                "Tracking System) problems and get concrete fix "
+                "suggestions, optionally against a specific target "
+                "job role. Returns the official resume score plus "
+                "ATS issues/suggestions - it does not produce a "
+                "separate score."
             ),
             "parameters": {
                 "type": "object",
