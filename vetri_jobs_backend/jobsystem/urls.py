@@ -1,5 +1,12 @@
 from django.urls import path
 
+# Lets the frontend swap an expired access token for a new one
+# (POST /api/token/refresh/ with {"refresh": "<refresh token>"}).
+# Without this route the frontend got a 404 when the login token
+# expired, logged the user out, and the chatbot showed
+# "Unable to connect with assistant".
+from rest_framework_simplejwt.views import TokenRefreshView
+
 
 from .views import (
 
@@ -242,6 +249,13 @@ path(
     "auth/reset-password-confirm/",
     ResetPasswordConfirmView.as_view(),
     name="reset-password-confirm"
+),
+
+
+path(
+    "token/refresh/",
+    TokenRefreshView.as_view(),
+    name="token-refresh"
 ),
 
 
