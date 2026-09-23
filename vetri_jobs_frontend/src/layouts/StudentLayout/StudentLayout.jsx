@@ -535,7 +535,17 @@ unreadCount > 0 &&
 </button>
 
 
-<div className="student-profile-mini">
+<div
+
+className="student-profile-mini"
+
+onClick={()=>navigate("/student/profile")}
+
+style={{cursor:"pointer"}}
+
+title="View Profile"
+
+>
 
 
 <FaUserCircle/>
