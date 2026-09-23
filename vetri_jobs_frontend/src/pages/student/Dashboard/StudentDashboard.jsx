@@ -477,7 +477,7 @@ cx="50" cy="50" r="42"
 
 className="donut-value green"
 
-strokeDasharray={`${dashboard?.skills_match_score || (dashboard?.resume?.resume_score || 0)} 100`}
+strokeDasharray={`${dashboard?.skills_match_score || (dashboard?.resume?.score || 0)} 100`}
 
 />
 
@@ -485,7 +485,7 @@ strokeDasharray={`${dashboard?.skills_match_score || (dashboard?.resume?.resume_
 
 <div className="donut-center">
 
-<strong>{dashboard?.skills_match_score || dashboard?.resume?.resume_score || 0}%</strong>
+<strong>{dashboard?.skills_match_score || dashboard?.resume?.score || 0}%</strong>
 
 </div>
 
@@ -494,7 +494,7 @@ strokeDasharray={`${dashboard?.skills_match_score || (dashboard?.resume?.resume_
 <p className="chart-caption">
 
 {
-(dashboard?.skills_match_score || dashboard?.resume?.resume_score || 0) >= 70
+(dashboard?.skills_match_score || dashboard?.resume?.score || 0) >= 70
 ? "Good Match! Based on your resume and skills"
 : "Improve your resume and skills to boost this score"
 }
