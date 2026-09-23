@@ -13,7 +13,9 @@ import {
 
     updateStudentProfile,
 
-    uploadResume
+    uploadResume,
+
+    getResume
 
 } from "../../../api/studentApi";
 
@@ -90,7 +92,16 @@ const [saving,setSaving]=useState(false);
 const [isEditing,setIsEditing]=useState(false);
 
 
-const [resume,setResume]=useState(null);
+// The REAL active resume (from the Resume model, with AI
+// analysis) - separate from the old, unused
+// StudentProfile.resume field. Loaded via getResume() and
+// updated directly from the upload response, so this section
+// always reflects the resume the rest of the app (Dashboard,
+// chatbot, Resume page) actually sees.
+
+const [activeResume,setActiveResume]=useState(null);
+
+const [resumeUploading,setResumeUploading]=useState(false);
 
 
 const [message,setMessage]=useState("");
@@ -112,6 +123,9 @@ useEffect(()=>{
 
 
     loadProfile();
+
+
+    loadActiveResume();
 
 
 },[]);
@@ -194,6 +208,42 @@ setLoading(false);
 
 }
 
+
+
+};
+
+
+
+
+// ================================
+// LOAD REAL ACTIVE RESUME
+// (the AI-analyzed one - not profile.resume)
+// ================================
+
+
+const loadActiveResume=async()=>{
+
+
+try{
+
+
+const response = await getResume();
+
+
+setActiveResume(response.data);
+
+
+}
+catch(error){
+
+// No resume uploaded yet is a normal state, not an error -
+// getResume() 404s in that case, so just leave activeResume
+// as null rather than logging noise for the common case.
+
+setActiveResume(null);
+
+
+}
 
 
 };
@@ -381,40 +431,53 @@ setSaving(false);
 
 
 // ================================
-// RESUME UPLOAD
+// RESUME UPLOAD - now triggers automatically the moment a
+// file is chosen (no separate "Upload Resume" click needed),
+// and the AI analysis result comes directly from the upload
+// response itself - uploadResume() already hits the real,
+// AI-analyzing endpoint (POST /student/resume/), so nothing
+// extra needs to be fetched to show the score/missing info.
 // ================================
 
 
-const handleResumeUpload=async()=>{
+const handleFileSelected=async(e)=>{
 
 
-if(!resume)
+const file = e.target.files[0];
 
-return;
 
+if(!file) return;
+
+
+setResumeUploading(true);
+
+setMessage("");
 
 
 try{
 
 
-await uploadResume(
+const response = await uploadResume(file);
 
-resume
 
-);
+// The upload response IS the freshly AI-analyzed resume -
+// use it directly instead of waiting on a separate reload.
 
+setActiveResume(response.data);
 
 
 setMessage(
 
-"Resume uploaded successfully"
+"Resume uploaded and analysed successfully"
 
 );
 
 
+setTimeout(()=>{
 
-loadProfile();
+setMessage("");
 
+},4000);
 
 
 }
@@ -433,12 +496,31 @@ error
 
 
 
+const data = error.response?.data;
+
 setMessage(
 
-"Resume upload failed"
+data?.error ||
+
+"Resume upload failed - please try a PDF, DOC, or DOCX file"
 
 );
 
+
+
+}
+
+
+finally{
+
+
+setResumeUploading(false);
+
+
+// Let the same file be re-selected again later (e.g. after
+// replacing it) without needing a page refresh first.
+
+e.target.value = "";
 
 
 }
@@ -1951,7 +2033,10 @@ RESUME MANAGEMENT
 
 <h2>
 
+<FaChartLine/>
+
 Resume Management
+
 
 </h2>
 
@@ -1974,43 +2059,25 @@ type="file"
 accept=".pdf,.doc,.docx"
 
 
-onChange={(e)=>{
+disabled={resumeUploading}
 
 
-setResume(
-
-e.target.files[0]
-
-);
-
-
-}}
+onChange={handleFileSelected}
 
 
 />
 
 
 
+{
+resumeUploading &&
 
+<span className="resume-uploading-note">
 
+Uploading and analysing...
 
-<button
-
-
-onClick={handleResumeUpload}
-
-
-
->
-
-
-<FaFileUpload/>
-
-
-Upload Resume
-
-
-</button>
+</span>
+}
 
 
 
@@ -2028,7 +2095,7 @@ Upload Resume
 
 {
 
-profile?.resume &&
+activeResume &&
 
 
 
@@ -2038,7 +2105,7 @@ profile?.resume &&
 <a
 
 
-href={profile.resume}
+href={activeResume.file}
 
 
 target="_blank"
@@ -2050,10 +2117,45 @@ rel="noreferrer"
 >
 
 
-View Current Resume
+<FaFileUpload/> {activeResume.filename || "View Current Resume"}
 
 
 </a>
+
+
+
+{/* AI analysis - now actually shown, from the same
+    upload response that already contains it */}
+
+<div className="resume-ai-summary">
+
+
+<span className="resume-ai-score">
+
+AI Score: {activeResume.resume_score ?? 0}/100
+
+</span>
+
+
+
+{
+activeResume.missing_information?.length > 0 &&
+
+<ul className="resume-ai-missing">
+
+{
+activeResume.missing_information.slice(0,4).map((item,index)=>(
+
+<li key={index}>⚠ {item}</li>
+
+))
+}
+
+</ul>
+}
+
+
+</div>
 
 
 
