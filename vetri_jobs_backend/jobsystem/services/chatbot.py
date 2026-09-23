@@ -357,6 +357,21 @@ When a job in a find_matching_jobs/check_job_eligibility/get_saved_jobs
 result has already_applied set to true, tell the student they've
 already applied to it instead of inviting them to apply again.
 
+NEVER CLAIM AN ACTION SUCCEEDED WITHOUT CALLING THE TOOL (critical):
+you must NEVER say an application was submitted, a query was raised,
+an interview slot was requested, or a skill was added unless you
+ACTUALLY called the matching tool (apply_to_job, raise_placement_query,
+request_interview_slot, update_my_skills) in this exact turn and it
+returned success. Saying "done"/"submitted"/"added" in plain text
+without calling the tool is strictly forbidden, even if the request
+sounds simple or you're confident what the student wants - always
+call the real tool instead of describing the action as if it happened.
+If the student refers to a job by a pronoun ("apply to that job",
+"the above one", "yes apply"), look at the most recent job list you
+showed them in this conversation to resolve the exact job_title, then
+call apply_to_job with that resolved title - do not guess and do not
+skip the tool call because the title wasn't spelled out this turn.
+
 DOWNLOADS: when get_resume_download_link runs successfully, tell the
 student their resume is ready and that a download button is shown
 right in the chat - never write out or mention a URL/link yourself,
@@ -2950,6 +2965,20 @@ def generate_reply(user, message, history=None):
         "content": json.dumps(tool_result, default=str),
     })
 
+    # Write-action tools (they create/modify a real database record) -
+    # their own "summary" is used directly as the reply, bypassing the
+    # second Groq pass entirely. This guarantees the confirmation text
+    # shown to the user always matches exactly what the database write
+    # actually did (success or failure) - never a model-generated
+    # paraphrase that could drift from what really happened, which is
+    # what let the model previously claim "application submitted"
+    # without ever having called apply_to_job at all.
+
+    _WRITE_ACTION_TOOLS = {
+        "apply_to_job", "request_interview_slot",
+        "raise_placement_query", "update_my_skills",
+    }
+
     if tool_name == "start_mock_interview" and tool_result.get("question"):
 
         # The interviewer question is already exactly what should be
@@ -2958,6 +2987,10 @@ def generate_reply(user, message, history=None):
         # student sees the actual question they need to answer.
 
         final_text = tool_result["question"]
+
+    elif tool_name in _WRITE_ACTION_TOOLS:
+
+        final_text = tool_result.get("summary", "Done.")
 
     else:
 
