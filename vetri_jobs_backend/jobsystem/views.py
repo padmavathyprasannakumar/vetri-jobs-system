@@ -7393,6 +7393,8 @@ class ChatbotMessageAPIView(APIView):
         from jobsystem.services.chatbot import (
             generate_reply,
             handle_resume_attachment,
+            split_shown_jobs,
+            shown_jobs_marker,
         )
         from jobsystem.models import ChatConversation, ChatMessage
 
@@ -7429,10 +7431,23 @@ class ChatbotMessageAPIView(APIView):
                 defaults={"user": user},
             )
 
-            history = [
-                {"sender": m.sender, "message": m.message}
-                for m in conversation.messages.order_by("-created_at")[:10][::-1]
-            ]
+            # Saved bot messages carry a hidden marker listing the job ids
+            # shown on their cards - split it out so the AI sees clean text
+            # plus a separate "jobs" list ("apply above job" needs it).
+
+            history = []
+
+            for m in conversation.messages.order_by("-created_at")[:10][::-1]:
+
+                clean_text, shown_ids = split_shown_jobs(m.message)
+
+                entry = {"sender": m.sender, "message": clean_text}
+
+                if shown_ids:
+
+                    entry["jobs"] = shown_ids
+
+                history.append(entry)
 
             ChatMessage.objects.create(
                 conversation=conversation,
@@ -7522,10 +7537,18 @@ class ChatbotMessageAPIView(APIView):
 
         if conversation:
 
+            # remember which jobs this reply showed as cards
+
+            shown_ids = [
+                j.get("id")
+                for j in (response_payload.get("matched_jobs") or [])
+                if isinstance(j, dict)
+            ]
+
             ChatMessage.objects.create(
                 conversation=conversation,
                 sender="bot",
-                message=reply_text,
+                message=reply_text + shown_jobs_marker(shown_ids),
             )
 
         return Response(response_payload)
@@ -7538,6 +7561,7 @@ class ChatbotHistoryAPIView(APIView):
     def get(self, request):
 
         from jobsystem.models import ChatConversation
+        from jobsystem.services.chatbot import split_shown_jobs
 
         conversation = ChatConversation.objects.filter(
             session_id=f"user-{request.user.id}"
@@ -7550,7 +7574,7 @@ class ChatbotHistoryAPIView(APIView):
         return Response([
             {
                 "sender": m.sender,
-                "message": m.message,
+                "message": split_shown_jobs(m.message)[0],
                 "timestamp": m.created_at,
             }
             for m in conversation.messages.all()
