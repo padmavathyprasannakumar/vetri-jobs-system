@@ -534,7 +534,14 @@ application itself - it only asks the student "Apply to X at Y?" and shows
 Yes / No buttons. The application is submitted by the system only after the
 student taps Yes. So after calling apply_to_job do not say the application
 was sent, and never claim it was submitted yourself; the tool's own question
-is the reply.
+is the reply. When calling it, pass ONLY the job title in job_title (for
+example "Software Tester") and the company separately in company_name - never
+join them as "Software Tester - TechNova". If the student says "yes apply",
+"apply above job" or similar right after you showed a job, use that job's
+title and company from the card you just showed.
+
+PLAIN TEXT ONLY: the chat window does not render markdown, so never use
+**bold**, # headings or markdown links - write plain sentences.
 
 MORE THAN ONE REQUEST: if the student asks for several things at once (for
 example "show my applications and my interviews"), call all the matching
@@ -623,8 +630,9 @@ limit=1 (or limit=3 for "top jobs"), then reply by naming the single
 best job and giving 1-2 sentences of specific reasons taken from the
 tool result's reasons/match_score (e.g. which of their skills match).
 If two jobs have the same match score, say so honestly and mention
-what differs. Keep it short - the job card below already shows the
-details.
+what differs. Do not set recent_only for these questions unless the
+student says "new". Keep it short - the job card below already shows
+the details.
 
 JOB REQUIREMENTS: when get_job_details returns missing_skills, point
 those out clearly as what the student should focus on for that
@@ -825,7 +833,7 @@ def _tool_find_matching_jobs(profile, user, args):
         for job, score, reasons in ranked
     ]
 
-    return {
+    result = {
         "matched_jobs": matched_jobs,
         "navigate_to": "/student/jobs",
         "summary": (
@@ -839,6 +847,18 @@ def _tool_find_matching_jobs(profile, user, args):
             )
         ),
     }
+
+    # A single recommended job gets one-tap Yes / No buttons, so "would you
+    # like to apply?" can be answered right away.
+
+    if limit == 1 and not matched_jobs[0]["already_applied"]:
+
+        result["quick_replies"] = [
+            _apply_chip_text(ranked[0][0]),
+            "No, cancel",
+        ]
+
+    return result
 
 
 def _tool_check_job_eligibility(profile, user, args):
@@ -1225,9 +1245,157 @@ def _do_apply(profile, user, job):
     }
 
 
-def _confirm_apply_text(job_title, company_name):
+def _confirm_apply_text(job_title, company_name, location=None):
 
-    return f"Yes, apply to {job_title} at {company_name}"
+    text = f"Yes, apply to {job_title} at {company_name}"
+
+    if location:
+
+        text += f" ({location})"
+
+    return text
+
+
+def _apply_chip_text(job):
+    """
+    Text of the "Yes, apply to ..." button for a job. If another open job
+    has the very same title AND company (e.g. two Software Tester posts in
+    different cities), the location is added so each button is unique.
+    """
+
+    from jobsystem.models import Job
+
+    company_name = job.company.company_name if job.company else "the company"
+
+    duplicates = Job.objects.filter(
+        status="active", is_active=True,
+        title__iexact=job.title, company=job.company,
+    ).count()
+
+    location = (getattr(job, "location", "") or "").strip()
+
+    return _confirm_apply_text(
+        job.title, company_name,
+        location if duplicates > 1 and location else None,
+    )
+
+
+_JOB_TEXT_SEPARATORS = [
+    " \u2013 ", " \u2014 ", " - ", " at ", " @ ", " | ", ", ",
+]
+
+
+def _normalize_job_query(text):
+    """
+    "the Software Tester jobs" -> "Software Tester". Students (and the AI)
+    say things like "software tester jobs" or add quotes around the title.
+    """
+
+    t = (text or "").strip().strip("\"'").strip()
+
+    t = re.sub(r"\s+", " ", t)
+
+    t = re.sub(r"^(the|a|an)\s+", "", t, flags=re.IGNORECASE)
+
+    t = re.sub(
+        r"\s+(jobs?|positions?|roles?|openings?|vacanc(?:y|ies))$",
+        "", t, flags=re.IGNORECASE,
+    )
+
+    return t.strip()
+
+
+def _resolve_jobs(job_title, company_name=""):
+    """
+    Finds the open job(s) a student means, however it was written:
+      "Software Tester"
+      "Software Tester - TechNova Solutions Pvt Ltd"   (any dash, "at", "@")
+      title + separate company name
+      "software tester jobs"
+    Returns a list of matching Job objects (possibly empty).
+    """
+
+    from jobsystem.models import Job
+
+    base = Job.objects.filter(
+        status="active", is_active=True
+    ).select_related("company")
+
+    title = _normalize_job_query(job_title)
+
+    company = (company_name or "").strip()
+
+    if not title:
+
+        return []
+
+    # 1) "<title> <separator> <company>" - try every separator position
+
+    if not company:
+
+        lowered = title.lower()
+
+        for sep in _JOB_TEXT_SEPARATORS:
+
+            start = 0
+
+            while True:
+
+                idx = lowered.find(sep.lower(), start)
+
+                if idx == -1:
+
+                    break
+
+                title_part = title[:idx].strip()
+
+                company_part = title[idx + len(sep):].strip()
+
+                hits = list(base.filter(
+                    title__iexact=title_part,
+                    company__company_name__iexact=company_part,
+                ))
+
+                if hits:
+
+                    return hits
+
+                start = idx + 1
+
+    # 2) the title (optionally narrowed by the company)
+
+    qs = base.filter(title__icontains=title)
+
+    if company:
+
+        qs = qs.filter(company__company_name__icontains=company)
+
+    hits = list(qs)
+
+    if hits:
+
+        # an exact title beats a partial one ("Tester" vs "Software Tester")
+
+        exact = [j for j in hits if j.title.lower() == title.lower()]
+
+        return exact or hits
+
+    # 3) the text CONTAINS an open job's full title
+
+    lowered = title.lower()
+
+    contained = [j for j in base if j.title.lower() in lowered]
+
+    if len(contained) > 1:
+
+        with_company = [
+            j for j in contained
+            if j.company and j.company.company_name.lower() in lowered
+        ]
+
+        contained = with_company or contained
+
+    return contained
 
 
 def _tool_apply_to_job(profile, user, args):
@@ -1247,12 +1415,9 @@ def _tool_apply_to_job(profile, user, args):
             "summary": "Which job would you like to apply to? Tell me the job title.",
         }
 
-    candidates = Job.objects.filter(
-        status="active", is_active=True,
-        title__icontains=job_title,
-    ).select_related("company")
+    candidates = _resolve_jobs(job_title, args.get("company_name") or "")
 
-    count = candidates.count()
+    count = len(candidates)
 
     if count == 0:
 
@@ -1278,8 +1443,7 @@ def _tool_apply_to_job(profile, user, args):
             "success": False,
             "options": options,
             "quick_replies": [
-                _confirm_apply_text(o["title"], o["company"])
-                for o in options
+                _apply_chip_text(j) for j in candidates[:5]
             ] + ["No, cancel"],
             "summary": (
                 f"{count} jobs match \"{job_title}\". "
@@ -1287,7 +1451,7 @@ def _tool_apply_to_job(profile, user, args):
             ),
         }
 
-    job = candidates.first()
+    job = candidates[0]
 
     company_name = job.company.company_name if job.company else "the company"
 
@@ -1297,7 +1461,7 @@ def _tool_apply_to_job(profile, user, args):
 
         return {"success": False, "summary": blocker}
 
-    confirm_text = _confirm_apply_text(job.title, company_name)
+    confirm_text = _apply_chip_text(job)
 
     return {
         "success": False,
@@ -1349,6 +1513,19 @@ def _handle_apply_confirmation(profile, user, message):
 
     rest = match.group("rest")
 
+    # optional trailing "(Chennai)" - used when two open jobs share the
+    # same title and company
+
+    location = None
+
+    loc_match = re.search(r"\s*\(([^()]+)\)\s*$", rest)
+
+    if loc_match:
+
+        location = loc_match.group(1).strip()
+
+        rest = rest[:loc_match.start()].strip()
+
     job = None
 
     # "<title> at <company>" - try every " at " as the split point,
@@ -1360,11 +1537,17 @@ def _handle_apply_confirmation(profile, user, message):
 
         company = rest[split.end():].strip()
 
-        job = Job.objects.filter(
+        lookup = dict(
             status="active", is_active=True,
             title__iexact=title,
             company__company_name__iexact=company,
-        ).select_related("company").first()
+        )
+
+        if location:
+
+            lookup["location__iexact"] = location
+
+        job = Job.objects.filter(**lookup).select_related("company").first()
 
         if job:
 
@@ -2485,17 +2668,26 @@ TOOL_SCHEMAS = [
         "function": {
             "name": "apply_to_job",
             "description": (
-                "Submit a job application for the student to a "
-                "specific open job by title. Only use when the "
-                "student explicitly asks to apply to a named job."
+                "Start an application for the student to a specific "
+                "open job. This only asks the student to confirm "
+                "(Yes / No buttons) - it never submits by itself. "
+                "Only use when the student explicitly asks to apply "
+                "to a named job, or says yes to applying to a job "
+                "you just showed. Pass ONLY the job title in "
+                "job_title (e.g. \"Software Tester\") and the company "
+                "in company_name - never join them into one string."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "job_title": {
                         "type": "string",
-                        "description": "The job title to apply to, as the student mentioned it.",
-                    }
+                        "description": "Just the job title, e.g. \"Software Tester\" - without the company name.",
+                    },
+                    "company_name": {
+                        "type": "string",
+                        "description": "The company offering the job, if known (e.g. from a job card you showed).",
+                    },
                 },
                 "required": ["job_title"],
             },
@@ -3408,6 +3600,16 @@ _REFRESH_AFTER = {
 }
 
 
+def _clean_reply(text):
+    """The chat shows plain text, so strip markdown the model sometimes adds."""
+
+    text = (text or "").replace("**", "")
+
+    text = re.sub(r"^\s{0,3}#{1,6}\s*", "", text, flags=re.MULTILINE)
+
+    return text.strip()
+
+
 def _execute_tool_calls(tool_calls, tool_executors, actor_profile, user):
     """
     Runs every tool the model asked for (at most 3) and returns a list of
@@ -3714,7 +3916,7 @@ def generate_reply(user, message, history=None, page_context=None):
 
         try:
 
-            return _call_groq_plain(messages)
+            return _clean_reply(_call_groq_plain(messages))
 
         except Exception as e:
 
@@ -3744,7 +3946,7 @@ def generate_reply(user, message, history=None, page_context=None):
 
     if not tool_calls:
 
-        return (choice_message.content or "").strip()
+        return _clean_reply(choice_message.content or "")
 
     executed = _execute_tool_calls(
         tool_calls, tool_executors, actor_profile, user
@@ -3839,7 +4041,7 @@ def generate_reply(user, message, history=None, page_context=None):
                 messages, tool_schemas, tool_choice="none"
             )
 
-            final_text = (final_response.choices[0].message.content or "").strip()
+            final_text = _clean_reply(final_response.choices[0].message.content or "")
 
         except Exception as e:
 
