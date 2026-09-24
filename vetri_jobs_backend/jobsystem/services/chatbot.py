@@ -166,26 +166,10 @@ def build_student_context(user):
             "suggested_job_categories": resume.job_categories,
         }
 
-    # top 3 recommended jobs, reusing the same AI matching engine
-    # used on the Jobs page and Dashboard
-
-    open_job_ids = applications.values_list("job_id", flat=True)
-
-    candidate_jobs = Job.objects.filter(
-        status="active", is_active=True
-    ).exclude(id__in=open_job_ids)[:30]
-
-    ranked = rank_jobs_for_student(profile, candidate_jobs)[:3]
-
-    recommended_jobs = [
-        {
-            "title": job.title,
-            "company": job.company.company_name if job.company else "",
-            "match_score": score,
-            "reasons": reasons,
-        }
-        for job, score, reasons in ranked
-    ]
+    # NOTE: the per-message AI job ranking ("recommended_jobs") was
+    # removed from this context - it ran the matching engine on every
+    # single chat message (slow/costly). The find_matching_jobs tool
+    # does the same ranking on demand, only when it's actually needed.
 
     return {
         "role": "student",
@@ -198,7 +182,6 @@ def build_student_context(user):
         "upcoming_interviews": upcoming_interviews,
         "interviews_this_week": interviews_this_week,
         "resume": resume_data,
-        "recommended_jobs": recommended_jobs,
     }
 
 
@@ -302,6 +285,161 @@ def build_context(user):
         return build_placement_context(user)
 
     return {"role": role or "guest"}
+
+
+# =====================================================
+# PROACTIVE ALERTS (chatbot speaks first, no AI call)
+# =====================================================
+
+def build_proactive_alerts(user):
+    """Things the student should hear about without having to ask."""
+
+    from jobsystem.models import (
+        Interview, Notification, Resume, Job, Application,
+    )
+
+    if not user or getattr(user, "role", None) != "student":
+        return []
+
+    profile = getattr(user, "student_profile", None)
+
+    if not profile:
+        return []
+
+    now = timezone.now()
+
+    alerts = []
+
+    # 1) Interview within the next 24 hours
+    soon = Interview.objects.filter(
+        application__student=profile,
+        interview_date__gte=now,
+        interview_date__lte=now + timedelta(hours=24),
+        status__in=["scheduled", "rescheduled"],
+    ).select_related(
+        "application__job", "application__job__company"
+    ).order_by("interview_date").first()
+
+    if soon:
+
+        hours = max(int((soon.interview_date - now).total_seconds() // 3600), 0)
+
+        when = (
+            "in less than an hour" if hours == 0
+            else f"in about {hours} hour(s)"
+        )
+
+        alerts.append({
+            "key": f"interview:{soon.id}:{soon.interview_date:%Y%m%d%H%M}",
+            "type": "interview_soon",
+            "text": (
+                f"Reminder: your interview for {soon.application.job.title} "
+                f"is {when} ({soon.interview_date:%I:%M %p}). "
+                "Want prep tips or a quick mock interview?"
+            ),
+            "actions": [
+                "Help me prepare for my interview",
+                "Start a mock interview",
+            ],
+        })
+
+    # 2) Unread notifications
+    unread = Notification.objects.filter(user=user, is_read=False).count()
+
+    if unread:
+
+        alerts.append({
+            "key": f"notif:{unread}",
+            "type": "notifications",
+            "text": f"You have {unread} unread notification(s).",
+            "actions": ["Show my notifications"],
+        })
+
+    # 3) No active resume
+    if not Resume.objects.filter(student=user, is_active=True).exists():
+
+        alerts.append({
+            "key": "resume:missing",
+            "type": "resume",
+            "text": (
+                "You haven't uploaded a resume yet. "
+                "Attach one here and I'll score it."
+            ),
+            "actions": [],
+        })
+
+    # 4) New jobs from the last 3 days that the student hasn't applied to
+    applied_ids = Application.objects.filter(
+        student=profile
+    ).values_list("job_id", flat=True)
+
+    new_jobs = Job.objects.filter(
+        status="active", is_active=True,
+        created_at__gte=now - timedelta(days=3),
+    ).exclude(id__in=applied_ids).count()
+
+    if new_jobs:
+
+        alerts.append({
+            "key": f"newjobs:{new_jobs}:{now:%Y%m%d}",
+            "type": "new_jobs",
+            "text": (
+                f"{new_jobs} new job(s) were posted in the last 3 days "
+                "that you haven't applied to."
+            ),
+            "actions": ["Show me new jobs"],
+        })
+
+    # 5) Incomplete profile
+    completion = getattr(profile, "profile_completion", 100) or 0
+
+    if completion < 80:
+
+        alerts.append({
+            "key": f"profile:{completion}",
+            "type": "profile",
+            "text": (
+                f"Your profile is {completion}% complete. "
+                "A complete profile improves your job matches."
+            ),
+            "actions": ["Show my profile"],
+        })
+
+    return alerts
+
+
+def _describe_page(page_context):
+    """
+    Turns the frontend's page_context into a safe description. The job is
+    looked up on the server by id, so the client can't inject free text
+    into the prompt.
+    """
+
+    from jobsystem.models import Job
+
+    if not isinstance(page_context, dict):
+        return ""
+
+    desc = f"Page: {str(page_context.get('page', ''))[:40]}."
+
+    job_id = str(page_context.get("job_id", ""))
+
+    if job_id.isdigit():
+
+        job = Job.objects.filter(
+            id=int(job_id), status="active"
+        ).select_related("company").first()
+
+        if job:
+
+            company = job.company.company_name if job.company else "Company"
+
+            desc += (
+                f' The student is viewing the job "{job.title}" '
+                f"at {company}."
+            )
+
+    return desc
 
 
 def get_knowledge_base_snippets(limit=12):
@@ -598,7 +736,7 @@ def _tool_find_matching_jobs(profile, user, args):
 
     jobs_qs = Job.objects.filter(
         status="active", is_active=True
-    ).select_related("company")
+    ).select_related("company").order_by("-created_at")
 
     if recent_only:
 
@@ -992,6 +1130,33 @@ def _tool_apply_to_job(profile, user, args):
             "summary": f"The student already applied to {job.title} at {company_name}.",
         }
 
+    from jobsystem.services.eligibility import check_eligibility
+
+    try:
+
+        eligibility = check_eligibility(profile, job)
+
+    except Exception:
+
+        eligibility = {"eligible": True}
+
+    if not eligibility.get("eligible", True):
+
+        why = eligibility.get("reasons") or eligibility.get("reason") or ""
+
+        if isinstance(why, (list, tuple)):
+
+            why = "; ".join(str(w) for w in why)
+
+        return {
+            "success": False,
+            "summary": (
+                f"You're not eligible to apply to {job.title} at "
+                f"{company_name} based on your current profile."
+                + (f" Reason: {why}" if why else "")
+            ),
+        }
+
     Application.objects.create(
         student=profile,
         job=job,
@@ -1038,8 +1203,9 @@ def _tool_get_application_status(profile, user, args):
 
             upcoming_iv = Interview.objects.filter(
                 application=app,
+                interview_date__gte=timezone.now(),
                 status__in=["scheduled", "rescheduled"],
-            ).order_by("-interview_date").first()
+            ).order_by("interview_date").first()
 
             if upcoming_iv:
 
@@ -2950,7 +3116,7 @@ def _call_groq_plain(messages):
     raise last_error or Exception("Chatbot: all models failed")
 
 
-def _call_groq_with_tools(messages, tools):
+def _call_groq_with_tools(messages, tools, tool_choice="auto"):
 
     last_error = None
 
@@ -2962,7 +3128,7 @@ def _call_groq_with_tools(messages, tools):
                 model=model_name,
                 messages=messages,
                 tools=tools,
-                tool_choice="auto",
+                tool_choice=tool_choice,
                 temperature=0.3,
                 max_tokens=600,
             )
@@ -2990,20 +3156,25 @@ _FORWARDED_LIST_KEYS = (
 )
 
 
-def generate_reply(user, message, history=None):
+def generate_reply(user, message, history=None, page_context=None):
     """
     history: optional list of {"sender": "user"|"bot", "message": "..."}
     for short conversational continuity.
 
+    page_context: optional dict from the frontend describing where the
+    user currently is (e.g. {"page": "student/jobs", "job_id": 12}).
+
     Returns either a plain string (guests, placement_admin/super_admin,
     or any tool-less reply) or a dict {"reply": ..., plus extra keys
-    like "matched_jobs"/"candidates"/"resume_download"/"navigate_to"}
-    when a tool ran.
+    like "matched_jobs"/"candidates"/"resume_download"/"navigate_to"/
+    "refresh"} when a tool ran.
     """
 
     # ---------------- AI SECURITY (Requirement 31) ----------------
+    # Recruiters legitimately ask about candidates, so the
+    # "other students" probe filter only applies to non-company users.
 
-    if _is_security_probe(message):
+    if getattr(user, "role", None) != "company" and _is_security_probe(message):
 
         return SECURITY_REFUSAL
 
@@ -3056,6 +3227,17 @@ def generate_reply(user, message, history=None):
             student=actor_profile, status="in_progress"
         ).order_by("-created_at").first()
 
+        # Abandoned sessions expire after 30 minutes, so the student
+        # isn't stuck answering an old interview forever.
+
+        if active_session and timezone.now() - active_session.created_at > timedelta(minutes=30):
+
+            active_session.status = "cancelled"
+
+            active_session.save()
+
+            active_session = None
+
         if active_session:
 
             if _looks_like_platform_request(message):
@@ -3092,6 +3274,16 @@ def generate_reply(user, message, history=None):
         system_prompt += (
             "\n\nADDITIONAL INSTRUCTIONS FROM PLACEMENT ADMIN:\n"
             + setting.system_prompt
+        )
+
+    page_desc = _describe_page(page_context)
+
+    if page_desc:
+
+        system_prompt += (
+            "\n\nCURRENT PAGE: " + page_desc +
+            " If the student says 'this job', 'this role' or 'apply here', "
+            "they mean the job named above."
         )
 
     messages = [
@@ -3231,7 +3423,12 @@ def generate_reply(user, message, history=None):
 
         try:
 
-            final_response = _call_groq_with_tools(messages, tool_schemas)
+            # tool_choice="none": this second pass must only write
+            # the reply text, never call another tool.
+
+            final_response = _call_groq_with_tools(
+                messages, tool_schemas, tool_choice="none"
+            )
 
             final_text = (final_response.choices[0].message.content or "").strip()
 
@@ -3284,5 +3481,18 @@ def generate_reply(user, message, history=None):
     if tool_result.get("navigate_to"):
 
         result_payload["navigate_to"] = tool_result["navigate_to"]
+
+    # Tells the frontend which tabs to reload after a chatbot action
+
+    _REFRESH_AFTER = {
+        "apply_to_job": ["applications", "dashboard", "jobs"],
+        "update_my_skills": ["profile", "dashboard", "jobs"],
+        "request_interview_slot": ["interviews"],
+        "raise_placement_query": ["queries"],
+    }
+
+    if tool_name in _REFRESH_AFTER and tool_result.get("success"):
+
+        result_payload["refresh"] = _REFRESH_AFTER[tool_name]
 
     return result_payload
