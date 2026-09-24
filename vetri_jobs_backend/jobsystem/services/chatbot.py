@@ -930,6 +930,7 @@ def _tool_get_job_details(profile, user, args):
         "match_score": score,
         "apply_url": f"/student/jobs/{job.id}/apply",
         "details_url": f"/student/jobs/{job.id}",
+        "navigate_to": f"/student/jobs/{job.id}",
         "summary": f"Requirements for {job.title} at {company_name}.",
     }
 
@@ -1229,6 +1230,7 @@ def _tool_get_application_status(profile, user, args):
     return {
         "applications": applications,
         "has_interview_scheduled": has_interview_scheduled,
+        "navigate_to": "/student/applications",
         "summary": (
             f"{len(applications)} applications found."
             if applications else
@@ -1263,6 +1265,7 @@ def _tool_get_upcoming_interviews(profile, user, args):
 
     return {
         "interviews": interviews,
+        "navigate_to": "/student/interviews",
         "summary": (
             f"{len(interviews)} upcoming interview(s)"
             + (" this week." if week_only else ".")
@@ -1354,6 +1357,7 @@ def _tool_get_resume_feedback(profile, user, args):
         "skills_detected": resume.skills,
         "missing_information": resume.missing_information,
         "suggested_job_categories": resume.job_categories,
+        "navigate_to": "/student/resume",
         "summary": (
             f"Official resume score (same as the Resume page): "
             f"{resume.resume_score}/100."
