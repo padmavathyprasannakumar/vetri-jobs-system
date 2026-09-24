@@ -489,6 +489,15 @@ function Chatbot(){
                     candidates: data.candidates || null,
 
 
+                    // Yes / No style buttons (e.g. "Apply to X at Y?")
+
+                    quickReplies:
+
+                    data.quick_replies && data.quick_replies.length
+
+                    ? data.quick_replies : null,
+
+
                     resumeDownload: data.resume_download || null,
 
 
