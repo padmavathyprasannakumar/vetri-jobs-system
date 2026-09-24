@@ -598,6 +598,16 @@ as a separate score - it only provides issues and suggestions. If the
 student wants a new score after editing their resume, tell them to
 upload the new version or click "Analyse Resume" on the Resume page.
 
+BEST-JOB QUESTIONS (important): when the student asks which job is
+best / most preferred / most suitable for them, or which one to apply
+to first, do NOT just list everything. Call find_matching_jobs with
+limit=1 (or limit=3 for "top jobs"), then reply by naming the single
+best job and giving 1-2 sentences of specific reasons taken from the
+tool result's reasons/match_score (e.g. which of their skills match).
+If two jobs have the same match score, say so honestly and mention
+what differs. Keep it short - the job card below already shows the
+details.
+
 JOB REQUIREMENTS: when get_job_details returns missing_skills, point
 those out clearly as what the student should focus on for that
 specific role, alongside skills_required.
@@ -734,6 +744,19 @@ def _tool_find_matching_jobs(profile, user, args):
 
     recent_only = bool(args.get("recent_only"))
 
+    # "Which job is best for me?" wants just the top pick(s), not the
+    # whole list - the model passes limit=1-3 for those questions.
+
+    try:
+
+        limit = int(args.get("limit") or 5)
+
+    except (TypeError, ValueError):
+
+        limit = 5
+
+    limit = max(1, min(limit, 5))
+
     jobs_qs = Job.objects.filter(
         status="active", is_active=True
     ).select_related("company").order_by("-created_at")
@@ -762,6 +785,8 @@ def _tool_find_matching_jobs(profile, user, args):
             if job.id not in applied_job_ids
         ]
 
+    ranked = ranked[:limit]
+
     if not ranked:
 
         return {
@@ -788,7 +813,12 @@ def _tool_find_matching_jobs(profile, user, args):
         "summary": (
             f"Found {len(matched_jobs)} newly posted job(s) the student hasn't applied to yet."
             if recent_only else
-            f"Found {len(matched_jobs)} jobs matching the student's profile."
+            (
+                f"Top match for the student: {matched_jobs[0]['title']} "
+                f"at {matched_jobs[0]['company']}."
+                if limit < 5 else
+                f"Found {len(matched_jobs)} jobs matching the student's profile."
+            )
         ),
     }
 
@@ -2173,7 +2203,18 @@ TOOL_SCHEMAS = [
                             "to. Leave false/omitted for a general "
                             "'find jobs for me' request."
                         ),
-                    }
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": (
+                            "How many jobs to return (1-5). Use 1 when "
+                            "the student asks which ONE job is best / "
+                            "most preferred / most suitable / what to "
+                            "apply to first; use 3 for 'top jobs'. "
+                            "Omit for a general 'find jobs for me' "
+                            "request (returns up to 5)."
+                        ),
+                    },
                 },
                 "required": [],
             },
