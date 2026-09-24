@@ -159,6 +159,13 @@ from .views import (
 
 
     # =====================================================
+    # BACKGROUND JOBS (called by cron-job.org)
+    # =====================================================
+
+    BackgroundInterviewReminderView,
+
+
+    # =====================================================
     # WHATSAPP
     # =====================================================
 
@@ -931,6 +938,15 @@ urlpatterns = [
         "chatbot/settings/",
         ChatbotSettingView.as_view(),
         name="chat-settings"
+    ),
+
+
+    # Scheduled job - sends interview reminders. Protected by the
+    # CRON_SECRET environment variable (see BackgroundInterviewReminderView).
+    path(
+        "background/interview-reminders/",
+        BackgroundInterviewReminderView.as_view(),
+        name="background-interview-reminders"
     ),
 
 
