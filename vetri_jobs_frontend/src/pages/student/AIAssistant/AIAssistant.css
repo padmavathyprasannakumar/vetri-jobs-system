@@ -472,3 +472,61 @@
 
     .ai-quick-actions-grid{ grid-template-columns: 1fr; }
 }
+/* =====================================================
+   ADD THESE RULES TO THE BOTTOM OF AIAssistant.css
+   (nothing existing is changed - the new interview /
+   application / notification cards reuse your existing
+   .ai-chat-job-card styles)
+   ===================================================== */
+
+
+.ai-quick-replies {
+
+    display: flex;
+
+    flex-wrap: wrap;
+
+    gap: 6px;
+
+    margin-top: 8px;
+
+}
+
+
+.ai-quick-reply {
+
+    border: 1px solid #c7d2fe;
+
+    background: #eef2ff;
+
+    color: #3730a3;
+
+    border-radius: 16px;
+
+    padding: 5px 12px;
+
+    font-size: 13px;
+
+    font-weight: 500;
+
+    cursor: pointer;
+
+    transition: background 0.15s ease;
+
+}
+
+
+.ai-quick-reply:hover:not(:disabled) {
+
+    background: #e0e7ff;
+
+}
+
+
+.ai-quick-reply:disabled {
+
+    opacity: 0.5;
+
+    cursor: not-allowed;
+
+}
