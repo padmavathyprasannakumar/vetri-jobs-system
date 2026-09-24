@@ -7265,6 +7265,14 @@ class WhatsAppWebhookView(APIView):
 
         reply = generate_reply(matched_user, text, history=None)
 
+        # generate_reply() returns a dict (not a string) whenever a
+        # chatbot tool ran - WhatsApp can only send text, so take just
+        # the reply text (otherwise "text" + dict below would crash).
+
+        if isinstance(reply, dict):
+
+            reply = reply.get("reply", "")
+
         if not matched_user:
 
             reply = (
@@ -7302,11 +7310,67 @@ class WhatsAppWebhookView(APIView):
         return Response({"status": "ok"})
 
 
+# =====================================================
+# CHATBOT RATE LIMITS
+# Stops guests (the chat endpoint is public) from burning the
+# Groq quota. Rates are set here, so no settings.py change needed.
+# =====================================================
+
+from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
+
+
+class ChatbotAnonThrottle(AnonRateThrottle):
+
+    scope = "chatbot_anon"
+
+    rate = "20/minute"
+
+
+class ChatbotUserThrottle(UserRateThrottle):
+
+    scope = "chatbot_user"
+
+    rate = "60/minute"
+
+
+# =====================================================
+# CHATBOT PROACTIVE ALERTS
+# GET /chatbot/proactive/
+# Polled by the chat widget (~every 60s). Returns things the
+# student should hear about without asking: interview soon,
+# unread notifications, no resume, new jobs, incomplete profile.
+# No AI call, so it is cheap.
+# =====================================================
+
+
+class ChatbotProactiveView(APIView):
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+
+        from jobsystem.services.chatbot import build_proactive_alerts
+
+        try:
+
+            alerts = build_proactive_alerts(request.user)
+
+        except Exception as e:
+
+            print("ChatbotProactiveView error:", e)
+
+            alerts = []
+
+        return Response({"alerts": alerts})
+
+
 class ChatbotMessageAPIView(APIView):
 
     permission_classes = [AllowAny]
 
     parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    throttle_classes = [ChatbotAnonThrottle, ChatbotUserThrottle]
 
     def post(self, request):
 
@@ -7390,10 +7454,27 @@ class ChatbotMessageAPIView(APIView):
 
         else:
 
+            # The widget sends where the student currently is (e.g. a job
+            # page) so "apply to this job" works without a title. Sent as
+            # JSON normally, or as a JSON string with multipart uploads.
+
+            page_context = request.data.get("page_context")
+
+            if isinstance(page_context, str):
+
+                try:
+
+                    page_context = json.loads(page_context)
+
+                except Exception:
+
+                    page_context = None
+
             reply = generate_reply(
                 request.user,
                 user_message,
                 history=history,
+                page_context=page_context,
             )
 
         # generate_reply() (and handle_resume_attachment) normally
@@ -7415,6 +7496,13 @@ class ChatbotMessageAPIView(APIView):
             reply_text = reply
 
             response_payload = {"reply": reply}
+
+        # After a resume upload through the chat, tell the frontend to
+        # reload the Resume and Dashboard tabs.
+
+        if attachment and user and getattr(user, "student_profile", None):
+
+            response_payload["refresh"] = ["resume", "dashboard"]
 
         if conversation:
 
