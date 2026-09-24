@@ -23,9 +23,12 @@ import { useEffect, useRef } from "react";
 //    });
 // ---------------------------------------------------------------------
 
-const shownAlertKeys = new Map();   // userId -> Set of alert keys
+const shownAlertKeys = new Map();   // "scope:userId" -> Set of alert keys
 
-export function useProactiveAlerts({ api, userId, enabled, onAlerts, intervalMs = 60000 }) {
+// `scope` lets two chat screens (e.g. the floating widget and the full-page
+// AI Assistant) each show the alerts, instead of whichever polls first
+// "using them up" so the other never sees them.
+export function useProactiveAlerts({ api, userId, enabled, onAlerts, scope = "default", intervalMs = 60000 }) {
   // keep the latest callback without restarting the interval
   const cb = useRef(onAlerts);
   useEffect(() => { cb.current = onAlerts; }, [onAlerts]);
@@ -33,8 +36,9 @@ export function useProactiveAlerts({ api, userId, enabled, onAlerts, intervalMs 
   useEffect(() => {
     if (!enabled || !userId) return undefined;
 
-    if (!shownAlertKeys.has(userId)) shownAlertKeys.set(userId, new Set());
-    const shown = shownAlertKeys.get(userId);
+    const mapKey = `${scope}:${userId}`;
+    if (!shownAlertKeys.has(mapKey)) shownAlertKeys.set(mapKey, new Set());
+    const shown = shownAlertKeys.get(mapKey);
     let stopped = false;
 
     const check = async () => {
@@ -54,7 +58,7 @@ export function useProactiveAlerts({ api, userId, enabled, onAlerts, intervalMs 
     check();
     const id = setInterval(check, intervalMs);
     return () => { stopped = true; clearInterval(id); };
-  }, [api, userId, enabled, intervalMs]);
+  }, [api, userId, enabled, scope, intervalMs]);
 }
 
 
