@@ -1151,6 +1151,65 @@ def _tool_get_company_skill_gap(profile, user, args):
 # generate_reply() - no AI involved in that step.
 # =====================================================
 
+# The AI never sees job CARDS - chat history only stores the bot's sentences.
+# So when a student says "apply above job" the AI had to guess (and picked the
+# wrong job). The chat view therefore stores the ids of the jobs it showed as a
+# small marker at the end of the saved bot message; it is stripped again
+# before the history reaches the AI or the frontend.
+
+_SHOWN_JOBS_RE = re.compile(r"\n?\[\[jobs:([\d,]+)\]\]\s*$")
+
+
+def shown_jobs_marker(job_ids):
+
+    ids = [str(int(i)) for i in job_ids if i]
+
+    return f"\n[[jobs:{','.join(ids)}]]" if ids else ""
+
+
+def split_shown_jobs(text):
+    """(clean_text, [job ids]) - removes the marker added by shown_jobs_marker."""
+
+    text = text or ""
+
+    match = _SHOWN_JOBS_RE.search(text)
+
+    if not match:
+
+        return text, []
+
+    ids = [int(x) for x in match.group(1).split(",") if x]
+
+    return text[:match.start()], ids
+
+
+def _shown_jobs_from_history(history):
+    """Open jobs listed on the cards of the assistant's previous message."""
+
+    if not history:
+
+        return []
+
+    last = history[-1]
+
+    if last.get("sender") != "bot" or not last.get("jobs"):
+
+        return []
+
+    from jobsystem.models import Job
+
+    ids = list(last["jobs"])
+
+    by_id = {
+        j.id: j
+        for j in Job.objects.filter(
+            id__in=ids, status="active", is_active=True
+        ).select_related("company")
+    }
+
+    return [by_id[i] for i in ids if i in by_id]
+
+
 def _apply_blocker(profile, job):
     """Message explaining why the student can't apply, or None."""
 
@@ -1451,7 +1510,11 @@ def _tool_apply_to_job(profile, user, args):
             ),
         }
 
-    job = candidates[0]
+    return _prepare_apply(profile, candidates[0])
+
+
+def _prepare_apply(profile, job):
+    """Confirmation question + Yes/No buttons for one job (writes nothing)."""
 
     company_name = job.company.company_name if job.company else "the company"
 
@@ -1486,6 +1549,125 @@ _CANCEL_APPLY_RE = re.compile(
     r"^\s*no,?\s+cancel\s*[.!]?\s*$",
     re.IGNORECASE,
 )
+
+
+_APPLY_INTENT_RE = re.compile(
+    r"^\s*(?:(?:yes|yeah|yep|ok|okay|sure|please|and)\b[,.!\s]*)*"
+    r"(?:(?:i\s+(?:want|would\s+like|wanna|need)\s+to|i'd\s+like\s+to|"
+    r"let'?s|can\s+you|could\s+you|please)\s+)*apply\b",
+    re.IGNORECASE,
+)
+
+# Words that can follow "apply" while still just POINTING at a job that was
+# shown ("apply above job", "apply for the second one", "yes apply now").
+# If any other word appears (e.g. a job title), the message names a job itself.
+
+_APPLY_POINTER_WORDS = {
+    "to", "for", "the", "a", "an", "this", "that", "it", "above", "previous",
+    "last", "first", "second", "third", "1st", "2nd", "3rd", "top",
+    "recommended", "same", "job", "jobs", "position", "positions", "role",
+    "roles", "one", "ones", "now", "please", "opening", "posting",
+    "thanks", "thank", "you",
+}
+
+
+def _handle_apply_reference(profile, user, message, history):
+    """
+    "i want to apply above job" / "yes apply" / "apply the first one" -
+    resolved from the jobs the assistant showed in its previous message,
+    NOT guessed by the AI. Returns a reply dict, or None to carry on
+    normally (e.g. the student named a specific job, or nothing was shown).
+    """
+
+    text = message or ""
+
+    match = _APPLY_INTENT_RE.match(text)
+
+    if not match:
+
+        return None
+
+    tokens = re.findall(r"[a-z0-9']+", text[match.end():].lower())
+
+    if any(t not in _APPLY_POINTER_WORDS for t in tokens):
+
+        return None
+
+    shown = _shown_jobs_from_history(history)
+
+    if not shown:
+
+        return None
+
+    if len(shown) == 1:
+
+        job = shown[0]
+
+    else:
+
+        index = None
+
+        if "second" in tokens or "2nd" in tokens:
+
+            index = 1
+
+        elif "third" in tokens or "3rd" in tokens:
+
+            index = 2
+
+        elif "last" in tokens:
+
+            index = len(shown) - 1
+
+        elif any(t in tokens for t in ("first", "1st", "top", "recommended")):
+
+            index = 0
+
+        if index is None or index >= len(shown):
+
+            return {
+                "reply": "Which job would you like to apply to?",
+                "quick_replies": [
+                    _apply_chip_text(j) for j in shown[:5]
+                ] + ["No, cancel"],
+            }
+
+        job = shown[index]
+
+    result = _prepare_apply(profile, job)
+
+    payload = {"reply": result["summary"]}
+
+    if result.get("quick_replies"):
+
+        payload["quick_replies"] = result["quick_replies"]
+
+    return payload
+
+
+def _user_facing(summary):
+    """Tool summaries are written for the AI ("the student"); if one has to
+    be shown to the student directly, speak to them instead."""
+
+    text = summary or ""
+
+    replacements = [
+        (r"\bthe student hasn't\b", "you haven't"),
+        (r"\bthe student isn't\b", "you aren't"),
+        (r"\bthe student doesn't\b", "you don't"),
+        (r"\bthe student has\b", "you have"),
+        (r"\bthe student is\b", "you are"),
+        (r"\bthe student was\b", "you were"),
+        (r"\bthe student's\b", "your"),
+        (r"\bstudent's\b", "your"),
+        (r"\bthe student\b", "you"),
+    ]
+
+    for pattern, replacement in replacements:
+
+        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+
+    return text[:1].upper() + text[1:] if text else text
 
 
 def _handle_apply_confirmation(profile, user, message):
@@ -3865,6 +4047,16 @@ def generate_reply(user, message, history=None, page_context=None):
 
             return confirmation_reply
 
+        # "apply above job" / "yes apply" - resolved from the jobs just shown
+
+        reference_reply = _handle_apply_reference(
+            actor_profile, user, message, history
+        )
+
+        if reference_reply is not None:
+
+            return reference_reply
+
     context = build_context(user)
 
     knowledge = get_knowledge_base_snippets()
@@ -3883,6 +4075,24 @@ def generate_reply(user, message, history=None, page_context=None):
             "\n\nADDITIONAL INSTRUCTIONS FROM PLACEMENT ADMIN:\n"
             + setting.system_prompt
         )
+
+    if role == "student":
+
+        shown_now = _shown_jobs_from_history(history)
+
+        if shown_now:
+
+            system_prompt += (
+                "\n\nJOBS SHOWN IN YOUR PREVIOUS MESSAGE (cards): "
+                + "; ".join(
+                    f"{i}. {j.title} at "
+                    f"{j.company.company_name if j.company else 'Company'}"
+                    for i, j in enumerate(shown_now, start=1)
+                )
+                + ". When the student says 'above', 'that job', 'this "
+                "one' or 'the first one' they mean these - never a job "
+                "from earlier in the conversation."
+            )
 
     page_desc = _describe_page(page_context)
 
@@ -4052,7 +4262,7 @@ def generate_reply(user, message, history=None, page_context=None):
         if not final_text:
 
             final_text = " ".join(
-                result.get("summary", "Here's what I found.")
+                _user_facing(result.get("summary", "Here's what I found."))
                 for _call, _name, result in read_items
             )
 
