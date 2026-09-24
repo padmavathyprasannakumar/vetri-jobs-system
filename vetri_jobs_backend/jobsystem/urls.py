@@ -10,39 +10,37 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 from .views import (
 
+    # =====================================================
+    # AUTH
+    # =====================================================
 
-# =====================================================
-# AUTH
-# =====================================================
-
-RegisterView,
-CompanyRegisterView,
-CompanyRegistrationStatusView,
-LoginView,
-ForgotPasswordView,
-ResetPasswordConfirmView,
-CurrentUserView,
-LogoutView,
-UpdateProfileView,
-
+    RegisterView,
+    CompanyRegisterView,
+    CompanyRegistrationStatusView,
+    LoginView,
+    ForgotPasswordView,
+    ResetPasswordConfirmView,
+    CurrentUserView,
+    LogoutView,
+    UpdateProfileView,
 
 
-# =====================================================
-# STUDENT
-# =====================================================
+    # =====================================================
+    # STUDENT
+    # =====================================================
 
-StudentProfileView,
-EducationListCreateView,
-SkillCreateView,
-ResumeUploadView,
-StudentJobListView,
-ApplyJobView,
-StudentApplicationsView,
-StudentInterviewView,
-StudentNotificationView,
-ResumeAPIView,
+    StudentProfileView,
+    EducationListCreateView,
+    SkillCreateView,
+    ResumeUploadView,
+    StudentJobListView,
+    ApplyJobView,
+    StudentApplicationsView,
+    StudentInterviewView,
+    StudentNotificationView,
+    ResumeAPIView,
 
-StudentDashboardView,
+    StudentDashboardView,
 
     ResumeListView,
     ResumeDownloadView,
@@ -65,1057 +63,946 @@ StudentDashboardView,
     EligibilityCheckView,
 
 
+    # =====================================================
+    # COMPANY
+    # =====================================================
 
-# =====================================================
-# COMPANY
-# =====================================================
-
-CompanyProfileView,
-CompanyCreateJobView,
-CompanyJobListView,
-CompanyJobUpdateView,
-CompanyJobDeleteView,
-CompanyCandidateSearchView,
-CompanyCandidatesView,
-CandidateReviewCreateView,
-ShortlistCandidateView,
-CompanyApplicationStatusView,
-CompanyCandidateNotesView,
-CandidateProfileViewedView,
-CompanyInterviewCreateView,
-CompanyDashboardView,
-CompanyLogoUploadView,
-CompanyInterviewListView,
-CompanyInterviewStatusUpdateView,
-CompanyAnalyticsView,
-
+    CompanyProfileView,
+    CompanyCreateJobView,
+    CompanyJobListView,
+    CompanyJobUpdateView,
+    CompanyJobDeleteView,
+    CompanyCandidateSearchView,
+    CompanyCandidatesView,
+    CandidateReviewCreateView,
+    ShortlistCandidateView,
+    CompanyApplicationStatusView,
+    CompanyCandidateNotesView,
+    CandidateProfileViewedView,
+    CompanyInterviewCreateView,
+    CompanyDashboardView,
+    CompanyLogoUploadView,
+    CompanyInterviewListView,
+    CompanyInterviewStatusUpdateView,
+    CompanyAnalyticsView,
 
 
+    # =====================================================
+    # PLACEMENT ADMIN
+    # =====================================================
 
-# =====================================================
-# PLACEMENT ADMIN
-# =====================================================
-
-PlacementDashboardView,
-PlacementDriveDetailView,
-PlacementCandidatePipelineView,
-PlacementStudentListView,
-VerifyStudentView,
-PlacementStudentUpdateView,
-PlacementStudentStatusUpdateView,
-PlacementStudentCreateView,
-PlacementJobListView,
-PlacementJobStatusUpdateView,
-PlacementCompanyHistoryView,
-PlacementCompanyListView,
-VerifyCompanyView,
-RejectCompanyView,
-CreatePlacementDriveView,
-PlacementDriveListView,
-PlacementApplicationListView,
-PlacementUpdateApplicationView,
-PlacementNotificationCreateView,
-SendNotificationView,
-PlacementReportView,
-ScheduleReportView,
-
+    PlacementDashboardView,
+    PlacementDriveDetailView,
+    PlacementCandidatePipelineView,
+    PlacementStudentListView,
+    VerifyStudentView,
+    PlacementStudentUpdateView,
+    PlacementStudentStatusUpdateView,
+    PlacementStudentCreateView,
+    PlacementJobListView,
+    PlacementJobStatusUpdateView,
+    PlacementCompanyHistoryView,
+    PlacementCompanyListView,
+    VerifyCompanyView,
+    RejectCompanyView,
+    CreatePlacementDriveView,
+    PlacementDriveListView,
+    PlacementApplicationListView,
+    PlacementUpdateApplicationView,
+    PlacementNotificationCreateView,
+    SendNotificationView,
+    PlacementReportView,
+    ScheduleReportView,
 
 
-# =====================================================
-# SUPER ADMIN
-# =====================================================
+    # =====================================================
+    # SUPER ADMIN
+    # =====================================================
 
-AdminDashboardView,
-AdminUserListView,
-AdminUserUpdateView,
-AdminDeleteUserView,
+    AdminDashboardView,
+    AdminUserListView,
+    AdminUserUpdateView,
+    AdminDeleteUserView,
 
-PermissionCreateView,
-PermissionListView,
+    PermissionCreateView,
+    PermissionListView,
 
-RolePermissionCreateView,
+    RolePermissionCreateView,
 
-CustomRoleListCreateView,
+    CustomRoleListCreateView,
 
-AdminStudentListView,
+    AdminStudentListView,
 
-AdminCompanyListView,
+    AdminCompanyListView,
 
-AdminJobListView,
+    AdminJobListView,
 
-AdminAnalyticsView,
+    AdminAnalyticsView,
 
-AdminAuditLogView,
+    AdminAuditLogView,
 
-SystemSettingView,
-
-
-
-# =====================================================
-# CHATBOT
-# =====================================================
-
-ChatConversationCreateView,
-ChatMessageCreateView,
-ChatHistoryView,
-ChatbotSettingView,
-WhatsAppWebhookView,
-ChatbotMessageAPIView,
-ChatbotHistoryAPIView,
+    SystemSettingView,
 
 
+    # =====================================================
+    # CHATBOT
+    # =====================================================
 
-# =====================================================
-# WHATSAPP
-# =====================================================
-
-WhatsAppSettingView,
-WhatsAppMessageCreateView,
-
-
-
-# =====================================================
-# NOTIFICATION
-# =====================================================
-
-NotificationListView,
-NotificationReadView,
-NotificationDeleteView,
-NotificationMarkAllReadView,
-CreateNotificationView,
+    ChatConversationCreateView,
+    ChatMessageCreateView,
+    ChatHistoryView,
+    ChatbotSettingView,
+    WhatsAppWebhookView,
+    ChatbotMessageAPIView,
+    ChatbotHistoryAPIView,
+    ChatbotProactiveView,        # NEW - proactive alerts for the chat widget
 
 
+    # =====================================================
+    # WHATSAPP
+    # =====================================================
 
-# =====================================================
-# CMS
-# =====================================================
+    WhatsAppSettingView,
+    WhatsAppMessageCreateView,
 
-CMSContentView,
 
-JobListAPIView,
+    # =====================================================
+    # NOTIFICATION
+    # =====================================================
 
+    NotificationListView,
+    NotificationReadView,
+    NotificationDeleteView,
+    NotificationMarkAllReadView,
+    CreateNotificationView,
+
+
+    # =====================================================
+    # CMS
+    # =====================================================
+
+    CMSContentView,
+
+    JobListAPIView,
 
 )
 
 
+urlpatterns = [
 
 
+    # =====================================================
+    # AUTHENTICATION
+    # =====================================================
 
-urlpatterns=[
 
+    path(
+        "auth/register/",
+        RegisterView.as_view(),
+        name="register"
+    ),
 
 
-# =====================================================
-# AUTHENTICATION
-# =====================================================
+    path(
+        "company/register/",
+        CompanyRegisterView.as_view(),
+        name="company-register"
+    ),
 
 
-path(
-    "auth/register/",
-    RegisterView.as_view(),
-    name="register"
-),
+    path(
+        "company/application-status/",
+        CompanyRegistrationStatusView.as_view(),
+        name="company-application-status"
+    ),
 
 
-path(
-    "company/register/",
-    CompanyRegisterView.as_view(),
-    name="company-register"
-),
+    path(
+        "auth/login/",
+        LoginView.as_view(),
+        name="login"
+    ),
 
 
-path(
-    "company/application-status/",
-    CompanyRegistrationStatusView.as_view(),
-    name="company-application-status"
-),
+    path(
+        "auth/forgot-password/",
+        ForgotPasswordView.as_view(),
+        name="forgot-password"
+    ),
 
 
-path(
-    "auth/login/",
-    LoginView.as_view(),
-    name="login"
-),
+    path(
+        "auth/reset-password-confirm/",
+        ResetPasswordConfirmView.as_view(),
+        name="reset-password-confirm"
+    ),
 
 
-path(
-    "auth/forgot-password/",
-    ForgotPasswordView.as_view(),
-    name="forgot-password"
-),
+    path(
+        "token/refresh/",
+        TokenRefreshView.as_view(),
+        name="token-refresh"
+    ),
 
 
-path(
-    "auth/reset-password-confirm/",
-    ResetPasswordConfirmView.as_view(),
-    name="reset-password-confirm"
-),
+    path(
+        "auth/me/",
+        CurrentUserView.as_view(),
+        name="current-user"
+    ),
 
 
-path(
-    "token/refresh/",
-    TokenRefreshView.as_view(),
-    name="token-refresh"
-),
+    path(
+        "auth/logout/",
+        LogoutView.as_view(),
+        name="logout"
+    ),
 
 
-path(
-    "auth/me/",
-    CurrentUserView.as_view(),
-    name="current-user"
-),
+    path(
+        "profile/update/",
+        UpdateProfileView.as_view(),
+        name="profile-update"
+    ),
 
 
-path(
-    "auth/logout/",
-    LogoutView.as_view(),
-    name="logout"
-),
+    # =====================================================
+    # STUDENT MODULE
+    # =====================================================
 
 
-path(
-    "profile/update/",
-    UpdateProfileView.as_view(),
-    name="profile-update"
-),
+    path(
+        "student/profile/",
+        StudentProfileView.as_view(),
+        name="student-profile"
+    ),
 
 
+    path(
+        "student/education/",
+        EducationListCreateView.as_view(),
+        name="student-education"
+    ),
 
 
+    path(
+        "student/skills/",
+        SkillCreateView.as_view(),
+        name="student-skills"
+    ),
 
-# =====================================================
-# STUDENT MODULE
-# =====================================================
 
+    path(
+        "student/resume/",
+        ResumeUploadView.as_view(),
+        name="student-resume"
+    ),
 
-path(
-    "student/profile/",
-    StudentProfileView.as_view(),
-    name="student-profile"
-),
 
+    # ---------------------------------------------------------
+    # Additional student-resume endpoints used by the
+    # Resume Management page (upload/replace, versions,
+    # delete, download, AI analyse). Added alongside the
+    # existing "resume/*" endpoints above without touching them.
+    # ---------------------------------------------------------
 
+    path(
+        "student/resume/versions/",
+        StudentResumeVersionsView.as_view(),
+        name="student-resume-versions"
+    ),
 
-path(
-    "student/education/",
-    EducationListCreateView.as_view(),
-    name="student-education"
-),
 
+    path(
+        "student/resume/<int:id>/",
+        StudentResumeDetailView.as_view(),
+        name="student-resume-detail"
+    ),
 
 
-path(
-    "student/skills/",
-    SkillCreateView.as_view(),
-    name="student-skills"
-),
+    path(
+        "student/resume/<int:id>/download/",
+        StudentResumeDownloadView.as_view(),
+        name="student-resume-download"
+    ),
 
 
+    path(
+        "student/resume/<int:id>/analyse/",
+        StudentResumeAnalyseView.as_view(),
+        name="student-resume-analyse"
+    ),
 
-path(
-    "student/resume/",
-    ResumeUploadView.as_view(),
-    name="student-resume"
-),
 
+    path(
+        "student/jobs/",
+        StudentJobListView.as_view(),
+        name="student-jobs"
+    ),
 
-# ---------------------------------------------------------
-# Additional student-resume endpoints used by the
-# Resume Management page (upload/replace, versions,
-# delete, download, AI analyse). Added alongside the
-# existing "resume/*" endpoints above without touching them.
-# ---------------------------------------------------------
 
-path(
-    "student/resume/versions/",
-    StudentResumeVersionsView.as_view(),
-    name="student-resume-versions"
-),
+    path(
+        "student/jobs/<int:job_id>/",
+        StudentJobDetailView.as_view(),
+        name="student-job-detail"
+    ),
 
 
-path(
-    "student/resume/<int:id>/",
-    StudentResumeDetailView.as_view(),
-    name="student-resume-detail"
-),
+    path(
+        "student/jobs/<int:job_id>/apply/",
+        ApplyJobView.as_view(),
+        name="apply-job"
+    ),
 
 
-path(
-    "student/resume/<int:id>/download/",
-    StudentResumeDownloadView.as_view(),
-    name="student-resume-download"
-),
+    path(
+        "student/jobs/<int:job_id>/save/",
+        SaveJobView.as_view(),
+        name="save-job"
+    ),
 
 
-path(
-    "student/resume/<int:id>/analyse/",
-    StudentResumeAnalyseView.as_view(),
-    name="student-resume-analyse"
-),
+    path(
+        "student/saved-jobs/",
+        StudentSavedJobsView.as_view(),
+        name="student-saved-jobs"
+    ),
 
 
+    path(
+        "student/jobs/<int:job_id>/eligibility/",
+        EligibilityCheckView.as_view(),
+        name="student-job-eligibility"
+    ),
 
-path(
-    "student/jobs/",
-    StudentJobListView.as_view(),
-    name="student-jobs"
-),
 
+    path(
+        "student/applications/",
+        StudentApplicationsView.as_view(),
+        name="student-applications"
+    ),
 
 
-path(
-    "student/jobs/<int:job_id>/",
-    StudentJobDetailView.as_view(),
-    name="student-job-detail"
-),
+    path(
+        "student/interviews/",
+        StudentInterviewView.as_view(),
+        name="student-interviews"
+    ),
 
 
+    path(
+        "student/notifications/",
+        StudentNotificationView.as_view(),
+        name="student-notifications"
+    ),
 
-path(
-    "student/jobs/<int:job_id>/apply/",
-    ApplyJobView.as_view(),
-    name="apply-job"
-),
 
+    path(
+        "student/dashboard/",
+        StudentDashboardView.as_view(),
+        name="student-dashboard"
+    ),
 
 
-path(
-    "student/jobs/<int:job_id>/save/",
-    SaveJobView.as_view(),
-    name="save-job"
-),
+    # =====================================================
+    # RESUME MANAGEMENT + AI ANALYSIS
+    # =====================================================
 
 
+    path(
+        "resume/upload/",
+        ResumeUploadView.as_view(),
+        name="resume-upload"
+    ),
 
-path(
-    "student/saved-jobs/",
-    StudentSavedJobsView.as_view(),
-    name="student-saved-jobs"
-),
 
+    path(
+        "resume/list/",
+        ResumeListView.as_view(),
+        name="resume-list"
+    ),
 
 
-path(
-    "student/jobs/<int:job_id>/eligibility/",
-    EligibilityCheckView.as_view(),
-    name="student-job-eligibility"
-),
+    path(
+        "resume/download/<int:id>/",
+        ResumeDownloadView.as_view(),
+        name="resume-download"
+    ),
 
 
+    path(
+        "resume/delete/<int:id>/",
+        ResumeDeleteView.as_view(),
+        name="resume-delete"
+    ),
 
-path(
-    "student/applications/",
-    StudentApplicationsView.as_view(),
-    name="student-applications"
-),
 
+    path(
+        "resume/analyze/<int:id>/",
+        ResumeAnalyzeView.as_view(),
+        name="resume-analyze"
+    ),
 
 
-path(
-    "student/interviews/",
-    StudentInterviewView.as_view(),
-    name="student-interviews"
-),
+    # =====================================================
+    # COMPANY MODULE
+    # =====================================================
 
 
+    path(
+        "company/dashboard/",
+        CompanyDashboardView.as_view(),
+        name="company-dashboard"
+    ),
 
-path(
-    "student/notifications/",
-    StudentNotificationView.as_view(),
-    name="student-notifications"
-),
 
+    path(
+        "company/analytics/",
+        CompanyAnalyticsView.as_view(),
+        name="company-analytics"
+    ),
 
 
-path(
-    "student/dashboard/",
-    StudentDashboardView.as_view(),
-    name="student-dashboard"
-),
+    path(
+        "company/profile/",
+        CompanyProfileView.as_view(),
+        name="company-profile"
+    ),
 
 
+    path(
+        "company/profile/logo/",
+        CompanyLogoUploadView.as_view(),
+        name="company-profile-logo"
+    ),
 
-# =====================================================
-# RESUME MANAGEMENT + AI ANALYSIS
-# =====================================================
 
+    path(
+        "company/jobs/create/",
+        CompanyCreateJobView.as_view(),
+        name="company-create-job"
+    ),
 
-path(
-    "resume/upload/",
-    ResumeUploadView.as_view(),
-    name="resume-upload"
-),
 
+    path(
+        "company/jobs/",
+        CompanyJobListView.as_view(),
+        name="company-jobs"
+    ),
 
 
-path(
-    "resume/list/",
-    ResumeListView.as_view(),
-    name="resume-list"
-),
+    path(
+        "company/jobs/<int:job_id>/update/",
+        CompanyJobUpdateView.as_view(),
+        name="company-job-update"
+    ),
 
 
+    path(
+        "company/jobs/<int:job_id>/delete/",
+        CompanyJobDeleteView.as_view(),
+        name="company-job-delete"
+    ),
 
-path(
-    "resume/download/<int:id>/",
-    ResumeDownloadView.as_view(),
-    name="resume-download"
-),
 
+    path(
+        "company/candidates/search/",
+        CompanyCandidateSearchView.as_view(),
+        name="company-candidate-search"
+    ),
 
 
-path(
-    "resume/delete/<int:id>/",
-    ResumeDeleteView.as_view(),
-    name="resume-delete"
-),
+    path(
+        "company/candidates/",
+        CompanyCandidatesView.as_view(),
+        name="company-candidates"
+    ),
 
 
+    path(
+        "company/candidates/<int:application_id>/review/",
+        CandidateReviewCreateView.as_view(),
+        name="candidate-review"
+    ),
 
-path(
-    "resume/analyze/<int:id>/",
-    ResumeAnalyzeView.as_view(),
-    name="resume-analyze"
-),
 
+    path(
+        "company/review/<int:review_id>/shortlist/",
+        ShortlistCandidateView.as_view(),
+        name="candidate-shortlist"
+    ),
 
 
-# =====================================================
-# COMPANY MODULE
-# =====================================================
+    path(
+        "company/application/<int:application_id>/status/",
+        CompanyApplicationStatusView.as_view(),
+        name="application-status"
+    ),
 
 
-path(
-    "company/dashboard/",
-    CompanyDashboardView.as_view(),
-    name="company-dashboard"
-),
+    path(
+        "company/candidates/<int:application_id>/status/",
+        CompanyApplicationStatusView.as_view(),
+        name="candidate-status-alias"
+    ),
 
 
+    path(
+        "company/candidates/<int:application_id>/notes/",
+        CompanyCandidateNotesView.as_view(),
+        name="candidate-notes"
+    ),
 
-path(
-    "company/analytics/",
-    CompanyAnalyticsView.as_view(),
-    name="company-analytics"
-),
 
+    path(
+        "company/candidates/<int:application_id>/viewed/",
+        CandidateProfileViewedView.as_view(),
+        name="candidate-profile-viewed"
+    ),
 
 
-path(
-    "company/profile/",
-    CompanyProfileView.as_view(),
-    name="company-profile"
-),
+    path(
+        "company/interviews/create/",
+        CompanyInterviewCreateView.as_view(),
+        name="create-interview"
+    ),
 
 
+    path(
+        "company/interviews/",
+        CompanyInterviewListView.as_view(),
+        name="company-interviews-list"
+    ),
 
-path(
-    "company/profile/logo/",
-    CompanyLogoUploadView.as_view(),
-    name="company-profile-logo"
-),
 
+    path(
+        "company/interviews/<int:interview_id>/status/",
+        CompanyInterviewStatusUpdateView.as_view(),
+        name="company-interview-status"
+    ),
 
 
-path(
-    "company/jobs/create/",
-    CompanyCreateJobView.as_view(),
-    name="company-create-job"
-),
+    path(
+        "jobs/",
+        JobListAPIView.as_view()
+    ),
 
 
+    path(
+        "lookups/",
+        LookupListsView.as_view(),
+        name="lookup-lists"
+    ),
 
-path(
-    "company/jobs/",
-    CompanyJobListView.as_view(),
-    name="company-jobs"
-),
 
+    path(
+        "site-branding/",
+        SiteBrandingView.as_view(),
+        name="site-branding"
+    ),
 
 
-path(
-    "company/jobs/<int:job_id>/update/",
-    CompanyJobUpdateView.as_view(),
-    name="company-job-update"
-),
+    # =====================================================
+    # PLACEMENT ADMIN
+    # =====================================================
 
 
+    path(
+        "placement/dashboard/",
+        PlacementDashboardView.as_view(),
+        name="placement-dashboard"
+    ),
 
-path(
-    "company/jobs/<int:job_id>/delete/",
-    CompanyJobDeleteView.as_view(),
-    name="company-job-delete"
-),
 
+    path(
+        "placement/students/",
+        PlacementStudentListView.as_view(),
+        name="placement-students"
+    ),
 
 
-path(
-    "company/candidates/search/",
-    CompanyCandidateSearchView.as_view(),
-    name="company-candidate-search"
-),
+    path(
+        "placement/students/<int:student_id>/verify/",
+        VerifyStudentView.as_view(),
+        name="verify-student"
+    ),
 
 
+    path(
+        "placement/students/<int:student_id>/",
+        PlacementStudentUpdateView.as_view(),
+        name="update-placement-student"
+    ),
 
-path(
-    "company/candidates/",
-    CompanyCandidatesView.as_view(),
-    name="company-candidates"
-),
 
+    path(
+        "placement/students/create/",
+        PlacementStudentCreateView.as_view(),
+        name="create-placement-student"
+    ),
 
 
-path(
-    "company/candidates/<int:application_id>/review/",
-    CandidateReviewCreateView.as_view(),
-    name="candidate-review"
-),
+    path(
+        "placement/students/<int:student_id>/status/",
+        PlacementStudentStatusUpdateView.as_view(),
+        name="placement-student-status"
+    ),
 
 
+    path(
+        "placement/companies/",
+        PlacementCompanyListView.as_view(),
+        name="placement-companies"
+    ),
 
-path(
-    "company/review/<int:review_id>/shortlist/",
-    ShortlistCandidateView.as_view(),
-    name="candidate-shortlist"
-),
 
+    path(
+        "placement/jobs/",
+        PlacementJobListView.as_view(),
+        name="placement-jobs"
+    ),
 
 
-path(
-    "company/application/<int:application_id>/status/",
-    CompanyApplicationStatusView.as_view(),
-    name="application-status"
-),
+    path(
+        "placement/jobs/<int:job_id>/status/",
+        PlacementJobStatusUpdateView.as_view(),
+        name="placement-job-status-update"
+    ),
 
 
+    path(
+        "placement/companies/<int:company_id>/history/",
+        PlacementCompanyHistoryView.as_view(),
+        name="placement-company-history"
+    ),
 
-path(
-    "company/candidates/<int:application_id>/status/",
-    CompanyApplicationStatusView.as_view(),
-    name="candidate-status-alias"
-),
 
+    path(
+        "placement/companies/<int:company_id>/verify/",
+        VerifyCompanyView.as_view(),
+        name="verify-company"
+    ),
 
 
-path(
-    "company/candidates/<int:application_id>/notes/",
-    CompanyCandidateNotesView.as_view(),
-    name="candidate-notes"
-),
+    path(
+        "placement/companies/<int:company_id>/reject/",
+        RejectCompanyView.as_view(),
+        name="reject-company"
+    ),
 
 
+    path(
+        "placement/drives/create/",
+        CreatePlacementDriveView.as_view(),
+        name="create-placement-drive"
+    ),
 
-path(
-    "company/candidates/<int:application_id>/viewed/",
-    CandidateProfileViewedView.as_view(),
-    name="candidate-profile-viewed"
-),
 
+    path(
+        "placement/drives/",
+        PlacementDriveListView.as_view(),
+        name="placement-drives"
+    ),
 
 
+    path(
+        "placement/drives/<int:drive_id>/",
+        PlacementDriveDetailView.as_view(),
+        name="placement-drive-detail"
+    ),
 
-path(
-    "company/interviews/create/",
-    CompanyInterviewCreateView.as_view(),
-    name="create-interview"
-),
 
+    path(
+        "placement/drives/<int:drive_id>/status/",
+        PlacementDriveDetailView.as_view(),
+        name="placement-drive-status"
+    ),
 
 
-path(
-    "company/interviews/",
-    CompanyInterviewListView.as_view(),
-    name="company-interviews-list"
-),
+    path(
+        "placement/applications/",
+        PlacementApplicationListView.as_view(),
+        name="placement-applications"
+    ),
 
 
+    path(
+        "placement/candidates/pipeline/",
+        PlacementCandidatePipelineView.as_view(),
+        name="placement-candidate-pipeline"
+    ),
 
-path(
-    "company/interviews/<int:interview_id>/status/",
-    CompanyInterviewStatusUpdateView.as_view(),
-    name="company-interview-status"
-),
 
+    path(
+        "placement/application/<int:application_id>/status/",
+        PlacementUpdateApplicationView.as_view(),
+        name="placement-update-status"
+    ),
 
-path(
-    "jobs/",
-    JobListAPIView.as_view()
-),
 
+    path(
+        "placement/notifications/create/",
+        PlacementNotificationCreateView.as_view(),
+        name="placement-notification"
+    ),
 
 
-path(
-    "lookups/",
-    LookupListsView.as_view(),
-    name="lookup-lists"
-),
+    path(
+        "notifications/send/",
+        SendNotificationView.as_view(),
+        name="send-notification"
+    ),
 
 
+    path(
+        "placement/reports/",
+        PlacementReportView.as_view(),
+        name="placement-report"
+    ),
 
-path(
-    "site-branding/",
-    SiteBrandingView.as_view(),
-    name="site-branding"
-),
 
+    path(
+        "placement/reports/schedule/",
+        ScheduleReportView.as_view(),
+        name="placement-report-schedule"
+    ),
 
 
+    # =====================================================
+    # SUPER ADMIN
+    # =====================================================
 
-# =====================================================
-# PLACEMENT ADMIN
-# =====================================================
 
+    path(
+        "admin/dashboard/",
+        AdminDashboardView.as_view(),
+        name="admin-dashboard"
+    ),
 
-path(
-    "placement/dashboard/",
-    PlacementDashboardView.as_view(),
-    name="placement-dashboard"
-),
 
+    path(
+        "admin/users/",
+        AdminUserListView.as_view(),
+        name="admin-users"
+    ),
 
 
-path(
-    "placement/students/",
-    PlacementStudentListView.as_view(),
-    name="placement-students"
-),
+    path(
+        "admin/users/<int:user_id>/update/",
+        AdminUserUpdateView.as_view(),
+        name="admin-user-update"
+    ),
 
 
+    path(
+        "admin/users/<int:user_id>/delete/",
+        AdminDeleteUserView.as_view(),
+        name="admin-user-delete"
+    ),
 
-path(
-    "placement/students/<int:student_id>/verify/",
-    VerifyStudentView.as_view(),
-    name="verify-student"
-),
 
+    path(
+        "admin/permissions/",
+        PermissionListView.as_view(),
+        name="permissions"
+    ),
 
 
-path(
-    "placement/students/<int:student_id>/",
-    PlacementStudentUpdateView.as_view(),
-    name="update-placement-student"
-),
+    path(
+        "admin/permissions/create/",
+        PermissionCreateView.as_view(),
+        name="create-permission"
+    ),
 
 
+    path(
+        "admin/role-permissions/",
+        RolePermissionCreateView.as_view(),
+        name="role-permission"
+    ),
 
-path(
-    "placement/students/create/",
-    PlacementStudentCreateView.as_view(),
-    name="create-placement-student"
-),
 
+    path(
+        "admin/roles/",
+        CustomRoleListCreateView.as_view(),
+        name="roles"
+    ),
 
 
-path(
-    "placement/students/<int:student_id>/status/",
-    PlacementStudentStatusUpdateView.as_view(),
-    name="placement-student-status"
-),
+    path(
+        "admin/students/",
+        AdminStudentListView.as_view(),
+        name="admin-students"
+    ),
 
 
+    path(
+        "admin/companies/",
+        AdminCompanyListView.as_view(),
+        name="admin-companies"
+    ),
 
-path(
-    "placement/companies/",
-    PlacementCompanyListView.as_view(),
-    name="placement-companies"
-),
 
+    path(
+        "admin/jobs/",
+        AdminJobListView.as_view(),
+        name="admin-jobs"
+    ),
 
-path(
-    "placement/jobs/",
-    PlacementJobListView.as_view(),
-    name="placement-jobs"
-),
 
+    path(
+        "admin/analytics/",
+        AdminAnalyticsView.as_view(),
+        name="admin-analytics"
+    ),
 
-path(
-    "placement/jobs/<int:job_id>/status/",
-    PlacementJobStatusUpdateView.as_view(),
-    name="placement-job-status-update"
-),
 
+    path(
+        "admin/audit-logs/",
+        AdminAuditLogView.as_view(),
+        name="audit-logs"
+    ),
 
-path(
-    "placement/companies/<int:company_id>/history/",
-    PlacementCompanyHistoryView.as_view(),
-    name="placement-company-history"
-),
 
+    path(
+        "admin/settings/",
+        SystemSettingView.as_view(),
+        name="system-settings"
+    ),
 
 
-path(
-    "placement/companies/<int:company_id>/verify/",
-    VerifyCompanyView.as_view(),
-    name="verify-company"
-),
+    # =====================================================
+    # CHATBOT
+    # =====================================================
 
 
+    path(
+        "whatsapp/webhook/",
+        WhatsAppWebhookView.as_view(),
+        name="whatsapp-webhook"
+    ),
 
-path(
-    "placement/companies/<int:company_id>/reject/",
-    RejectCompanyView.as_view(),
-    name="reject-company"
-),
 
+    path(
+        "chatbot/",
+        ChatbotMessageAPIView.as_view(),
+        name="chatbot-message-unified"
+    ),
 
 
-path(
-    "placement/drives/create/",
-    CreatePlacementDriveView.as_view(),
-    name="create-placement-drive"
-),
+    # NEW - the chat widget polls this every ~60s for proactive alerts
+    # (interview soon, unread notifications, new jobs, etc.)
+    path(
+        "chatbot/proactive/",
+        ChatbotProactiveView.as_view(),
+        name="chatbot-proactive"
+    ),
 
 
+    path(
+        "chatbot/history/",
+        ChatbotHistoryAPIView.as_view(),
+        name="chatbot-history-unified"
+    ),
 
-path(
-    "placement/drives/",
-    PlacementDriveListView.as_view(),
-    name="placement-drives"
-),
 
+    path(
+        "chatbot/conversation/",
+        ChatConversationCreateView.as_view(),
+        name="chat-create"
+    ),
 
 
-path(
-    "placement/drives/<int:drive_id>/",
-    PlacementDriveDetailView.as_view(),
-    name="placement-drive-detail"
-),
+    path(
+        "chatbot/message/",
+        ChatMessageCreateView.as_view(),
+        name="chat-message"
+    ),
 
 
+    path(
+        "chatbot/history/<int:conversation_id>/",
+        ChatHistoryView.as_view(),
+        name="chat-history"
+    ),
 
-path(
-    "placement/drives/<int:drive_id>/status/",
-    PlacementDriveDetailView.as_view(),
-    name="placement-drive-status"
-),
 
+    path(
+        "chatbot/settings/",
+        ChatbotSettingView.as_view(),
+        name="chat-settings"
+    ),
 
 
-path(
-    "placement/applications/",
-    PlacementApplicationListView.as_view(),
-    name="placement-applications"
-),
+    # =====================================================
+    # WHATSAPP
+    # =====================================================
 
 
+    path(
+        "whatsapp/settings/",
+        WhatsAppSettingView.as_view(),
+        name="whatsapp-settings"
+    ),
 
-path(
-    "placement/candidates/pipeline/",
-    PlacementCandidatePipelineView.as_view(),
-    name="placement-candidate-pipeline"
-),
 
+    path(
+        "whatsapp/send/",
+        WhatsAppMessageCreateView.as_view(),
+        name="whatsapp-send"
+    ),
 
 
-path(
-    "placement/application/<int:application_id>/status/",
-    PlacementUpdateApplicationView.as_view(),
-    name="placement-update-status"
-),
+    # =====================================================
+    # NOTIFICATIONS
+    # =====================================================
 
 
+    path(
+        "notifications/",
+        NotificationListView.as_view(),
+        name="notifications"
+    ),
 
-path(
-    "placement/notifications/create/",
-    PlacementNotificationCreateView.as_view(),
-    name="placement-notification"
-),
 
+    path(
+        "notifications/<int:notification_id>/read/",
+        NotificationReadView.as_view(),
+        name="notification-read"
+    ),
 
 
-path(
-    "notifications/send/",
-    SendNotificationView.as_view(),
-    name="send-notification"
-),
+    path(
+        "notifications/<int:notification_id>/delete/",
+        NotificationDeleteView.as_view(),
+        name="notification-delete"
+    ),
 
 
+    path(
+        "notifications/mark-all-read/",
+        NotificationMarkAllReadView.as_view(),
+        name="notification-mark-all-read"
+    ),
 
-path(
-    "placement/reports/",
-    PlacementReportView.as_view(),
-    name="placement-report"
-),
 
+    path(
+        "notifications/create/",
+        CreateNotificationView.as_view(),
+        name="notification-create"
+    ),
 
 
-path(
-    "placement/reports/schedule/",
-    ScheduleReportView.as_view(),
-    name="placement-report-schedule"
-),
+    # =====================================================
+    # CMS
+    # =====================================================
 
 
-
-
-
-
-
-# =====================================================
-# SUPER ADMIN
-# =====================================================
-
-
-path(
-    "admin/dashboard/",
-    AdminDashboardView.as_view(),
-    name="admin-dashboard"
-),
-
-
-
-path(
-    "admin/users/",
-    AdminUserListView.as_view(),
-    name="admin-users"
-),
-
-
-
-path(
-    "admin/users/<int:user_id>/update/",
-    AdminUserUpdateView.as_view(),
-    name="admin-user-update"
-),
-
-
-
-path(
-    "admin/users/<int:user_id>/delete/",
-    AdminDeleteUserView.as_view(),
-    name="admin-user-delete"
-),
-
-
-
-path(
-    "admin/permissions/",
-    PermissionListView.as_view(),
-    name="permissions"
-),
-
-
-
-path(
-    "admin/permissions/create/",
-    PermissionCreateView.as_view(),
-    name="create-permission"
-),
-
-
-
-path(
-    "admin/role-permissions/",
-    RolePermissionCreateView.as_view(),
-    name="role-permission"
-),
-
-
-
-path(
-    "admin/roles/",
-    CustomRoleListCreateView.as_view(),
-    name="roles"
-),
-
-
-
-path(
-    "admin/students/",
-    AdminStudentListView.as_view(),
-    name="admin-students"
-),
-
-
-
-path(
-    "admin/companies/",
-    AdminCompanyListView.as_view(),
-    name="admin-companies"
-),
-
-
-
-path(
-    "admin/jobs/",
-    AdminJobListView.as_view(),
-    name="admin-jobs"
-),
-
-
-
-path(
-    "admin/analytics/",
-    AdminAnalyticsView.as_view(),
-    name="admin-analytics"
-),
-
-
-
-path(
-    "admin/audit-logs/",
-    AdminAuditLogView.as_view(),
-    name="audit-logs"
-),
-
-
-
-path(
-    "admin/settings/",
-    SystemSettingView.as_view(),
-    name="system-settings"
-),
-
-
-
-
-
-
-# =====================================================
-# CHATBOT
-# =====================================================
-
-
-path(
-    "whatsapp/webhook/",
-    WhatsAppWebhookView.as_view(),
-    name="whatsapp-webhook"
-),
-
-
-
-path(
-    "chatbot/",
-    ChatbotMessageAPIView.as_view(),
-    name="chatbot-message-unified"
-),
-
-
-
-path(
-    "chatbot/history/",
-    ChatbotHistoryAPIView.as_view(),
-    name="chatbot-history-unified"
-),
-
-
-
-path(
-    "chatbot/conversation/",
-    ChatConversationCreateView.as_view(),
-    name="chat-create"
-),
-
-
-
-path(
-    "chatbot/message/",
-    ChatMessageCreateView.as_view(),
-    name="chat-message"
-),
-
-
-
-path(
-    "chatbot/history/<int:conversation_id>/",
-    ChatHistoryView.as_view(),
-    name="chat-history"
-),
-
-
-
-path(
-    "chatbot/settings/",
-    ChatbotSettingView.as_view(),
-    name="chat-settings"
-),
-
-
-
-
-
-
-# =====================================================
-# WHATSAPP
-# =====================================================
-
-
-path(
-    "whatsapp/settings/",
-    WhatsAppSettingView.as_view(),
-    name="whatsapp-settings"
-),
-
-
-
-path(
-    "whatsapp/send/",
-    WhatsAppMessageCreateView.as_view(),
-    name="whatsapp-send"
-),
-
-
-
-
-
-
-# =====================================================
-# NOTIFICATIONS
-# =====================================================
-
-
-path(
-    "notifications/",
-    NotificationListView.as_view(),
-    name="notifications"
-),
-
-
-
-path(
-    "notifications/<int:notification_id>/read/",
-    NotificationReadView.as_view(),
-    name="notification-read"
-),
-
-
-path(
-    "notifications/<int:notification_id>/delete/",
-    NotificationDeleteView.as_view(),
-    name="notification-delete"
-),
-
-
-path(
-    "notifications/mark-all-read/",
-    NotificationMarkAllReadView.as_view(),
-    name="notification-mark-all-read"
-),
-
-
-
-path(
-    "notifications/create/",
-    CreateNotificationView.as_view(),
-    name="notification-create"
-),
-
-
-
-
-
-
-# =====================================================
-# CMS
-# =====================================================
-
-
-path(
-    "cms/",
-    CMSContentView.as_view(),
-    name="cms"
-),
-
+    path(
+        "cms/",
+        CMSContentView.as_view(),
+        name="cms"
+    ),
 
 
 ]
