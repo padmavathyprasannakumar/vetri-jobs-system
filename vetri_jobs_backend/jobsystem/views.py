@@ -9397,3 +9397,228 @@ class StudentResumeAnalyseView(APIView):
         return Response(
             serializer.data
         )
+
+
+# =====================================================
+# BACKGROUND JOB: INTERVIEW REMINDERS
+# GET or POST /background/interview-reminders/
+#
+# Called by cron-job.org every 15-30 minutes. For every real
+# interview starting in the next 24 hours it sends the student ONE
+# reminder (in-app notification + WhatsApp + email) - no duplicates
+# on repeated runs, no migration needed.
+#
+# Security: requires the secret in the CRON_SECRET environment
+# variable, sent as the header  X-Cron-Secret: <secret>
+# (or as ?key=<secret> if the scheduler can't send headers).
+#
+# Duplicate protection: the reminder text includes the exact
+# date/time, so an identical Notification already existing for that
+# student means it was already sent. A rescheduled interview has a
+# new time, so it correctly gets a fresh reminder.
+#
+# Placeholder interviews (auto-created when a recruiter picks
+# "Interview Scheduled" from the status dropdown) are skipped, so
+# students are never reminded about a fake "tomorrow" interview.
+# =====================================================
+
+
+class BackgroundInterviewReminderView(APIView):
+
+    permission_classes = [AllowAny]
+
+    authentication_classes = []
+
+    REMINDER_TITLE = "Interview reminder"
+
+    PLACEHOLDER_MARKER = "this date/time is a placeholder"
+
+    def _run(self, request):
+
+        import os
+
+        import hmac
+
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from django.core.mail import send_mail
+
+        from django.conf import settings as dj_settings
+
+        # ---------------- SECURITY ----------------
+
+        expected = os.getenv("CRON_SECRET", "")
+
+        if not expected:
+
+            return Response(
+                {"error": "CRON_SECRET is not configured on the server."},
+                status=503
+            )
+
+        supplied = (
+            request.headers.get("X-Cron-Secret")
+            or request.query_params.get("key")
+            or ""
+        )
+
+        if not hmac.compare_digest(
+            supplied.encode("utf-8"), expected.encode("utf-8")
+        ):
+
+            return Response({"error": "Forbidden"}, status=403)
+
+        # ---------------- WINDOW ----------------
+
+        try:
+
+            hours = int(request.query_params.get("hours", 24))
+
+        except (TypeError, ValueError):
+
+            hours = 24
+
+        hours = max(1, min(hours, 72))
+
+        now = timezone.now()
+
+        interviews = Interview.objects.filter(
+            interview_date__gte=now,
+            interview_date__lte=now + timedelta(hours=hours),
+            status__in=["scheduled", "rescheduled"],
+        ).select_related(
+            "application__student__user",
+            "application__job",
+            "application__job__company",
+        )
+
+        result = {
+            "checked": 0,
+            "reminders_sent": 0,
+            "already_sent": 0,
+            "skipped_placeholder": 0,
+            "whatsapp_sent": 0,
+            "email_sent": 0,
+            "errors": [],
+        }
+
+        for iv in interviews:
+
+            result["checked"] += 1
+
+            try:
+
+                if self.PLACEHOLDER_MARKER in (iv.remarks or ""):
+
+                    result["skipped_placeholder"] += 1
+
+                    continue
+
+                application = iv.application
+
+                user = application.student.user
+
+                job = application.job
+
+                company_name = (
+                    job.company.company_name
+                    if job.company else "the company"
+                )
+
+                local_dt = timezone.localtime(iv.interview_date)
+
+                message = (
+                    f"Reminder: your interview for {job.title} at "
+                    f"{company_name} is on {local_dt.strftime('%d %b %Y')} "
+                    f"at {local_dt.strftime('%I:%M %p')} "
+                    f"({iv.get_interview_mode_display()})."
+                )
+
+                if iv.meeting_link:
+
+                    message += f" Meeting link: {iv.meeting_link}."
+
+                elif iv.location:
+
+                    message += f" Location: {iv.location}."
+
+                message += " Good luck!"
+
+                # duplicate protection
+
+                if Notification.objects.filter(
+                    user=user,
+                    title=self.REMINDER_TITLE,
+                    message=message,
+                ).exists():
+
+                    result["already_sent"] += 1
+
+                    continue
+
+                notif = Notification.objects.create(
+                    user=user,
+                    title=self.REMINDER_TITLE,
+                    message=message,
+                    notification_type="application",
+                )
+
+                result["reminders_sent"] += 1
+
+                # WhatsApp (best effort - never blocks the reminder)
+
+                try:
+
+                    from jobsystem.services.whatsapp import (
+                        send_whatsapp_message
+                    )
+
+                    if send_whatsapp_message(user, message):
+
+                        result["whatsapp_sent"] += 1
+
+                        notif.whatsapp_sent = True
+
+                        notif.save()
+
+                except Exception as e:
+
+                    print("Interview reminder whatsapp error:", e)
+
+                # Email (best effort)
+
+                if user.email:
+
+                    try:
+
+                        send_mail(
+                            "Vetri Jobs - Interview reminder",
+                            message,
+                            getattr(dj_settings, "DEFAULT_FROM_EMAIL", None),
+                            [user.email],
+                            fail_silently=False,
+                        )
+
+                        result["email_sent"] += 1
+
+                    except Exception as e:
+
+                        print("Interview reminder email error:", e)
+
+            except Exception as e:
+
+                print("Interview reminder error for interview", iv.id, ":", e)
+
+                result["errors"].append(f"interview {iv.id}: {e}")
+
+        return Response(result)
+
+    def get(self, request):
+
+        return self._run(request)
+
+    def post(self, request):
+
+        return self._run(request)
