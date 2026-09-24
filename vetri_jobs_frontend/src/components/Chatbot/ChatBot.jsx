@@ -11,7 +11,9 @@ import React, {
 
 import {
 
-    useNavigate
+    useNavigate,
+
+    useLocation
 
 } from "react-router-dom";
 
@@ -35,6 +37,22 @@ import {
     getSiteBranding
 
 } from "../../api/brandingApi";
+
+
+import api from "../../api/axios";
+
+
+import {
+
+    useProactiveAlerts,
+
+    getPageContext,
+
+    emitChatbotRefresh,
+
+    chatErrorMessage
+
+} from "../../api/chatbotHelpers";
 
 
 import {
@@ -83,12 +101,21 @@ function Chatbot(){
     const navigate = useNavigate();
 
 
+    const location = useLocation();
+
+
 
     const { user } = useAuth();
 
 
 
     const [open,setOpen] = useState(false);
+
+
+    // Red dot on the floating button when the assistant has
+    // something new to say while the chat window is closed.
+
+    const [hasUnread,setHasUnread] = useState(false);
 
 
     const [chatbotAvatarUrl,setChatbotAvatarUrl] = useState(null);
@@ -172,6 +199,58 @@ function Chatbot(){
         }
 
     },[messages,loading,open]);
+
+
+    // Opening the chat clears the unread dot.
+
+    useEffect(()=>{
+
+        if(open) setHasUnread(false);
+
+    },[open]);
+
+
+
+
+    // ===============================
+    // PROACTIVE ALERTS
+    // The assistant speaks first: interview reminders, unread
+    // notifications, new jobs, missing resume, incomplete profile.
+    // Polls /chatbot/proactive/ about once a minute (students only).
+    // ===============================
+
+
+    useProactiveAlerts({
+
+        api,
+
+        userId: user?.id ?? user?.email ?? user?.username,
+
+        enabled: !!user && user?.role === "student",
+
+        onAlerts: (alerts)=>{
+
+            setMessages(prev=>[
+
+                ...prev,
+
+                ...alerts.map(a=>({
+
+                    sender:"bot",
+
+                    text: a.text,
+
+                    quickReplies: a.actions && a.actions.length ? a.actions : null
+
+                }))
+
+            ]);
+
+            setHasUnread(true);
+
+        }
+
+    });
 
 
 
@@ -304,11 +383,23 @@ function Chatbot(){
 
 
 
-    const handleSend = async()=>{
+    // ===============================
+    // SEND A MESSAGE
+    // Shared by the send button / Enter key and the quick-reply
+    // chips, so both go through exactly the same request flow.
+    // ===============================
+
+
+    const sendText = async(text, file)=>{
 
 
 
-        if(!message.trim() && !attachedFile)
+        if(!(text || "").trim() && !file)
+
+            return;
+
+
+        if(loading)
 
             return;
 
@@ -320,9 +411,9 @@ function Chatbot(){
 
             sender:"user",
 
-            text: message || (attachedFile ? "" : ""),
+            text: text || "",
 
-            attachment: attachedFile ? attachedFile.name : null
+            attachment: file ? file.name : null
 
 
         };
@@ -341,16 +432,6 @@ function Chatbot(){
 
 
 
-        const pendingFile = attachedFile;
-
-        const pendingMessage = message;
-
-
-        setMessage("");
-
-        setAttachedFile(null);
-
-
         setLoading(true);
 
 
@@ -364,9 +445,14 @@ function Chatbot(){
 
                 await sendChatMessage(
 
-                    pendingMessage,
+                    text,
 
-                    pendingFile
+                    file,
+
+                    // where the student currently is, so
+                    // "apply to this job" works without a title
+
+                    getPageContext(location.pathname)
 
                 );
 
@@ -426,6 +512,15 @@ function Chatbot(){
 
 
 
+            // If the assistant changed something (applied to a job,
+            // added a skill, uploaded a resume...), tell the other
+            // tabs to reload their data so nothing looks stale.
+
+            emitChatbotRefresh(data);
+
+
+
+
             if(data.navigate_to){
 
                 navigate(data.navigate_to);
@@ -451,9 +546,7 @@ function Chatbot(){
                     sender:"bot",
 
 
-                    text:
-
-                    "Unable to connect with assistant."
+                    text: chatErrorMessage(error)
 
 
                 }
@@ -474,6 +567,57 @@ function Chatbot(){
         }
 
 
+
+
+    };
+
+
+
+
+    const handleSend = ()=>{
+
+
+        if(!message.trim() && !attachedFile)
+
+            return;
+
+
+        const pendingFile = attachedFile;
+
+        const pendingMessage = message;
+
+
+        setMessage("");
+
+        setAttachedFile(null);
+
+
+        sendText(pendingMessage, pendingFile);
+
+
+    };
+
+
+
+
+    // Clicking a quick-reply chip sends its text as a normal
+    // message, and removes that row of chips so it isn't reused.
+
+    const handleQuickReply = (index, text)=>{
+
+
+        setMessages(prev=>
+
+            prev.map((m,i)=>
+
+                i===index ? { ...m, quickReplies:null } : m
+
+            )
+
+        );
+
+
+        sendText(text, null);
 
 
     };
@@ -534,6 +678,13 @@ function Chatbot(){
                 !open &&
 
                 <span className="chatbot-button-badge">AI</span>
+                }
+
+
+                {
+                !open && hasUnread &&
+
+                <span className="chatbot-button-dot"></span>
                 }
 
 
@@ -668,6 +819,43 @@ function Chatbot(){
 
 
                             {item.text}
+
+
+
+
+                            {/* QUICK-REPLY CHIPS (from proactive alerts) */}
+
+                            {
+                            item.quickReplies && item.quickReplies.length > 0 &&
+
+                            <div className="chat-quick-replies">
+
+                                {
+                                item.quickReplies.map(q=>(
+
+                                    <button
+
+                                    key={q}
+
+                                    type="button"
+
+                                    className="chat-quick-reply"
+
+                                    disabled={loading}
+
+                                    onClick={()=>handleQuickReply(index,q)}
+
+                                    >
+
+                                        {q}
+
+                                    </button>
+
+                                ))
+                                }
+
+                            </div>
+                            }
 
 
 
