@@ -7318,8 +7318,22 @@ class WhatsAppWebhookView(APIView):
 
 from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
 
+from django.core.cache.backends.locmem import LocMemCache
+
+
+# The counters live in this private in-memory cache instead of Django's
+# default cache. The project's CACHES setting points at Redis, and if the
+# Redis package/server isn't available the default cache raises an error
+# on every request - which would take the whole chat down. A private
+# in-memory cache has no such dependency (each server process keeps its
+# own counters, which is plenty to stop a guest spamming the endpoint).
+
+_chatbot_throttle_cache = LocMemCache("chatbot-throttle", {})
+
 
 class ChatbotAnonThrottle(AnonRateThrottle):
+
+    cache = _chatbot_throttle_cache
 
     scope = "chatbot_anon"
 
@@ -7327,6 +7341,8 @@ class ChatbotAnonThrottle(AnonRateThrottle):
 
 
 class ChatbotUserThrottle(UserRateThrottle):
+
+    cache = _chatbot_throttle_cache
 
     scope = "chatbot_user"
 
