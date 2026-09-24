@@ -18,19 +18,24 @@ import api from "./axios";
 // Request:
 //
 // {
-//    message:"How to apply job?"
+//    message:"How to apply job?",
+//    page_context:{ page:"student/jobs", job_id:12 }   // optional
 // }
 //
 // Response:
 //
 // {
-//    reply:"You can apply..."
+//    reply:"You can apply...",
+//    refresh:["applications","dashboard"]              // optional
 // }
+//
+// page_context tells the assistant where the student currently is,
+// so "apply to this job" works without naming the job.
 //
 // =====================================================
 
 
-export const sendChatMessage = async(message, file)=>{
+export const sendChatMessage = async(message, file, pageContext)=>{
 
 
     try{
@@ -56,6 +61,18 @@ export const sendChatMessage = async(message, file)=>{
             formData.append("message", text);
 
             formData.append("attachment", file);
+
+            // multipart can't carry a nested object, so it goes as a
+            // JSON string - the backend parses it back.
+
+            if(pageContext){
+
+                formData.append(
+                    "page_context",
+                    JSON.stringify(pageContext)
+                );
+
+            }
 
 
             const response = await api.post(
@@ -85,7 +102,9 @@ export const sendChatMessage = async(message, file)=>{
 
             {
 
-                message: text
+                message: text,
+
+                ...(pageContext ? { page_context: pageContext } : {})
 
             }
 
