@@ -311,11 +311,18 @@ def build_proactive_alerts(user):
     alerts = []
 
     # 1) Interview within the next 24 hours
+    # Interviews auto-created as a placeholder (recruiter picked
+    # "Interview Scheduled" from the status dropdown without a real
+    # date) are skipped, so students never get a reminder for a
+    # made-up "tomorrow" interview.
+
     soon = Interview.objects.filter(
         application__student=profile,
         interview_date__gte=now,
         interview_date__lte=now + timedelta(hours=24),
         status__in=["scheduled", "rescheduled"],
+    ).exclude(
+        remarks__icontains="this date/time is a placeholder"
     ).select_related(
         "application__job", "application__job__company"
     ).order_by("interview_date").first()
@@ -521,6 +528,17 @@ If the student refers to a job by a pronoun ("apply to that job",
 showed them in this conversation to resolve the exact job_title, then
 call apply_to_job with that resolved title - do not guess and do not
 skip the tool call because the title wasn't spelled out this turn.
+
+APPLYING TO A JOB (confirmation required): apply_to_job never submits an
+application itself - it only asks the student "Apply to X at Y?" and shows
+Yes / No buttons. The application is submitted by the system only after the
+student taps Yes. So after calling apply_to_job do not say the application
+was sent, and never claim it was submitted yourself; the tool's own question
+is the reply.
+
+MORE THAN ONE REQUEST: if the student asks for several things at once (for
+example "show my applications and my interviews"), call all the matching
+tools in the same turn (up to 3) instead of only the first one.
 
 DOWNLOADS: when get_resume_download_link runs successfully, tell the
 student their resume is ready and that a download button is shown
@@ -1101,67 +1119,29 @@ def _tool_get_company_skill_gap(profile, user, args):
     }
 
 
-def _tool_apply_to_job(profile, user, args):
+# =====================================================
+# APPLYING TO A JOB - always confirmed by the student first
+#
+# The AI can never submit an application by itself. The
+# apply_to_job tool below only PREPARES it: it finds the job,
+# checks the student can apply, and asks "Apply to X at Y?" with
+# Yes / No buttons. The application is created only when the
+# student taps Yes (or types "Yes, apply to X at Y"), which is
+# handled deterministically by _handle_apply_confirmation() in
+# generate_reply() - no AI involved in that step.
+# =====================================================
 
-    from jobsystem.models import Job, Application
+def _apply_blocker(profile, job):
+    """Message explaining why the student can't apply, or None."""
 
-    job_title = (args.get("job_title") or "").strip()
-
-    if not job_title:
-
-        return {
-            "success": False,
-            "summary": "No job title was given to apply to.",
-        }
-
-    candidates = Job.objects.filter(
-        status="active", is_active=True,
-        title__icontains=job_title,
-    ).select_related("company")
-
-    count = candidates.count()
-
-    if count == 0:
-
-        return {
-            "success": False,
-            "summary": (
-                f"No open job matching \"{job_title}\" was found. "
-                "Ask the student to check the exact title on the Jobs page."
-            ),
-        }
-
-    if count > 1:
-
-        options = [
-            {
-                "title": j.title,
-                "company": j.company.company_name if j.company else "",
-            }
-            for j in candidates[:5]
-        ]
-
-        return {
-            "success": False,
-            "options": options,
-            "summary": (
-                f"{count} jobs match \"{job_title}\" - ask the student "
-                "to specify which exact one they mean."
-            ),
-        }
-
-    job = candidates.first()
+    from jobsystem.models import Application
+    from jobsystem.services.eligibility import check_eligibility
 
     company_name = job.company.company_name if job.company else "the company"
 
     if Application.objects.filter(student=profile, job=job).exists():
 
-        return {
-            "success": False,
-            "summary": f"The student already applied to {job.title} at {company_name}.",
-        }
-
-    from jobsystem.services.eligibility import check_eligibility
+        return f"You've already applied to {job.title} at {company_name}."
 
     try:
 
@@ -1179,28 +1159,235 @@ def _tool_apply_to_job(profile, user, args):
 
             why = "; ".join(str(w) for w in why)
 
-        return {
-            "success": False,
-            "summary": (
-                f"You're not eligible to apply to {job.title} at "
-                f"{company_name} based on your current profile."
-                + (f" Reason: {why}" if why else "")
-            ),
-        }
+        return (
+            f"You're not eligible to apply to {job.title} at "
+            f"{company_name} based on your current profile."
+            + (f" Reason: {why}" if why else "")
+        )
 
-    Application.objects.create(
+    return None
+
+
+def _do_apply(profile, user, job):
+    """The one place an application is actually created from chat."""
+
+    from jobsystem.models import Application
+
+    company_name = job.company.company_name if job.company else "the company"
+
+    blocker = _apply_blocker(profile, job)
+
+    if blocker:
+
+        return {"success": False, "summary": blocker}
+
+    application, created = Application.objects.get_or_create(
         student=profile,
         job=job,
-        status="applied",
+        defaults={"status": "applied"},
     )
+
+    if not created:
+
+        return {
+            "success": False,
+            "summary": f"You've already applied to {job.title} at {company_name}.",
+        }
+
+    # Same confirmation notification the Apply page sends.
+
+    try:
+
+        from jobsystem.services.notification_engine import dispatch
+
+        dispatch(
+            "application_confirmation",
+            user,
+            {
+                "job_title": job.title,
+                "company_name": company_name,
+            },
+        )
+
+    except Exception as e:
+
+        print("Chatbot apply notification error:", e)
 
     return {
         "success": True,
         "job_id": job.id,
         "job_title": job.title,
         "company": company_name,
-        "summary": f"Applied to {job.title} at {company_name} successfully.",
+        "summary": (
+            f"Applied to {job.title} at {company_name} successfully. "
+            "You can track it under Applications."
+        ),
     }
+
+
+def _confirm_apply_text(job_title, company_name):
+
+    return f"Yes, apply to {job_title} at {company_name}"
+
+
+def _tool_apply_to_job(profile, user, args):
+    """
+    PREPARE step only - never creates an application. Returns a
+    confirmation question plus quick_replies (Yes / No buttons).
+    """
+
+    from jobsystem.models import Job
+
+    job_title = (args.get("job_title") or "").strip()
+
+    if not job_title:
+
+        return {
+            "success": False,
+            "summary": "Which job would you like to apply to? Tell me the job title.",
+        }
+
+    candidates = Job.objects.filter(
+        status="active", is_active=True,
+        title__icontains=job_title,
+    ).select_related("company")
+
+    count = candidates.count()
+
+    if count == 0:
+
+        return {
+            "success": False,
+            "summary": (
+                f"I couldn't find an open job matching \"{job_title}\". "
+                "Check the exact title on the Jobs page."
+            ),
+        }
+
+    if count > 1:
+
+        options = [
+            {
+                "title": j.title,
+                "company": j.company.company_name if j.company else "",
+            }
+            for j in candidates[:5]
+        ]
+
+        return {
+            "success": False,
+            "options": options,
+            "quick_replies": [
+                _confirm_apply_text(o["title"], o["company"])
+                for o in options
+            ] + ["No, cancel"],
+            "summary": (
+                f"{count} jobs match \"{job_title}\". "
+                "Which one would you like to apply to?"
+            ),
+        }
+
+    job = candidates.first()
+
+    company_name = job.company.company_name if job.company else "the company"
+
+    blocker = _apply_blocker(profile, job)
+
+    if blocker:
+
+        return {"success": False, "summary": blocker}
+
+    confirm_text = _confirm_apply_text(job.title, company_name)
+
+    return {
+        "success": False,
+        "needs_confirmation": True,
+        "job_id": job.id,
+        "job_title": job.title,
+        "company": company_name,
+        "quick_replies": [confirm_text, "No, cancel"],
+        "summary": (
+            f"Apply to {job.title} at {company_name}? "
+            f"Tap Yes to confirm (or type: {confirm_text})."
+        ),
+    }
+
+
+_CONFIRM_APPLY_RE = re.compile(
+    r"^\s*yes,?\s+apply\s+to\s+(?P<rest>.+?)\s*[.!]?\s*$",
+    re.IGNORECASE,
+)
+
+_CANCEL_APPLY_RE = re.compile(
+    r"^\s*no,?\s+cancel\s*[.!]?\s*$",
+    re.IGNORECASE,
+)
+
+
+def _handle_apply_confirmation(profile, user, message):
+    """
+    Deterministic handler for the Yes / No buttons after an apply
+    confirmation. Returns a reply dict, or None if the message is
+    not a confirmation (so the normal AI flow continues).
+    """
+
+    text = message or ""
+
+    if _CANCEL_APPLY_RE.match(text):
+
+        return {
+            "reply": "Okay, I won't apply. Let me know if you'd like anything else."
+        }
+
+    match = _CONFIRM_APPLY_RE.match(text)
+
+    if not match:
+
+        return None
+
+    from jobsystem.models import Job
+
+    rest = match.group("rest")
+
+    job = None
+
+    # "<title> at <company>" - try every " at " as the split point,
+    # so titles or company names that contain "at" still resolve.
+
+    for split in re.finditer(r"\s+at\s+", rest, flags=re.IGNORECASE):
+
+        title = rest[:split.start()].strip()
+
+        company = rest[split.end():].strip()
+
+        job = Job.objects.filter(
+            status="active", is_active=True,
+            title__iexact=title,
+            company__company_name__iexact=company,
+        ).select_related("company").first()
+
+        if job:
+
+            break
+
+    if not job:
+
+        return {
+            "reply": (
+                "I couldn't find that open job any more. Ask me to find "
+                "jobs again and I'll show the current list."
+            )
+        }
+
+    result = _do_apply(profile, user, job)
+
+    payload = {"reply": result["summary"]}
+
+    if result.get("success"):
+
+        payload["refresh"] = ["applications", "dashboard", "jobs"]
+
+    return payload
 
 
 def _tool_get_application_status(profile, user, args):
@@ -3201,6 +3388,166 @@ _FORWARDED_LIST_KEYS = (
 )
 
 
+# Tools that create/modify a real database record (or, for
+# apply_to_job, ask the student to confirm one). Their own "summary" is
+# used as the reply text - never a model paraphrase - so what the student
+# reads always matches exactly what happened.
+
+_WRITE_ACTION_TOOLS = {
+    "apply_to_job", "request_interview_slot",
+    "raise_placement_query", "update_my_skills",
+}
+
+
+# Tabs the frontend should reload after a successful chatbot action.
+
+_REFRESH_AFTER = {
+    "update_my_skills": ["profile", "dashboard", "jobs"],
+    "request_interview_slot": ["interviews"],
+    "raise_placement_query": ["queries"],
+}
+
+
+def _execute_tool_calls(tool_calls, tool_executors, actor_profile, user):
+    """
+    Runs every tool the model asked for (at most 3) and returns a list of
+    (call, tool_name, result). "Show my applications and my interviews"
+    used to answer only the first half.
+    """
+
+    calls = list(tool_calls)[:3]
+
+    # Starting a mock interview changes the conversation state (the next
+    # messages become interview answers), so it always runs on its own.
+
+    for call in calls:
+
+        if call.function.name == "start_mock_interview":
+
+            calls = [call]
+
+            break
+
+    executed = []
+
+    for call in calls:
+
+        name = call.function.name
+
+        try:
+
+            args = json.loads(call.function.arguments or "{}")
+
+        except Exception:
+
+            args = {}
+
+        executor = tool_executors.get(name)
+
+        if not executor:
+
+            result = {
+                "failed": True,
+                "summary": "I'm not able to do that yet - try asking in a different way.",
+            }
+
+        else:
+
+            try:
+
+                result = executor(actor_profile, user, args)
+
+            except Exception as e:
+
+                print("Chatbot tool execution error:", name, e)
+
+                result = {
+                    "failed": True,
+                    "summary": (
+                        "I ran into an issue while doing that. Please try "
+                        "again in a moment, or ask me in a different way."
+                    ),
+                }
+
+        executed.append((call, name, result))
+
+    return executed
+
+
+def _build_tool_payload(final_text, executed):
+    """
+    Merges the structured data from every executed tool into one response
+    for the frontend. Lists (cards) always come straight from the tools'
+    own return values - never from anything the model wrote.
+    """
+
+    result_payload = {"reply": final_text}
+
+    refresh = []
+
+    for call, name, result in executed:
+
+        for key in _FORWARDED_LIST_KEYS:
+
+            if key in result:
+
+                existing = result_payload.get(key)
+
+                if isinstance(existing, list) and isinstance(result[key], list):
+
+                    result_payload[key] = existing + result[key]
+
+                elif key not in result_payload:
+
+                    result_payload[key] = result[key]
+
+        # Resume/document download - forwarded as its own small object
+        # (not a URL) so the frontend triggers a real authenticated blob
+        # download button.
+
+        if result.get("resume_id") and "resume_download" not in result_payload:
+
+            result_payload["resume_download"] = {
+                "resume_id": result["resume_id"],
+                "filename": result.get("filename", "Resume"),
+            }
+
+        if result.get("score_report") and "mock_interview_report" not in result_payload:
+
+            result_payload["mock_interview_report"] = result["score_report"]
+
+        # Yes / No style buttons (e.g. the apply confirmation)
+
+        for reply_text in result.get("quick_replies") or []:
+
+            result_payload.setdefault("quick_replies", [])
+
+            if reply_text not in result_payload["quick_replies"]:
+
+                result_payload["quick_replies"].append(reply_text)
+
+        if name in _REFRESH_AFTER and result.get("success"):
+
+            for tab in _REFRESH_AFTER[name]:
+
+                if tab not in refresh:
+
+                    refresh.append(tab)
+
+    # Only auto-navigate when there was a single action - with several
+    # results at once there is no single "right" tab to open.
+
+    if len(executed) == 1 and executed[0][2].get("navigate_to"):
+
+        result_payload["navigate_to"] = executed[0][2]["navigate_to"]
+
+    if refresh:
+
+        result_payload["refresh"] = refresh
+
+    return result_payload
+
+
 def generate_reply(user, message, history=None, page_context=None):
     """
     history: optional list of {"sender": "user"|"bot", "message": "..."}
@@ -3302,6 +3649,20 @@ def generate_reply(user, message, history=None, page_context=None):
 
                 return _handle_mock_interview_turn(active_session, user, message)
 
+    # ---------------- APPLY CONFIRMATION (Yes / No buttons) ----------------
+    # Handled without the AI: "Yes, apply to X at Y" creates the
+    # application, "No, cancel" drops it. The AI itself can never apply.
+
+    if role == "student" and actor_profile:
+
+        confirmation_reply = _handle_apply_confirmation(
+            actor_profile, user, message
+        )
+
+        if confirmation_reply is not None:
+
+            return confirmation_reply
+
     context = build_context(user)
 
     knowledge = get_knowledge_base_snippets()
@@ -3385,91 +3746,94 @@ def generate_reply(user, message, history=None, page_context=None):
 
         return (choice_message.content or "").strip()
 
-    tool_call = tool_calls[0]
+    executed = _execute_tool_calls(
+        tool_calls, tool_executors, actor_profile, user
+    )
 
-    tool_name = tool_call.function.name
+    # A single tool that couldn't run: same plain message as before.
 
-    try:
+    if len(executed) == 1 and executed[0][2].get("failed"):
 
-        tool_args = json.loads(tool_call.function.arguments or "{}")
-
-    except Exception:
-
-        tool_args = {}
-
-    executor = tool_executors.get(tool_name)
-
-    if not executor:
-
-        return "I'm not able to do that yet - try asking in a different way."
-
-    try:
-
-        tool_result = executor(actor_profile, user, tool_args)
-
-    except Exception as e:
-
-        print("Chatbot tool execution error:", tool_name, e)
-
-        return (
-            "I ran into an issue while doing that. Please try again "
-            "in a moment, or ask me in a different way."
-        )
+        return executed[0][2]["summary"]
 
     messages.append({
         "role": "assistant",
         "content": choice_message.content or "",
         "tool_calls": [
             {
-                "id": tool_call.id,
+                "id": call.id,
                 "type": "function",
                 "function": {
-                    "name": tool_name,
-                    "arguments": tool_call.function.arguments,
+                    "name": name,
+                    "arguments": call.function.arguments,
                 },
             }
+            for call, name, _result in executed
         ],
     })
 
-    messages.append({
-        "role": "tool",
-        "tool_call_id": tool_call.id,
-        "content": json.dumps(tool_result, default=str),
-    })
+    for call, name, result in executed:
 
-    # Write-action tools (they create/modify a real database record) -
-    # their own "summary" is used directly as the reply, bypassing the
-    # second Groq pass entirely. This guarantees the confirmation text
-    # shown to the user always matches exactly what the database write
-    # actually did (success or failure) - never a model-generated
-    # paraphrase that could drift from what really happened, which is
-    # what let the model previously claim "application submitted"
-    # without ever having called apply_to_job at all.
+        if name in _WRITE_ACTION_TOOLS:
 
-    _WRITE_ACTION_TOOLS = {
-        "apply_to_job", "request_interview_slot",
-        "raise_placement_query", "update_my_skills",
-    }
+            # The model must not restate these - their confirmation text
+            # is appended to the reply automatically below.
 
-    if tool_name == "start_mock_interview" and tool_result.get("question"):
+            tool_content = {
+                "success": bool(result.get("success")),
+                "note": (
+                    "The result of this action is added to your reply "
+                    "automatically - do not describe or repeat it."
+                ),
+            }
+
+        else:
+
+            tool_content = result
+
+        messages.append({
+            "role": "tool",
+            "tool_call_id": call.id,
+            "content": json.dumps(tool_content, default=str),
+        })
+
+    write_summaries = [
+        result.get("summary", "Done.")
+        for _call, name, result in executed
+        if name in _WRITE_ACTION_TOOLS
+    ]
+
+    read_items = [
+        item for item in executed
+        if item[1] not in _WRITE_ACTION_TOOLS
+    ]
+
+    first_name = executed[0][1]
+
+    first_result = executed[0][2]
+
+    if (
+        len(executed) == 1
+        and first_name == "start_mock_interview"
+        and first_result.get("question")
+    ):
 
         # The interviewer question is already exactly what should be
-        # shown - skipping the second Groq pass here means it's never
-        # paraphrased, shortened, or mixed with commentary before the
-        # student sees the actual question they need to answer.
+        # shown - skipping the second Groq pass means it's never
+        # paraphrased, shortened, or mixed with commentary.
 
-        final_text = tool_result["question"]
+        final_text = first_result["question"]
 
-    elif tool_name in _WRITE_ACTION_TOOLS:
+    elif not read_items:
 
-        final_text = tool_result.get("summary", "Done.")
+        final_text = "\n\n".join(write_summaries) or "Done."
 
     else:
 
         try:
 
-            # tool_choice="none": this second pass must only write
-            # the reply text, never call another tool.
+            # tool_choice="none": this second pass must only write the
+            # reply text, never call another tool.
 
             final_response = _call_groq_with_tools(
                 messages, tool_schemas, tool_choice="none"
@@ -3481,63 +3845,17 @@ def generate_reply(user, message, history=None, page_context=None):
 
             print("Chatbot follow-up error:", e)
 
-            final_text = tool_result.get(
-                "summary", "Here's what I found."
-            )
+            final_text = ""
 
         if not final_text:
 
-            final_text = tool_result.get("summary", "Here's what I found.")
+            final_text = " ".join(
+                result.get("summary", "Here's what I found.")
+                for _call, _name, result in read_items
+            )
 
-    # Structured, agent-style data always comes straight from the
-    # tool's own return value above - never from anything the model
-    # wrote - so the frontend shows real data, not a hallucinated
-    # summary of it.
+        if write_summaries:
 
-    result_payload = {"reply": final_text}
+            final_text = final_text + "\n\n" + "\n\n".join(write_summaries)
 
-    for key in _FORWARDED_LIST_KEYS:
-
-        if key in tool_result:
-
-            result_payload[key] = tool_result[key]
-
-    # Resume/document download - forwarded as its own small object
-    # (not a URL) so the frontend triggers a real authenticated
-    # blob download button, rather than a link the model could get
-    # wrong or that would navigate away from the app entirely.
-
-    if tool_result.get("resume_id"):
-
-        result_payload["resume_download"] = {
-            "resume_id": tool_result["resume_id"],
-            "filename": tool_result.get("filename", "Resume"),
-        }
-
-    # Mock interview score report - only ever present via the
-    # get_mock_interview_report tool path (the live session's own
-    # completion already returns "mock_interview_report" directly
-    # from _finish_mock_interview, bypassing this shared tail).
-
-    if tool_result.get("score_report"):
-
-        result_payload["mock_interview_report"] = tool_result["score_report"]
-
-    if tool_result.get("navigate_to"):
-
-        result_payload["navigate_to"] = tool_result["navigate_to"]
-
-    # Tells the frontend which tabs to reload after a chatbot action
-
-    _REFRESH_AFTER = {
-        "apply_to_job": ["applications", "dashboard", "jobs"],
-        "update_my_skills": ["profile", "dashboard", "jobs"],
-        "request_interview_slot": ["interviews"],
-        "raise_placement_query": ["queries"],
-    }
-
-    if tool_name in _REFRESH_AFTER and tool_result.get("success"):
-
-        result_payload["refresh"] = _REFRESH_AFTER[tool_name]
-
-    return result_payload
+    return _build_tool_payload(final_text, executed)
