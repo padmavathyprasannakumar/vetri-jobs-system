@@ -406,6 +406,10 @@ text: data.reply || "Sorry, I couldn't understand that.",
 
 matchedJobs: data.matched_jobs || null,
 
+// Yes / No style buttons (e.g. "Apply to X at Y?")
+
+quickReplies: data.quick_replies && data.quick_replies.length ? data.quick_replies : null,
+
 interviews: data.interviews || null,
 
 applications: data.applications || null,
