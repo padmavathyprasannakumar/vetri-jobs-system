@@ -957,3 +957,98 @@
     margin: 4px 0 0;
     padding-left: 18px;
 }
+
+/* =====================================================
+   ADD THESE RULES TO THE BOTTOM OF ChatBot.css
+   (nothing existing is changed)
+   ===================================================== */
+
+
+/* Red dot on the floating chat button when the assistant has a new
+   message and the chat window is closed. Positions relative to
+   .chatbot-button (a fixed-position button, so this works as-is). */
+
+.chatbot-button-dot {
+
+    position: absolute;
+
+    top: 2px;
+
+    right: 2px;
+
+    width: 14px;
+
+    height: 14px;
+
+    border-radius: 50%;
+
+    background: #ef4444;
+
+    border: 2px solid #ffffff;
+
+    animation: chatbot-dot-pulse 1.6s ease-in-out infinite;
+
+}
+
+
+@keyframes chatbot-dot-pulse {
+
+    0%, 100% { transform: scale(1); }
+
+    50%      { transform: scale(1.25); }
+
+}
+
+
+/* Quick-reply chips shown under proactive assistant messages */
+
+.chat-quick-replies {
+
+    display: flex;
+
+    flex-wrap: wrap;
+
+    gap: 6px;
+
+    margin-top: 8px;
+
+}
+
+
+.chat-quick-reply {
+
+    border: 1px solid #c7d2fe;
+
+    background: #eef2ff;
+
+    color: #3730a3;
+
+    border-radius: 16px;
+
+    padding: 5px 12px;
+
+    font-size: 12px;
+
+    font-weight: 500;
+
+    cursor: pointer;
+
+    transition: background 0.15s ease;
+
+}
+
+
+.chat-quick-reply:hover:not(:disabled) {
+
+    background: #e0e7ff;
+
+}
+
+
+.chat-quick-reply:disabled {
+
+    opacity: 0.5;
+
+    cursor: not-allowed;
+
+}
