@@ -291,15 +291,12 @@ def build_context(user):
 # PROACTIVE ALERTS (chatbot speaks first, no AI call)
 # =====================================================
 
-def build_proactive_alerts(user):
+def _build_student_proactive_alerts(user):
     """Things the student should hear about without having to ask."""
 
     from jobsystem.models import (
         Interview, Notification, Resume, Job, Application,
     )
-
-    if not user or getattr(user, "role", None) != "student":
-        return []
 
     profile = getattr(user, "student_profile", None)
 
@@ -414,6 +411,113 @@ def build_proactive_alerts(user):
 
     return alerts
 
+def _build_company_proactive_alerts(user):
+    """Things a recruiter should hear about without having to ask."""
+
+    from jobsystem.models import Interview, Application
+
+    company = getattr(user, "company_profile", None)
+
+    if not company:
+        return []
+
+    now = timezone.now()
+
+    alerts = []
+
+    # 1) Interview within the next 24 hours
+
+    soon = Interview.objects.filter(
+        application__job__company=company,
+        interview_date__gte=now,
+        interview_date__lte=now + timedelta(hours=24),
+        status__in=["scheduled", "rescheduled"],
+    ).exclude(
+        remarks__icontains="this date/time is a placeholder"
+    ).select_related(
+        "application__student", "application__job"
+    ).order_by("interview_date").first()
+
+    if soon:
+
+        hours = max(int((soon.interview_date - now).total_seconds() // 3600), 0)
+
+        when = (
+            "in less than an hour" if hours == 0
+            else f"in about {hours} hour(s)"
+        )
+
+        alerts.append({
+            "key": f"co_interview:{soon.id}:{soon.interview_date:%Y%m%d%H%M}",
+            "type": "interview_soon",
+            "text": (
+                f"Reminder: your interview with "
+                f"{soon.application.student.full_name} for "
+                f"{soon.application.job.title} is {when} "
+                f"({soon.interview_date:%I:%M %p})."
+            ),
+            "actions": ["Show my interviews"],
+        })
+
+    # 2) New applicants in the last 24 hours
+
+    new_applicants = Application.objects.filter(
+        job__company=company,
+        applied_date__gte=now - timedelta(hours=24),
+    ).count()
+
+    if new_applicants:
+
+        alerts.append({
+            "key": f"co_newapp:{new_applicants}:{now:%Y%m%d%H}",
+            "type": "new_applicants",
+            "text": (
+                f"{new_applicants} new applicant(s) in the last 24 hours."
+            ),
+            "actions": ["Show my recent applications"],
+        })
+
+    # 3) Candidates waiting over a week with no status update at all
+
+    stale = Application.objects.filter(
+        job__company=company,
+        status="applied",
+        applied_date__lte=now - timedelta(days=7),
+    ).count()
+
+    if stale:
+
+        alerts.append({
+            "key": f"co_stale:{stale}:{now:%Y%m%d}",
+            "type": "stale_applicants",
+            "text": (
+                f"{stale} candidate(s) have been waiting over a week "
+                "with no status update."
+            ),
+            "actions": ["Show my applications"],
+        })
+
+    return alerts
+
+
+def build_proactive_alerts(user):
+    """Public entry point used by ChatbotProactiveView - dispatches by
+    role, so the polling/marker frontend machinery stays unchanged for
+    both students and companies."""
+
+    role = getattr(user, "role", None) if user else None
+
+    if role == "student":
+        return _build_student_proactive_alerts(user)
+
+    if role == "company":
+        return _build_company_proactive_alerts(user)
+
+    return []
+
+
+
+
 
 def _describe_page(page_context):
     """
@@ -524,13 +628,18 @@ triggers the real letter-writing and application together.
 
 NEVER CLAIM AN ACTION SUCCEEDED WITHOUT CALLING THE TOOL (critical):
 you must NEVER say an application was submitted, a query was raised,
-an interview slot was requested, or a skill was added unless you
-ACTUALLY called the matching tool (apply_to_job, raise_placement_query,
-request_interview_slot, update_my_skills) in this exact turn and it
-returned success. Saying "done"/"submitted"/"added" in plain text
-without calling the tool is strictly forbidden, even if the request
-sounds simple or you're confident what the student wants - always
-call the real tool instead of describing the action as if it happened.
+an interview slot was requested, a skill was added, or a candidate was
+shortlisted/rejected unless you ACTUALLY called the matching tool
+(apply_to_job, raise_placement_query, request_interview_slot,
+update_my_skills, shortlist_candidate, reject_candidate) in this exact
+turn and it returned success. Saying "done"/"submitted"/"added"/
+"shortlisted"/"rejected" in plain text without calling the tool is
+strictly forbidden, even if the request sounds simple or you're
+confident what the user wants - always call the real tool instead of
+describing the action as if it happened. shortlist_candidate and
+reject_candidate never change anything by themselves either - like
+apply_to_job, they only ask the recruiter to confirm with Yes/No
+buttons; the status changes only after the recruiter taps Yes.
 If the student refers to a job by a pronoun ("apply to that job",
 "the above one", "yes apply"), look at the most recent job list you
 showed them in this conversation to resolve the exact job_title, then
@@ -3905,6 +4014,249 @@ def _tool_get_company_analytics_summary(profile, user, args):
     }
 
 
+# =====================================================
+# CANDIDATE ACTIONS - shortlisting/rejecting from chat, always
+# confirmed by the recruiter first (mirrors the student apply flow's
+# safety pattern: the AI can only PREPARE a question with Yes/No
+# buttons; the actual status change happens in a separate,
+# deterministic step that never depends on the AI's own judgment).
+# =====================================================
+
+def _resolve_application_for_candidate_action(company_profile, candidate_name, job_title):
+    """The one open Application this company owns matching a candidate
+    name + job title, or None if it can't be resolved unambiguously."""
+
+    from jobsystem.models import Application
+
+    name = (candidate_name or "").strip()
+
+    title = (job_title or "").strip()
+
+    if not name or not title:
+
+        return None
+
+    exact = Application.objects.filter(
+        job__company=company_profile,
+        job__title__iexact=title,
+        student__full_name__iexact=name,
+    ).select_related("student", "job").first()
+
+    if exact:
+
+        return exact
+
+    # fall back to a looser match (the AI may paraphrase slightly) -
+    # only used if it resolves to exactly one application
+
+    loose = list(Application.objects.filter(
+        job__company=company_profile,
+        job__title__icontains=title,
+        student__full_name__icontains=name,
+    ).select_related("student", "job"))
+
+    return loose[0] if len(loose) == 1 else None
+
+
+def _set_candidate_status(company_profile, application, new_status):
+    """The one place a candidate's status is actually changed from
+    chat. Mirrors CompanyApplicationStatusView's own notification
+    dispatch, so a chat-driven change behaves identically to one made
+    from the Candidates page."""
+
+    application.status = new_status
+
+    application.save()
+
+    status_to_event = {"shortlisted": "shortlisted", "rejected": "rejected"}
+
+    event_key = status_to_event.get(new_status)
+
+    if event_key:
+
+        try:
+
+            from jobsystem.services.notification_engine import dispatch
+
+            dispatch(
+                event_key,
+                application.student.user,
+                {
+                    "job_title": application.job.title,
+                    "company_name": company_profile.company_name,
+                },
+            )
+
+        except Exception as e:
+
+            print("Chatbot candidate-status notification error:", e)
+
+    return {
+        "success": True,
+        "summary": (
+            f"{application.student.full_name} has been {new_status} "
+            f"for {application.job.title}. They've been notified."
+        ),
+    }
+
+
+def _prepare_candidate_action(company_profile, candidate_name, job_title, action, verb):
+    """PREPARE step only for shortlist/reject - never writes anything.
+    Returns a confirmation question with Yes/No buttons."""
+
+    if not (candidate_name or "").strip() or not (job_title or "").strip():
+
+        return {
+            "summary": "Which candidate and which job? Please name both."
+        }
+
+    application = _resolve_application_for_candidate_action(
+        company_profile, candidate_name, job_title
+    )
+
+    if not application:
+
+        return {
+            "summary": (
+                f"I couldn't find an application from \"{candidate_name}\" "
+                f"for \"{job_title}\". Check the exact name and job title "
+                "on the Candidates page."
+            )
+        }
+
+    if application.status == action:
+
+        return {
+            "summary": (
+                f"{application.student.full_name} is already {action} "
+                f"for {application.job.title}."
+            )
+        }
+
+    if application.status == "selected" and action == "rejected":
+
+        return {
+            "summary": (
+                f"{application.student.full_name} has already been "
+                f"selected for {application.job.title}."
+            )
+        }
+
+    confirm_text = (
+        f"Yes, {verb} {application.student.full_name} "
+        f"for {application.job.title}"
+    )
+
+    return {
+        "needs_confirmation": True,
+        "quick_replies": [confirm_text, "No, cancel"],
+        "summary": (
+            f"{verb.capitalize()} {application.student.full_name} for "
+            f"{application.job.title}? Tap Yes to confirm."
+        ),
+    }
+
+
+def _tool_shortlist_candidate(profile, user, args):
+
+    return _prepare_candidate_action(
+        profile,
+        args.get("candidate_name"),
+        args.get("job_title"),
+        action="shortlisted",
+        verb="shortlist",
+    )
+
+
+def _tool_reject_candidate(profile, user, args):
+
+    return _prepare_candidate_action(
+        profile,
+        args.get("candidate_name"),
+        args.get("job_title"),
+        action="rejected",
+        verb="reject",
+    )
+
+
+_CONFIRM_SHORTLIST_RE = re.compile(
+    r"^\s*yes,?\s+shortlist\s+(?P<name>.+?)\s+for\s+(?P<job>.+?)\s*[.!]?\s*$",
+    re.IGNORECASE,
+)
+
+_CONFIRM_REJECT_RE = re.compile(
+    r"^\s*yes,?\s+reject\s+(?P<name>.+?)\s+for\s+(?P<job>.+?)\s*[.!]?\s*$",
+    re.IGNORECASE,
+)
+
+_CANCEL_CANDIDATE_RE = re.compile(r"^\s*no,?\s+cancel\s*[.!]?\s*$", re.IGNORECASE)
+
+
+def _handle_candidate_action_confirmation(company_profile, user, message):
+    """
+    Deterministic handler for the Yes / No buttons after a shortlist or
+    reject confirmation. Returns a reply dict, or None if the message
+    is not one of these (so the normal AI flow continues). The actual
+    status change happens ONLY here, never from the AI's own judgment.
+    """
+
+    text = message or ""
+
+    if _CANCEL_CANDIDATE_RE.match(text):
+
+        return {
+            "reply": "Okay, no changes made. Let me know if you'd like anything else."
+        }
+
+    for pattern, new_status in (
+        (_CONFIRM_SHORTLIST_RE, "shortlisted"),
+        (_CONFIRM_REJECT_RE, "rejected"),
+    ):
+
+        match = pattern.match(text)
+
+        if not match:
+
+            continue
+
+        application = _resolve_application_for_candidate_action(
+            company_profile, match.group("name"), match.group("job")
+        )
+
+        if not application:
+
+            return {
+                "reply": (
+                    "I couldn't find that application any more. Ask me "
+                    "to show the candidates again."
+                )
+            }
+
+        # Guards against a duplicate tap (e.g. a stale button still on
+        # screen after a refresh) silently re-sending the notification.
+
+        if application.status == new_status:
+
+            return {
+                "reply": (
+                    f"{application.student.full_name} is already "
+                    f"{new_status} for {application.job.title}."
+                )
+            }
+
+        result = _set_candidate_status(company_profile, application, new_status)
+
+        payload = {"reply": result["summary"]}
+
+        if result.get("success"):
+
+            payload["refresh"] = ["candidates"]
+
+        return payload
+
+    return None
+
+
 def _tool_get_company_profile_info(profile, user, args):
     """
     Covers the Company Profile tab - a read-only snapshot of the
@@ -4038,6 +4390,61 @@ COMPANY_TOOL_SCHEMAS = [
             "parameters": {"type": "object", "properties": {}, "required": []},
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "shortlist_candidate",
+            "description": (
+                "Start shortlisting a candidate for one of the "
+                "company's jobs. This only asks the recruiter to "
+                "confirm (Yes / No buttons) - it never shortlists by "
+                "itself. Use when the recruiter asks to shortlist a "
+                "named candidate for a named job, or agrees to "
+                "shortlist someone just shown in a candidate list."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "candidate_name": {
+                        "type": "string",
+                        "description": "The candidate's full name, exactly as shown.",
+                    },
+                    "job_title": {
+                        "type": "string",
+                        "description": "The job they applied to.",
+                    },
+                },
+                "required": ["candidate_name", "job_title"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "reject_candidate",
+            "description": (
+                "Start rejecting a candidate's application for one "
+                "of the company's jobs. This only asks the recruiter "
+                "to confirm (Yes / No buttons) - it never rejects by "
+                "itself. Use when the recruiter asks to reject a "
+                "named candidate for a named job."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "candidate_name": {
+                        "type": "string",
+                        "description": "The candidate's full name, exactly as shown.",
+                    },
+                    "job_title": {
+                        "type": "string",
+                        "description": "The job they applied to.",
+                    },
+                },
+                "required": ["candidate_name", "job_title"],
+            },
+        },
+    },
 ]
 
 
@@ -4050,6 +4457,8 @@ COMPANY_TOOL_EXECUTORS = {
     "list_all_job_postings": _tool_list_all_job_postings,
     "get_company_analytics_summary": _tool_get_company_analytics_summary,
     "get_company_profile_info": _tool_get_company_profile_info,
+    "shortlist_candidate": _tool_shortlist_candidate,
+    "reject_candidate": _tool_reject_candidate,
 }
 
 
@@ -4243,6 +4652,7 @@ _FORWARDED_LIST_KEYS = (
 _WRITE_ACTION_TOOLS = {
     "apply_to_job", "request_interview_slot",
     "raise_placement_query", "update_my_skills",
+    "shortlist_candidate", "reject_candidate",
 }
 
 
@@ -4575,6 +4985,21 @@ def generate_reply(user, message, history=None, page_context=None):
         if reference_reply is not None:
 
             return reference_reply
+
+    # ---------------- SHORTLIST / REJECT CONFIRMATION (Yes / No) ----------------
+    # Same safety pattern as the student apply flow: the AI can only ask
+    # "Shortlist X for Y? Tap Yes" - the actual status change happens here,
+    # deterministically, never from the AI's own judgment.
+
+    if role == "company" and actor_profile:
+
+        candidate_action_reply = _handle_candidate_action_confirmation(
+            actor_profile, user, message
+        )
+
+        if candidate_action_reply is not None:
+
+            return candidate_action_reply
 
     context = build_context(user)
 
