@@ -853,8 +853,11 @@ def _tool_find_matching_jobs(profile, user, args):
 
     if limit == 1 and not matched_jobs[0]["already_applied"]:
 
+        _best_job = ranked[0][0]
+
         result["quick_replies"] = [
-            _apply_chip_text(ranked[0][0]),
+            _apply_chip_text(_best_job),
+            _cover_letter_chip_text(_best_job),
             "No, cancel",
         ]
 
@@ -1159,6 +1162,30 @@ def _tool_get_company_skill_gap(profile, user, args):
 
 _SHOWN_JOBS_RE = re.compile(r"\n?\[\[jobs:([\d,]+)\]\]\s*$")
 
+_AWAITING_COVER_RE = re.compile(r"\n?\[\[await_cover:(\d+)\]\]\s*$")
+
+
+def awaiting_cover_letter_marker(job_id):
+    """Hidden suffix added to a saved bot message that just asked the
+    student to type a cover letter, so the NEXT message can be recognised
+    as that cover letter rather than a fresh request."""
+
+    return f"\n[[await_cover:{int(job_id)}]]" if job_id else ""
+
+
+def split_awaiting_cover_letter(text):
+    """(clean_text, job_id or None) - removes the marker added above."""
+
+    text = text or ""
+
+    match = _AWAITING_COVER_RE.search(text)
+
+    if not match:
+
+        return text, None
+
+    return text[:match.start()], int(match.group(1))
+
 
 def shown_jobs_marker(job_ids):
 
@@ -1247,7 +1274,7 @@ def _apply_blocker(profile, job):
     return None
 
 
-def _do_apply(profile, user, job):
+def _do_apply(profile, user, job, cover_letter=""):
     """The one place an application is actually created from chat."""
 
     from jobsystem.models import Application
@@ -1263,7 +1290,7 @@ def _do_apply(profile, user, job):
     application, created = Application.objects.get_or_create(
         student=profile,
         job=job,
-        defaults={"status": "applied"},
+        defaults={"status": "applied", "cover_letter": cover_letter or ""},
     )
 
     if not created:
@@ -1299,7 +1326,8 @@ def _do_apply(profile, user, job):
         "company": company_name,
         "summary": (
             f"Applied to {job.title} at {company_name} successfully. "
-            "You can track it under Applications."
+            + ("Your cover letter was included. " if cover_letter else "")
+            + "You can track it under Applications."
         ),
     }
 
@@ -1513,6 +1541,18 @@ def _tool_apply_to_job(profile, user, args):
     return _prepare_apply(profile, candidates[0])
 
 
+def _cover_letter_chip_text(job):
+    """Button text for 'add a cover letter before applying'. Reuses the
+    Yes-chip's own job phrase (title/company[/location]) so it can be
+    parsed back to the same job with the same logic."""
+
+    yes_chip = _apply_chip_text(job)
+
+    job_phrase = yes_chip[len("Yes, apply to "):]
+
+    return f"Add a cover letter for {job_phrase}"
+
+
 def _prepare_apply(profile, job):
     """Confirmation question + Yes/No buttons for one job (writes nothing)."""
 
@@ -1532,10 +1572,12 @@ def _prepare_apply(profile, job):
         "job_id": job.id,
         "job_title": job.title,
         "company": company_name,
-        "quick_replies": [confirm_text, "No, cancel"],
+        "quick_replies": [
+            confirm_text, _cover_letter_chip_text(job), "No, cancel",
+        ],
         "summary": (
             f"Apply to {job.title} at {company_name}? "
-            f"Tap Yes to confirm (or type: {confirm_text})."
+            "Tap Yes to confirm, or add a cover letter first."
         ),
     }
 
@@ -1571,6 +1613,51 @@ _APPLY_POINTER_WORDS = {
 }
 
 
+def _is_apply_pointer_phrase(text):
+    """
+    True for phrases that only POINT at a job already shown/asked about
+    ("apply above job", "yes apply", "apply the second one") rather than
+    naming one, or containing anything else (like real cover-letter text).
+    """
+
+    match = _APPLY_INTENT_RE.match(text or "")
+
+    if not match:
+
+        return False
+
+    tokens = re.findall(r"[a-z0-9']+", (text or "")[match.end():].lower())
+
+    return not any(t not in _APPLY_POINTER_WORDS for t in tokens)
+
+
+def _awaiting_cover_letter_job(history):
+    """The open Job the assistant just asked the student to write a
+    cover letter for, if its previous message is still the last one."""
+
+    if not history:
+
+        return None
+
+    last = history[-1]
+
+    if last.get("sender") != "bot":
+
+        return None
+
+    job_id = last.get("awaiting_cover_job_id")
+
+    if not job_id:
+
+        return None
+
+    from jobsystem.models import Job
+
+    return Job.objects.filter(
+        id=job_id, status="active", is_active=True
+    ).select_related("company").first()
+
+
 def _handle_apply_reference(profile, user, message, history):
     """
     "i want to apply above job" / "yes apply" / "apply the first one" -
@@ -1581,17 +1668,13 @@ def _handle_apply_reference(profile, user, message, history):
 
     text = message or ""
 
+    if not _is_apply_pointer_phrase(text):
+
+        return None
+
     match = _APPLY_INTENT_RE.match(text)
 
-    if not match:
-
-        return None
-
     tokens = re.findall(r"[a-z0-9']+", text[match.end():].lower())
-
-    if any(t not in _APPLY_POINTER_WORDS for t in tokens):
-
-        return None
 
     shown = _shown_jobs_from_history(history)
 
@@ -1670,30 +1753,14 @@ def _user_facing(summary):
     return text[:1].upper() + text[1:] if text else text
 
 
-def _handle_apply_confirmation(profile, user, message):
+def _resolve_job_from_apply_phrase(rest):
     """
-    Deterministic handler for the Yes / No buttons after an apply
-    confirmation. Returns a reply dict, or None if the message is
-    not a confirmation (so the normal AI flow continues).
+    "<title> at <company>[ (Location)]" -> the matching open Job, or None.
+    Shared by the Yes-confirmation handler and the "add a cover letter for
+    ..." handler below, since both buttons carry the same phrase format.
     """
-
-    text = message or ""
-
-    if _CANCEL_APPLY_RE.match(text):
-
-        return {
-            "reply": "Okay, I won't apply. Let me know if you'd like anything else."
-        }
-
-    match = _CONFIRM_APPLY_RE.match(text)
-
-    if not match:
-
-        return None
 
     from jobsystem.models import Job
-
-    rest = match.group("rest")
 
     # optional trailing "(Chennai)" - used when two open jobs share the
     # same title and company
@@ -1707,8 +1774,6 @@ def _handle_apply_confirmation(profile, user, message):
         location = loc_match.group(1).strip()
 
         rest = rest[:loc_match.start()].strip()
-
-    job = None
 
     # "<title> at <company>" - try every " at " as the split point,
     # so titles or company names that contain "at" still resolve.
@@ -1733,18 +1798,148 @@ def _handle_apply_confirmation(profile, user, message):
 
         if job:
 
-            break
+            return job
+
+    return None
+
+
+_JOB_NOT_FOUND_REPLY = {
+    "reply": (
+        "I couldn't find that open job any more. Ask me to find "
+        "jobs again and I'll show the current list."
+    )
+}
+
+
+def _handle_apply_confirmation(profile, user, message):
+    """
+    Deterministic handler for the Yes / No buttons after an apply
+    confirmation. Returns a reply dict, or None if the message is
+    not a confirmation (so the normal AI flow continues).
+    """
+
+    text = message or ""
+
+    if _CANCEL_APPLY_RE.match(text):
+
+        return {
+            "reply": "Okay, I won't apply. Let me know if you'd like anything else."
+        }
+
+    match = _CONFIRM_APPLY_RE.match(text)
+
+    if not match:
+
+        return None
+
+    job = _resolve_job_from_apply_phrase(match.group("rest"))
 
     if not job:
 
-        return {
-            "reply": (
-                "I couldn't find that open job any more. Ask me to find "
-                "jobs again and I'll show the current list."
-            )
-        }
+        return _JOB_NOT_FOUND_REPLY
 
     result = _do_apply(profile, user, job)
+
+    payload = {"reply": result["summary"]}
+
+    if result.get("success"):
+
+        payload["refresh"] = ["applications", "dashboard", "jobs"]
+
+    return payload
+
+
+_COVER_LETTER_REQUEST_RE = re.compile(
+    r"^\s*add\s+a\s+cover\s*letter\s+for\s+(?P<rest>.+?)\s*[.!]?\s*$",
+    re.IGNORECASE,
+)
+
+
+def _handle_cover_letter_request(profile, user, message):
+    """
+    "Add a cover letter for X at Y" (the third button under a job
+    recommendation) - asks the student to type it, and remembers which
+    job it's for via a marker on the saved reply. Returns a reply dict,
+    or None if the message doesn't match.
+    """
+
+    match = _COVER_LETTER_REQUEST_RE.match(message or "")
+
+    if not match:
+
+        return None
+
+    job = _resolve_job_from_apply_phrase(match.group("rest"))
+
+    if not job:
+
+        return _JOB_NOT_FOUND_REPLY
+
+    blocker = _apply_blocker(profile, job)
+
+    if blocker:
+
+        return {"reply": blocker}
+
+    company_name = job.company.company_name if job.company else "the company"
+
+    return {
+        "reply": (
+            f"Sure! Type your cover letter for {job.title} at "
+            f"{company_name} and I'll include it when I apply "
+            "(or say \"skip\" to apply without one)."
+        ),
+        "awaiting_cover_letter_job_id": job.id,
+    }
+
+
+_SKIP_COVER_RE = re.compile(
+    r"^\s*(skip|no|none|no\s+cover\s*letter)\s*[.!]?\s*$",
+    re.IGNORECASE,
+)
+
+# Broader than _CANCEL_APPLY_RE (which only matches the "No, cancel" BUTTON
+# text) - here the student is typing free text with no button, so "cancel"
+# or "never mind" alone must also work.
+
+_CANCEL_COVER_RE = re.compile(
+    r"^\s*(cancel|never\s*mind|stop|don'?t\s+apply)\s*[.!]?\s*$",
+    re.IGNORECASE,
+)
+
+
+def _handle_pending_cover_letter_text(profile, user, message, history):
+    """
+    While the student was just asked "type your cover letter", THIS
+    message is that cover letter (unless it's clearly a cancel or a
+    fresh "apply the second one"-style pointer). Returns a reply dict,
+    or None to fall through to the normal flow.
+    """
+
+    job = _awaiting_cover_letter_job(history)
+
+    if job is None:
+
+        return None
+
+    text = (message or "").strip()
+
+    if _CANCEL_APPLY_RE.match(text) or _CANCEL_COVER_RE.match(text):
+
+        return {
+            "reply": "Okay, I won't apply. Let me know if you'd like anything else."
+        }
+
+    if _is_apply_pointer_phrase(text):
+
+        # e.g. "apply the second one" - a fresh apply request, not the
+        # cover letter text that was asked for.
+
+        return None
+
+    cover_letter = "" if (not text or _SKIP_COVER_RE.match(text)) else text[:4000]
+
+    result = _do_apply(profile, user, job, cover_letter=cover_letter)
 
     payload = {"reply": result["summary"]}
 
@@ -4046,6 +4241,28 @@ def generate_reply(user, message, history=None, page_context=None):
         if confirmation_reply is not None:
 
             return confirmation_reply
+
+        # "Add a cover letter for X at Y" (the third button under a job
+        # recommendation) - asks the student to type it next.
+
+        cover_request_reply = _handle_cover_letter_request(
+            actor_profile, user, message
+        )
+
+        if cover_request_reply is not None:
+
+            return cover_request_reply
+
+        # The assistant just asked "type your cover letter" - this message
+        # IS that cover letter (unless it's a cancel or a fresh pointer).
+
+        pending_cover_reply = _handle_pending_cover_letter_text(
+            actor_profile, user, message, history
+        )
+
+        if pending_cover_reply is not None:
+
+            return pending_cover_reply
 
         # "apply above job" / "yes apply" - resolved from the jobs just shown
 
