@@ -7397,6 +7397,8 @@ class ChatbotMessageAPIView(APIView):
             shown_jobs_marker,
             split_awaiting_cover_letter,
             awaiting_cover_letter_marker,
+            split_awaiting_apply_decision,
+            awaiting_apply_decision_marker,
         )
         from jobsystem.models import ChatConversation, ChatMessage
 
@@ -7451,13 +7453,23 @@ class ChatbotMessageAPIView(APIView):
 
                 else:
 
-                    clean_text2, awaiting_job_id = split_awaiting_cover_letter(m.message)
+                    clean_text2, awaiting_cover_job_id = split_awaiting_cover_letter(m.message)
 
-                    if awaiting_job_id:
+                    if awaiting_cover_job_id:
 
                         entry["message"] = clean_text2
 
-                        entry["awaiting_cover_job_id"] = awaiting_job_id
+                        entry["awaiting_cover_job_id"] = awaiting_cover_job_id
+
+                    else:
+
+                        clean_text3, awaiting_apply_job_id = split_awaiting_apply_decision(m.message)
+
+                        if awaiting_apply_job_id:
+
+                            entry["message"] = clean_text3
+
+                            entry["awaiting_apply_job_id"] = awaiting_apply_job_id
 
                 history.append(entry)
 
@@ -7561,15 +7573,21 @@ class ChatbotMessageAPIView(APIView):
                 if isinstance(j, dict)
             ]
 
-            awaiting_job_id = response_payload.get("awaiting_cover_letter_job_id")
+            awaiting_cover_job_id = response_payload.get("awaiting_cover_letter_job_id")
+
+            awaiting_apply_job_id = response_payload.get("awaiting_apply_decision_job_id")
 
             if shown_ids:
 
                 marker = shown_jobs_marker(shown_ids)
 
-            elif awaiting_job_id:
+            elif awaiting_cover_job_id:
 
-                marker = awaiting_cover_letter_marker(awaiting_job_id)
+                marker = awaiting_cover_letter_marker(awaiting_cover_job_id)
+
+            elif awaiting_apply_job_id:
+
+                marker = awaiting_apply_decision_marker(awaiting_apply_job_id)
 
             else:
 
@@ -7594,6 +7612,7 @@ class ChatbotHistoryAPIView(APIView):
         from jobsystem.services.chatbot import (
             split_shown_jobs,
             split_awaiting_cover_letter,
+            split_awaiting_apply_decision,
         )
 
         conversation = ChatConversation.objects.filter(
@@ -7609,6 +7628,8 @@ class ChatbotHistoryAPIView(APIView):
             text, _ = split_shown_jobs(text)
 
             text, _ = split_awaiting_cover_letter(text)
+
+            text, _ = split_awaiting_apply_decision(text)
 
             return text
 
