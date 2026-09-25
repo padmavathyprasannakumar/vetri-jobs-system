@@ -7395,6 +7395,8 @@ class ChatbotMessageAPIView(APIView):
             handle_resume_attachment,
             split_shown_jobs,
             shown_jobs_marker,
+            split_awaiting_cover_letter,
+            awaiting_cover_letter_marker,
         )
         from jobsystem.models import ChatConversation, ChatMessage
 
@@ -7446,6 +7448,16 @@ class ChatbotMessageAPIView(APIView):
                 if shown_ids:
 
                     entry["jobs"] = shown_ids
+
+                else:
+
+                    clean_text2, awaiting_job_id = split_awaiting_cover_letter(m.message)
+
+                    if awaiting_job_id:
+
+                        entry["message"] = clean_text2
+
+                        entry["awaiting_cover_job_id"] = awaiting_job_id
 
                 history.append(entry)
 
@@ -7537,7 +7549,11 @@ class ChatbotMessageAPIView(APIView):
 
         if conversation:
 
-            # remember which jobs this reply showed as cards
+            # remember which jobs this reply showed as cards, OR (never
+            # both at once) that it just asked the student to type a
+            # cover letter for a specific job - either way, the NEXT
+            # message needs this to resolve "above job" / the cover
+            # letter text correctly.
 
             shown_ids = [
                 j.get("id")
@@ -7545,10 +7561,24 @@ class ChatbotMessageAPIView(APIView):
                 if isinstance(j, dict)
             ]
 
+            awaiting_job_id = response_payload.get("awaiting_cover_letter_job_id")
+
+            if shown_ids:
+
+                marker = shown_jobs_marker(shown_ids)
+
+            elif awaiting_job_id:
+
+                marker = awaiting_cover_letter_marker(awaiting_job_id)
+
+            else:
+
+                marker = ""
+
             ChatMessage.objects.create(
                 conversation=conversation,
                 sender="bot",
-                message=reply_text + shown_jobs_marker(shown_ids),
+                message=reply_text + marker,
             )
 
         return Response(response_payload)
@@ -7561,7 +7591,10 @@ class ChatbotHistoryAPIView(APIView):
     def get(self, request):
 
         from jobsystem.models import ChatConversation
-        from jobsystem.services.chatbot import split_shown_jobs
+        from jobsystem.services.chatbot import (
+            split_shown_jobs,
+            split_awaiting_cover_letter,
+        )
 
         conversation = ChatConversation.objects.filter(
             session_id=f"user-{request.user.id}"
@@ -7571,10 +7604,18 @@ class ChatbotHistoryAPIView(APIView):
 
             return Response([])
 
+        def _clean(text):
+
+            text, _ = split_shown_jobs(text)
+
+            text, _ = split_awaiting_cover_letter(text)
+
+            return text
+
         return Response([
             {
                 "sender": m.sender,
-                "message": split_shown_jobs(m.message)[0],
+                "message": _clean(m.message),
                 "timestamp": m.created_at,
             }
             for m in conversation.messages.all()
