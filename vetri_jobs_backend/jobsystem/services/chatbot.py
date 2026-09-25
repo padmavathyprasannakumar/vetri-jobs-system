@@ -514,6 +514,14 @@ When a job in a find_matching_jobs/check_job_eligibility/get_saved_jobs
 result has already_applied set to true, tell the student they've
 already applied to it instead of inviting them to apply again.
 
+AI-WRITTEN COVER LETTERS: if a student asks you to write their cover
+letter and apply, or to auto-generate one, do NOT draft it yourself in a
+chat reply and do NOT call apply_to_job for this - you have no way to
+pass free text into it. Instead tell them to say something like "write a
+cover letter for me and apply to <job>" (or point out the "Write a cover
+letter for me and apply" button under a job recommendation), which
+triggers the real letter-writing and application together.
+
 NEVER CLAIM AN ACTION SUCCEEDED WITHOUT CALLING THE TOOL (critical):
 you must NEVER say an application was submitted, a query was raised,
 an interview slot was requested, or a skill was added unless you
@@ -858,8 +866,11 @@ def _tool_find_matching_jobs(profile, user, args):
         result["quick_replies"] = [
             _apply_chip_text(_best_job),
             _cover_letter_chip_text(_best_job),
+            _ai_cover_chip_text(_best_job),
             "No, cancel",
         ]
+
+        result["awaiting_apply_decision_job_id"] = _best_job.id
 
     return result
 
@@ -1163,6 +1174,29 @@ def _tool_get_company_skill_gap(profile, user, args):
 _SHOWN_JOBS_RE = re.compile(r"\n?\[\[jobs:([\d,]+)\]\]\s*$")
 
 _AWAITING_COVER_RE = re.compile(r"\n?\[\[await_cover:(\d+)\]\]\s*$")
+
+_AWAITING_APPLY_RE = re.compile(r"\n?\[\[await_apply:(\d+)\]\]\s*$")
+
+
+def awaiting_apply_decision_marker(job_id):
+    """Hidden suffix on a saved 'Apply to X? [buttons]' message, so a later
+    'write a cover letter and apply' with no job named can still resolve
+    which job that prompt was about."""
+
+    return f"\n[[await_apply:{int(job_id)}]]" if job_id else ""
+
+
+def split_awaiting_apply_decision(text):
+
+    text = text or ""
+
+    match = _AWAITING_APPLY_RE.search(text)
+
+    if not match:
+
+        return text, None
+
+    return text[:match.start()], int(match.group(1))
 
 
 def awaiting_cover_letter_marker(job_id):
@@ -1553,6 +1587,205 @@ def _cover_letter_chip_text(job):
     return f"Add a cover letter for {job_phrase}"
 
 
+def _ai_cover_chip_text(job):
+    """Button text for 'write it for me and apply'. Reuses the Yes-chip's
+    own job phrase, exactly like _cover_letter_chip_text."""
+
+    yes_chip = _apply_chip_text(job)
+
+    job_phrase = yes_chip[len("Yes, apply to "):]
+
+    return f"Write a cover letter for me and apply to {job_phrase}"
+
+
+def _generate_ai_cover_letter(profile, job):
+    """
+    Drafts a short, genuine cover letter from the student's own profile
+    and the real job posting - never inventing experience they didn't
+    list. Raises on failure so the caller can fall back gracefully
+    (never applies with a broken/empty letter silently).
+    """
+
+    company_name = job.company.company_name if job.company else "the company"
+
+    skills = (getattr(profile, "skills", "") or "").strip()
+
+    course = (getattr(profile, "course", "") or "").strip()
+
+    career_interest = (getattr(profile, "career_interest", "") or "").strip()
+
+    job_skills = (getattr(job, "skills_required", "") or "").strip()
+
+    job_description = (getattr(job, "description", "") or "").strip()[:800]
+
+    prompt = f"""Write a concise, genuine-sounding cover letter (roughly 150-220
+words) for a student named {profile.full_name or "the applicant"} applying to
+the "{job.title}" role at {company_name}.
+
+CANDIDATE (only use what's given - never invent experience, companies,
+projects or numbers that aren't listed here):
+- Course/degree: {course or "not specified"}
+- Skills: {skills or "not specified"}
+- Career interest: {career_interest or "not specified"}
+
+JOB:
+- Title: {job.title}
+- Company: {company_name}
+- Required skills: {job_skills or "not specified"}
+- Description: {job_description or "not specified"}
+
+Write in first person, a warm but professional tone, plain text only (no
+markdown, no headers, no placeholders like "[Your Name]"). Three short
+paragraphs: (1) interest in the role, (2) 2-3 of the candidate's real
+skills that match the job, (3) a brief closing. Output ONLY the letter
+text, nothing else."""
+
+    return _clean_reply(_call_groq_plain([{"role": "user", "content": prompt}]))
+
+
+_AI_COVER_WITH_JOB_RE = re.compile(
+    r"^\s*(?:please\s+)?(?:write|generate|create)\s+(?:me\s+)?(?:a\s+)?"
+    r"(?:perfect\s+|good\s+|great\s+|professional\s+)?cover\s*letter\s+"
+    r"(?:for\s+me\s+)?and\s+apply\s+to\s+(?P<rest>.+?)\s*[.!]?\s*$",
+    re.IGNORECASE,
+)
+
+_AI_COVER_NO_JOB_RE = re.compile(
+    r"^\s*(?:please\s+)?(?:write|generate|create)\s+(?:me\s+)?(?:a\s+)?"
+    r"(?:perfect\s+|good\s+|great\s+|professional\s+)?cover\s*letter\s+"
+    r"(?:for\s+me\s+)?and\s+apply"
+    r"(?:\s+to\s+(?:it|that|this|that\s+job|this\s+job|the\s+above\s+job))?"
+    r"\s*[.!]?\s*$",
+    re.IGNORECASE,
+)
+
+
+def _single_shown_job(history):
+
+    shown = _shown_jobs_from_history(history)
+
+    return shown[0] if len(shown) == 1 else None
+
+
+def _awaiting_apply_decision_job(history):
+    """The open Job the assistant's previous 'Apply to X? [buttons]'
+    message was about, if that's still the last message."""
+
+    if not history:
+
+        return None
+
+    last = history[-1]
+
+    if last.get("sender") != "bot":
+
+        return None
+
+    job_id = last.get("awaiting_apply_job_id")
+
+    if not job_id:
+
+        return None
+
+    from jobsystem.models import Job
+
+    return Job.objects.filter(
+        id=job_id, status="active", is_active=True
+    ).select_related("company").first()
+
+
+def _apply_with_ai_cover_letter(profile, user, job):
+    """Generates the letter and applies with it in one step. Shared by
+    the button/typed-phrase path and the 'you write it' shortcut while
+    a manual cover letter was pending."""
+
+    blocker = _apply_blocker(profile, job)
+
+    if blocker:
+
+        return {"reply": blocker}
+
+    try:
+
+        cover_letter = _generate_ai_cover_letter(profile, job)
+
+    except Exception as e:
+
+        print("AI cover letter generation error:", e)
+
+        return {
+            "reply": (
+                "I couldn't write a cover letter just now. Want to type "
+                "your own instead, or apply without one?"
+            ),
+            "quick_replies": [_apply_chip_text(job), "No, cancel"],
+        }
+
+    result = _do_apply(profile, user, job, cover_letter=cover_letter)
+
+    payload = {"reply": result["summary"]}
+
+    if result.get("success") and cover_letter:
+
+        payload["reply"] += (
+            f"\n\nHere's the cover letter I wrote:\n\n{cover_letter}"
+        )
+
+    if result.get("success"):
+
+        payload["refresh"] = ["applications", "dashboard", "jobs"]
+
+    return payload
+
+
+def _handle_ai_cover_letter_apply(profile, user, message, history):
+    """
+    "Write a cover letter for me and apply to X" (with or without a job
+    named) - generates the letter and applies immediately, no manual
+    typing. Returns a reply dict, or None if the message doesn't match.
+    """
+
+    text = message or ""
+
+    # Check the pointer-word form FIRST: "...and apply to it/that/this" must
+    # resolve via the just-shown job, not be treated as a literal job name
+    # ("it" is not a job title) by the more general WITH_JOB pattern below.
+
+    if _AI_COVER_NO_JOB_RE.match(text):
+
+        job = _awaiting_apply_decision_job(history) or _single_shown_job(history)
+
+        if job is not None:
+
+            return _apply_with_ai_cover_letter(profile, user, job)
+
+        shown = _shown_jobs_from_history(history)
+
+        if len(shown) > 1:
+
+            return {
+                "reply": "Which job should I write the cover letter for?",
+                "quick_replies": [
+                    _apply_chip_text(j) for j in shown[:5]
+                ] + ["No, cancel"],
+            }
+
+        return None
+
+    match = _AI_COVER_WITH_JOB_RE.match(text)
+
+    if match:
+
+        job = _resolve_job_from_apply_phrase(match.group("rest"))
+
+        if not job:
+
+            return _JOB_NOT_FOUND_REPLY
+
+        return _apply_with_ai_cover_letter(profile, user, job)
+
+    return None
+
 def _prepare_apply(profile, job):
     """Confirmation question + Yes/No buttons for one job (writes nothing)."""
 
@@ -1573,11 +1806,15 @@ def _prepare_apply(profile, job):
         "job_title": job.title,
         "company": company_name,
         "quick_replies": [
-            confirm_text, _cover_letter_chip_text(job), "No, cancel",
+            confirm_text,
+            _cover_letter_chip_text(job),
+            _ai_cover_chip_text(job),
+            "No, cancel",
         ],
+        "awaiting_apply_decision_job_id": job.id,
         "summary": (
-            f"Apply to {job.title} at {company_name}? "
-            "Tap Yes to confirm, or add a cover letter first."
+            f"Apply to {job.title} at {company_name}? Tap Yes to confirm, "
+            "add your own cover letter, or have me write one for you."
         ),
     }
 
@@ -1898,6 +2135,16 @@ _SKIP_COVER_RE = re.compile(
     re.IGNORECASE,
 )
 
+# While the student was just asked to TYPE a cover letter, this lets them
+# hand it back to the assistant instead ("write it for me", "you write it").
+
+_AI_WRITE_FOR_ME_RE = re.compile(
+    r"^\s*(?:you\s+write\s+it|write\s+it\s+for\s+me|write\s+one\s+for\s+me|"
+    r"generate\s+(?:one|it)(?:\s+for\s+me)?|ai\s+write\s+it|"
+    r"can\s+you\s+write\s+it)\s*[.!]?\s*$",
+    re.IGNORECASE,
+)
+
 # Broader than _CANCEL_APPLY_RE (which only matches the "No, cancel" BUTTON
 # text) - here the student is typing free text with no button, so "cancel"
 # or "never mind" alone must also work.
@@ -1936,6 +2183,10 @@ def _handle_pending_cover_letter_text(profile, user, message, history):
         # cover letter text that was asked for.
 
         return None
+
+    if _AI_WRITE_FOR_ME_RE.match(text):
+
+        return _apply_with_ai_cover_letter(profile, user, job)
 
     cover_letter = "" if (not text or _SKIP_COVER_RE.match(text)) else text[:4000]
 
@@ -4095,6 +4346,17 @@ def _build_tool_payload(final_text, executed):
 
             result_payload["mock_interview_report"] = result["score_report"]
 
+        # "Apply to X? [buttons]" prompts (whether from apply_to_job or a
+        # best-job recommendation) carry a hidden marker so a later
+        # "write a cover letter and apply" with no job named still knows
+        # which job that prompt was about.
+
+        for marker_key in ("awaiting_cover_letter_job_id", "awaiting_apply_decision_job_id"):
+
+            if result.get(marker_key) and marker_key not in result_payload:
+
+                result_payload[marker_key] = result[marker_key]
+
         # Yes / No style buttons (e.g. the apply confirmation)
 
         for reply_text in result.get("quick_replies") or []:
@@ -4252,6 +4514,19 @@ def generate_reply(user, message, history=None, page_context=None):
         if cover_request_reply is not None:
 
             return cover_request_reply
+
+        # "Write a cover letter for me and apply to X" (with or without a
+        # job named) - generates the letter and applies immediately. Must
+        # be checked BEFORE the pending-manual-text handler below, so
+        # changing your mind mid-typing doesn't get saved as literal text.
+
+        ai_cover_reply = _handle_ai_cover_letter_apply(
+            actor_profile, user, message, history
+        )
+
+        if ai_cover_reply is not None:
+
+            return ai_cover_reply
 
         # The assistant just asked "type your cover letter" - this message
         # IS that cover letter (unless it's a cancel or a fresh pointer).
