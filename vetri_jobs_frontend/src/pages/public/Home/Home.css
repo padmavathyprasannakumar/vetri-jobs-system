@@ -747,3 +747,15 @@
     padding: 12px 16px;
     margin: 0 0 16px;
 }
+/* =====================================================
+   ADD THIS RULE TO Home.css (nothing existing is removed)
+   The ring used to hold text ("85%"); it now holds an icon
+   (<FaFileAlt/>), so this makes sure the icon is centered and
+   sized well inside the same 28x28 circle.
+   ===================================================== */
+
+.home2-badge-ring svg {
+
+    font-size: 12px;
+
+}
