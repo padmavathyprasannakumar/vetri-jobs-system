@@ -500,10 +500,97 @@ def _build_company_proactive_alerts(user):
     return alerts
 
 
+def _build_placement_proactive_alerts(user):
+    """Things a placement admin should hear about without having to ask."""
+
+    from jobsystem.models import CompanyProfile, StudentProfile, PlacementDrive, Interview
+
+    now = timezone.now()
+
+    alerts = []
+
+    # 1) Companies waiting for approval
+
+    pending_companies = CompanyProfile.objects.filter(
+        approval_status="pending"
+    ).count()
+
+    if pending_companies:
+
+        alerts.append({
+            "key": f"pa_pending_co:{pending_companies}:{now:%Y%m%d}",
+            "type": "pending_approvals",
+            "text": (
+                f"{pending_companies} compan"
+                f"{'y is' if pending_companies == 1 else 'ies are'} "
+                "waiting for approval."
+            ),
+            "actions": ["Show pending company approvals"],
+        })
+
+    # 2) Students who haven't been verified yet
+
+    unverified = StudentProfile.objects.filter(verified=False).count()
+
+    if unverified:
+
+        alerts.append({
+            "key": f"pa_unverified:{unverified}:{now:%Y%m%d}",
+            "type": "unverified_students",
+            "text": f"{unverified} student(s) still need to be verified.",
+            "actions": ["Show unverified students"],
+        })
+
+    # 3) The next upcoming placement drive (a single reminder, not a
+    # count - PlacementDrive.drive_date's exact field type isn't
+    # something this file can see, so a precise "within N days" date
+    # comparison is avoided here in favour of always naming the very
+    # next one, which is safe regardless of that field's type).
+
+    soon_drive = PlacementDrive.objects.filter(
+        status="upcoming"
+    ).order_by("drive_date").first()
+
+    if soon_drive:
+
+        alerts.append({
+            "key": f"pa_drive:{soon_drive.id}",
+            "type": "drive_soon",
+            "text": (
+                f"Next upcoming placement drive: {soon_drive.title} "
+                f"on {soon_drive.drive_date}."
+            ),
+            "actions": ["Show upcoming placement drives"],
+        })
+
+    # 4) Interviews happening today across the whole platform
+
+    today_interviews = Interview.objects.filter(
+        interview_date__date=now.date(),
+        status__in=["scheduled", "rescheduled"],
+    ).exclude(
+        remarks__icontains="this date/time is a placeholder"
+    ).count()
+
+    if today_interviews:
+
+        alerts.append({
+            "key": f"pa_todayiv:{today_interviews}:{now:%Y%m%d}",
+            "type": "interviews_today",
+            "text": (
+                f"{today_interviews} interview(s) scheduled across "
+                "the platform today."
+            ),
+            "actions": [],
+        })
+
+    return alerts
+
+
 def build_proactive_alerts(user):
     """Public entry point used by ChatbotProactiveView - dispatches by
     role, so the polling/marker frontend machinery stays unchanged for
-    both students and companies."""
+    students, companies, and placement admins alike."""
 
     role = getattr(user, "role", None) if user else None
 
@@ -512,6 +599,9 @@ def build_proactive_alerts(user):
 
     if role == "company":
         return _build_company_proactive_alerts(user)
+
+    if role == "placement_admin":
+        return _build_placement_proactive_alerts(user)
 
     return []
 
@@ -609,7 +699,14 @@ saved jobs, notifications, their own profile, updating their skills,
 placement drives, requesting an interview slot, or raising a query.
 For a company, this includes searching candidates, finding top
 applicants for one of their jobs, viewing applications, interviews,
-job postings, analytics, or their own company profile. Only call
+job postings, analytics, or their own company profile. For a
+placement admin, this includes overall placement stats, pending
+company approvals, unverified students, placement drives, one
+company's history, the placement report, or the platform-wide
+candidate pipeline - these tools are read-only for now, so if asked
+to approve a company, verify a student, or send a notification,
+explain that action isn't available in chat yet and point them to
+the matching admin page. Only call
 apply_to_job when a student clearly, explicitly asks to apply to a
 specific named job, and only call update_my_skills when they clearly,
 explicitly ask to add/update a skill - never as a side effect of a
@@ -4461,6 +4558,379 @@ COMPANY_TOOL_EXECUTORS = {
     "reject_candidate": _tool_reject_candidate,
 }
 
+# =====================================================
+# PLACEMENT ADMIN TOOLS - read-only for now. Grounded in the same
+# queries the real Placement admin pages already use (Dashboard,
+# Companies, Students, Drives, Company History, Reports, Candidate
+# Pipeline), just trimmed to what fits a chat answer. No write
+# actions yet (approving a company, verifying a student, etc.) -
+# those need the same Yes/No confirmation pattern already used for
+# student applications and company shortlist/reject, added
+# separately once this read-only layer is proven.
+# =====================================================
+
+def _tool_get_placement_overview(profile, user, args):
+
+    from jobsystem.models import (
+        StudentProfile, CompanyProfile, Job, Application, PlacementDrive,
+    )
+
+    total_students = StudentProfile.objects.count()
+
+    total_companies = CompanyProfile.objects.count()
+
+    active_jobs = Job.objects.filter(status="active").count()
+
+    total_applications = Application.objects.count()
+
+    placed = Application.objects.filter(
+        status="selected"
+    ).values("student").distinct().count()
+
+    placement_pct = (
+        round((placed / total_students) * 100, 1) if total_students else 0
+    )
+
+    active_drives = PlacementDrive.objects.filter(
+        status__in=["upcoming", "ongoing"]
+    ).count()
+
+    return {
+        "total_students": total_students,
+        "total_companies": total_companies,
+        "active_jobs": active_jobs,
+        "total_applications": total_applications,
+        "placed_students": placed,
+        "placement_percentage": placement_pct,
+        "active_drives": active_drives,
+        "navigate_to": "/placement/dashboard",
+        "summary": (
+            f"{placed} of {total_students} students placed "
+            f"({placement_pct}%). {total_companies} companies, "
+            f"{active_jobs} active jobs, {active_drives} active drive(s)."
+        ),
+    }
+
+
+def _tool_get_pending_company_approvals(profile, user, args):
+
+    from jobsystem.models import CompanyProfile
+
+    pending = CompanyProfile.objects.filter(
+        approval_status="pending"
+    ).order_by("-created_at")[:15]
+
+    data = [
+        {
+            "company_name": c.company_name,
+            "industry": c.industry,
+            "submitted_on": str(c.created_at),
+        }
+        for c in pending
+    ]
+
+    return {
+        "companies": data,
+        "navigate_to": "/placement/companies",
+        "summary": (
+            f"{len(data)} compan{'y' if len(data) == 1 else 'ies'} "
+            "awaiting approval."
+            if data else
+            "No companies are awaiting approval right now."
+        ),
+    }
+
+
+def _tool_get_unverified_students(profile, user, args):
+
+    from jobsystem.models import StudentProfile
+
+    unverified = StudentProfile.objects.filter(
+        verified=False
+    ).order_by("-id")[:15]
+
+    data = [
+        {"full_name": s.full_name, "department": s.department}
+        for s in unverified
+    ]
+
+    return {
+        "students": data,
+        "navigate_to": "/placement/students",
+        "summary": (
+            f"{len(data)} student(s) not yet verified."
+            if data else
+            "All students are verified."
+        ),
+    }
+
+
+def _tool_get_placement_drives(profile, user, args):
+
+    from jobsystem.models import PlacementDrive
+
+    valid_statuses = {"upcoming", "ongoing", "completed", "cancelled"}
+
+    status_filter = (args.get("status") or "upcoming").strip().lower()
+
+    if status_filter not in valid_statuses:
+
+        status_filter = "upcoming"
+
+    drives = PlacementDrive.objects.filter(
+        status=status_filter
+    ).select_related("company").order_by("drive_date")[:10]
+
+    data = [
+        {
+            "title": d.title,
+            "company": d.company.company_name if d.company else "",
+            "date": str(d.drive_date),
+            "status": (
+                d.get_status_display()
+                if hasattr(d, "get_status_display") else d.status
+            ),
+        }
+        for d in drives
+    ]
+
+    return {
+        "drives": data,
+        "navigate_to": "/placement/drives",
+        "summary": (
+            f"{len(data)} {status_filter} placement drive(s)."
+            if data else
+            f"No {status_filter} placement drives."
+        ),
+    }
+
+
+def _tool_get_company_history(profile, user, args):
+
+    from jobsystem.models import CompanyProfile, Job, Application
+
+    name = (args.get("company_name") or "").strip()
+
+    if not name:
+
+        return {"summary": "Which company would you like details on?"}
+
+    company = CompanyProfile.objects.filter(
+        company_name__icontains=name
+    ).first()
+
+    if not company:
+
+        return {"summary": f"No company found matching \"{name}\"."}
+
+    jobs_count = Job.objects.filter(company=company).count()
+
+    apps = Application.objects.filter(job__company=company)
+
+    hired = apps.filter(status="selected").count()
+
+    return {
+        "company_name": company.company_name,
+        "industry": company.industry,
+        "approval_status": company.approval_status,
+        "total_jobs_posted": jobs_count,
+        "total_applications": apps.count(),
+        "students_hired": hired,
+        "navigate_to": "/placement/companies",
+        "summary": (
+            f"{company.company_name}: {jobs_count} job(s) posted, "
+            f"{apps.count()} application(s), {hired} hired."
+        ),
+    }
+
+
+def _tool_get_placement_report(profile, user, args):
+
+    from jobsystem.models import StudentProfile, CompanyProfile, Application
+
+    total_students = StudentProfile.objects.count()
+
+    selected = Application.objects.filter(status="selected").count()
+
+    placement_pct = (
+        round((selected / total_students) * 100, 1) if total_students else 0
+    )
+
+    return {
+        "total_students": total_students,
+        "total_companies": CompanyProfile.objects.count(),
+        "selected_students": selected,
+        "placement_percentage": placement_pct,
+        "navigate_to": "/placement/reports",
+        "summary": (
+            f"Placement report: {selected} of {total_students} students "
+            f"placed ({placement_pct}%)."
+        ),
+    }
+
+
+def _tool_get_candidate_pipeline(profile, user, args):
+
+    from jobsystem.models import Application
+
+    apps = Application.objects.select_related(
+        "student", "job", "job__company"
+    ).order_by("-applied_date")[:15]
+
+    candidates = [
+        {
+            "name": a.student.full_name,
+            "job_title": a.job.title,
+            "company": a.job.company.company_name if a.job.company else "",
+            "status": a.get_status_display(),
+        }
+        for a in apps
+    ]
+
+    stats = {
+        "total_applicants": Application.objects.count(),
+        "shortlisted": Application.objects.filter(status="shortlisted").count(),
+        "interviews_scheduled": Application.objects.filter(status="interview").count(),
+        "final_selected": Application.objects.filter(status="selected").count(),
+    }
+
+    return {
+        "candidates": candidates,
+        "navigate_to": "/placement/candidates/pipeline",
+        "summary": (
+            f"{stats['total_applicants']} total applicant(s), "
+            f"{stats['shortlisted']} shortlisted, "
+            f"{stats['interviews_scheduled']} in interview stage, "
+            f"{stats['final_selected']} selected."
+        ),
+    }
+
+
+PLACEMENT_TOOL_SCHEMAS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_placement_overview",
+            "description": (
+                "Get overall placement stats: total students, "
+                "companies, active jobs, applications, placed "
+                "students, placement percentage, and active drives. "
+                "Use for broad questions like 'how are we doing?' or "
+                "'what's our placement rate?'."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_pending_company_approvals",
+            "description": (
+                "Get companies whose registration is still awaiting "
+                "approval. Use when asked which companies need "
+                "approval/review, or how many are pending."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_unverified_students",
+            "description": (
+                "Get students who haven't been verified yet. Use "
+                "when asked which students still need verification."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_placement_drives",
+            "description": (
+                "Get placement drives filtered by status. Use for "
+                "questions about upcoming/ongoing/past placement "
+                "drives."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "description": (
+                            "One of upcoming, ongoing, completed, "
+                            "cancelled. Defaults to upcoming."
+                        ),
+                    }
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_company_history",
+            "description": (
+                "Get one specific company's placement history: jobs "
+                "posted, applications received, students hired, "
+                "approval status. Use when a specific company is "
+                "named."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "company_name": {
+                        "type": "string",
+                        "description": "The company name to look up.",
+                    }
+                },
+                "required": ["company_name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_placement_report",
+            "description": (
+                "Get the overall placement report summary: total "
+                "students, companies, students placed, placement "
+                "percentage. Use for 'give me a report' style "
+                "questions."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_candidate_pipeline",
+            "description": (
+                "Get the platform-wide candidate pipeline: recent "
+                "applicants across every company, their job, and "
+                "their current stage, plus pipeline stage counts. Use "
+                "for 'show the candidate pipeline' or similar "
+                "platform-wide (not one company's) requests."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+]
+
+
+PLACEMENT_TOOL_EXECUTORS = {
+    "get_placement_overview": _tool_get_placement_overview,
+    "get_pending_company_approvals": _tool_get_pending_company_approvals,
+    "get_unverified_students": _tool_get_unverified_students,
+    "get_placement_drives": _tool_get_placement_drives,
+    "get_company_history": _tool_get_company_history,
+    "get_placement_report": _tool_get_placement_report,
+    "get_candidate_pipeline": _tool_get_candidate_pipeline,
+}
+
+
 
 # =====================================================
 # RESUME ATTACHMENT (unchanged - separate from the tool-
@@ -4641,6 +5111,7 @@ def _call_groq_with_tools(messages, tools, tool_choice="auto"):
 _FORWARDED_LIST_KEYS = (
     "matched_jobs", "candidates", "applications",
     "interviews", "jobs", "drives", "notifications",
+    "companies", "students",
 )
 
 
@@ -4844,7 +5315,15 @@ def generate_reply(user, message, history=None, page_context=None):
     # Recruiters legitimately ask about candidates, so the
     # "other students" probe filter only applies to non-company users.
 
-    if getattr(user, "role", None) != "company" and _is_security_probe(message):
+    # Companies legitimately search/see their own candidates, and a
+    # placement admin legitimately sees platform-wide student/company
+    # data by design - the probe filter only protects a STUDENT from
+    # seeing another student's private data.
+
+    if (
+        getattr(user, "role", None) not in ("company", "placement_admin")
+        and _is_security_probe(message)
+    ):
 
         return SECURITY_REFUSAL
 
@@ -4881,6 +5360,18 @@ def generate_reply(user, message, history=None, page_context=None):
             tool_schemas = COMPANY_TOOL_SCHEMAS
 
             tool_executors = COMPANY_TOOL_EXECUTORS
+
+    elif role == "placement_admin":
+
+        # No per-user profile object to scope actions to (placement
+        # admin tools operate platform-wide) - pass user itself so the
+        # tool-calling machinery still has a non-None actor_profile.
+
+        actor_profile = user
+
+        tool_schemas = PLACEMENT_TOOL_SCHEMAS
+
+        tool_executors = PLACEMENT_TOOL_EXECUTORS
 
     # ---------------- ACTIVE MOCK INTERVIEW ----------------
     # If the student has a mock interview in progress, THIS message
