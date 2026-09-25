@@ -509,7 +509,7 @@ branding.homepage_hero_image_url ?
 
 <div className="home2-floating-badge home2-badge-score">
 
-<div className="home2-badge-ring">85%</div>
+<div className="home2-badge-ring"><FaFileAlt/></div>
 
 <div>
 
