@@ -596,6 +596,17 @@ role-based prep grounded in typical skills for that role, or offer to
 start a mock interview for it (start_mock_interview) - never silently
 swap in a different job's real interview data just because one exists.
 
+INTERVIEW STATUS QUESTIONS (important): "any interview updates", "do I have
+interviews", "when is my interview" and similar are asking about REAL
+scheduled interviews, not application labels - always call
+get_upcoming_interviews (or trust upcoming_interviews/interviews_this_week
+in CURRENT USER DATA below, since it is rebuilt fresh every message) for
+these. NEVER conclude "no interviews scheduled" just because
+get_application_status didn't attach interview details to an application -
+a candidate can have a real, upcoming interview even while their
+application status says "Selected" or "Shortlisted", so check the
+authoritative source before saying there is nothing scheduled.
+
 LIVE DATA OVER CHAT HISTORY (important): the CURRENT USER DATA JSON
 below is rebuilt fresh from the real database on every single message -
 it is always more current than anything said earlier in this
@@ -2221,37 +2232,39 @@ def _tool_get_application_status(profile, user, args):
             "status": app.get_status_display(),
         }
 
-        # For an application currently at the "interview" stage,
-        # attach the actual scheduled interview's date/time/mode AND
-        # that job's real required skills - this is what lets the
-        # model proactively offer genuinely role/company-specific
-        # interview prep, grounded in real data, without a second
-        # tool call.
+        # Attach a real upcoming interview's date/time/mode AND that
+        # job's required skills whenever one exists - checked
+        # regardless of the application's own status label, NOT only
+        # when status=="interview". A company can schedule (or
+        # re-schedule) an interview for a candidate already marked
+        # "selected" or "shortlisted" without changing that label
+        # back (see CompanyInterviewCreateView), so gating on the
+        # label alone silently hid real, upcoming interviews here -
+        # exactly what made the assistant wrongly say "no interviews
+        # scheduled" for a student who actually had two.
 
-        if app.status == "interview":
+        upcoming_iv = Interview.objects.filter(
+            application=app,
+            interview_date__gte=timezone.now(),
+            status__in=["scheduled", "rescheduled"],
+        ).order_by("interview_date").first()
 
-            upcoming_iv = Interview.objects.filter(
-                application=app,
-                interview_date__gte=timezone.now(),
-                status__in=["scheduled", "rescheduled"],
-            ).order_by("interview_date").first()
+        if upcoming_iv:
 
-            if upcoming_iv:
+            job_skills = [
+                s.strip()
+                for s in (app.job.skills_required or "").split(",")
+                if s.strip()
+            ]
 
-                job_skills = [
-                    s.strip()
-                    for s in (app.job.skills_required or "").split(",")
-                    if s.strip()
-                ]
+            entry["interview"] = {
+                "date": upcoming_iv.interview_date.strftime("%b %d, %Y"),
+                "time": upcoming_iv.interview_date.strftime("%I:%M %p"),
+                "mode": upcoming_iv.get_interview_mode_display(),
+                "job_skills_required": job_skills,
+            }
 
-                entry["interview"] = {
-                    "date": upcoming_iv.interview_date.strftime("%b %d, %Y"),
-                    "time": upcoming_iv.interview_date.strftime("%I:%M %p"),
-                    "mode": upcoming_iv.get_interview_mode_display(),
-                    "job_skills_required": job_skills,
-                }
-
-                has_interview_scheduled = True
+            has_interview_scheduled = True
 
         applications.append(entry)
 
@@ -3327,11 +3340,16 @@ TOOL_SCHEMAS = [
             "name": "get_application_status",
             "description": (
                 "Get the student's current job applications and "
-                "their statuses. For any application at the "
-                "interview stage, this also returns the actual "
-                "scheduled interview date/time/mode and that job's "
-                "required skills - after showing this, proactively "
-                "offer role-and-company-specific interview prep."
+                "their statuses. Any application with a real upcoming "
+                "interview also returns its date/time/mode and that "
+                "job's required skills (regardless of the "
+                "application's own status label) - after showing "
+                "this, proactively offer role-and-company-specific "
+                "interview prep. For a general question about "
+                "interview status/schedule/updates ('any interview "
+                "updates', 'when is my interview'), prefer "
+                "get_upcoming_interviews instead - it is the "
+                "authoritative source."
             ),
             "parameters": {"type": "object", "properties": {}, "required": []},
         },
@@ -3340,7 +3358,16 @@ TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "get_upcoming_interviews",
-            "description": "Get the student's upcoming scheduled interviews.",
+            "description": (
+                "Get the student's upcoming scheduled interviews - the "
+                "authoritative source for any interview status/"
+                "schedule/update question ('any interview updates', "
+                "'do I have interviews', 'when is my interview'). Use "
+                "this rather than get_application_status for these, "
+                "since a real scheduled interview can exist even when "
+                "the linked application's own status says something "
+                "else (e.g. 'Selected' or 'Shortlisted')."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
