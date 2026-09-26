@@ -813,6 +813,23 @@ a candidate can have a real, upcoming interview even while their
 application status says "Selected" or "Shortlisted", so check the
 authoritative source before saying there is nothing scheduled.
 
+NEVER ANSWER A DATA REQUEST WITHOUT CALLING THE TOOL (critical): if the
+student asks to see or check something real - "show me my applications",
+"show my interview status", "any interview updates", "show my
+notifications", "show saved jobs" and similar - you must call the
+matching tool THIS turn and build your reply from its actual result.
+Never write a vague acknowledgment like "Here are your current
+applications." or "Here's your interview status." with no real names,
+dates, or numbers in it - that sentence is worthless without the tool
+call behind it, and the student can tell. This applies even when the
+request is phrased as a follow-up ("and show me my interview status",
+"now show my applications") right after another question - a follow-up
+phrasing is not a reason to skip the tool call or assume the earlier
+answer already covered it; each such request needs its own fresh tool
+call, since applications, interviews, and notifications change over
+time and the student is asking to see the CURRENT state, not a repeat
+of something said earlier in this conversation.
+
 LIVE DATA OVER CHAT HISTORY (important): the CURRENT USER DATA JSON
 below is rebuilt fresh from the real database on every single message -
 it is always more current than anything said earlier in this
@@ -1500,7 +1517,17 @@ def _shown_jobs_from_history(history):
 
 
 def _apply_blocker(profile, job):
-    """Message explaining why the student can't apply, or None."""
+    """
+    Dict explaining why the student can't apply, or None if they can.
+    Shape: {"message": str, "navigate_to": str?, "quick_replies": [...]?}
+    - the extra fields are only set for an ELIGIBILITY failure (never
+    for "already applied", since there's nothing to go fix for that),
+    so the student always has a real next step instead of a dead end.
+    Two match_score can differ per job - the same 52% match on two
+    different jobs can pass one and fail the other, since each job
+    sets its own eligibility requirements independently of match_score
+    (see the MATCH SCORE VS ELIGIBILITY prompt guidance).
+    """
 
     from jobsystem.models import Application
     from jobsystem.services.eligibility import check_eligibility
@@ -1509,7 +1536,9 @@ def _apply_blocker(profile, job):
 
     if Application.objects.filter(student=profile, job=job).exists():
 
-        return f"You've already applied to {job.title} at {company_name}."
+        return {
+            "message": f"You've already applied to {job.title} at {company_name}."
+        }
 
     try:
 
@@ -1540,13 +1569,43 @@ def _apply_blocker(profile, job):
 
         why = "; ".join(fail_details)
 
-        return (
+        message = (
             f"You're not eligible to apply to {job.title} at "
             f"{company_name} based on your current profile."
             + (f" Specifically: {why}" if why else "")
         )
 
+        # A real next step, not just a dead-end explanation - some
+        # failures (like a missing age) are things the student can fix
+        # themselves right now on their Profile page.
+
+        return {
+            "message": message,
+            "navigate_to": "/student/profile",
+            "quick_replies": ["Update my profile"],
+        }
+
     return None
+
+
+def _blocker_payload(blocker, reply_key):
+    """Turns an _apply_blocker() dict into a reply payload under the
+    given key ("summary" for a tool result, "reply" for a direct
+    early-return), carrying navigate_to/quick_replies through so a
+    blocked apply always gives the student a real next step - not
+    just at whichever single call site remembered to copy them."""
+
+    payload = {reply_key: blocker["message"]}
+
+    if blocker.get("navigate_to"):
+
+        payload["navigate_to"] = blocker["navigate_to"]
+
+    if blocker.get("quick_replies"):
+
+        payload["quick_replies"] = blocker["quick_replies"]
+
+    return payload
 
 
 def _do_apply(profile, user, job, cover_letter=""):
@@ -1560,7 +1619,7 @@ def _do_apply(profile, user, job, cover_letter=""):
 
     if blocker:
 
-        return {"success": False, "summary": blocker}
+        return {"success": False, **_blocker_payload(blocker, "summary")}
 
     application, created = Application.objects.get_or_create(
         student=profile,
@@ -1944,7 +2003,7 @@ def _apply_with_ai_cover_letter(profile, user, job):
 
     if blocker:
 
-        return {"reply": blocker}
+        return _blocker_payload(blocker, "reply")
 
     try:
 
@@ -2040,7 +2099,7 @@ def _prepare_apply(profile, job):
 
     if blocker:
 
-        return {"success": False, "summary": blocker}
+        return {"success": False, **_blocker_payload(blocker, "summary")}
 
     confirm_text = _apply_chip_text(job)
 
@@ -2349,6 +2408,19 @@ def _handle_apply_confirmation(profile, user, message):
 
         payload["refresh"] = ["applications", "dashboard", "jobs"]
 
+    else:
+
+        # Blocked (ineligible / already applied) - forward the real next
+        # step _apply_blocker attached, so tapping Yes on a job that
+        # turns out to be blocked still ends with something the student
+        # can actually do, not just a repeated dead-end message.
+
+        for key in ("navigate_to", "quick_replies"):
+
+            if result.get(key):
+
+                payload[key] = result[key]
+
     return payload
 
 
@@ -2382,7 +2454,7 @@ def _handle_cover_letter_request(profile, user, message):
 
     if blocker:
 
-        return {"reply": blocker}
+        return _blocker_payload(blocker, "reply")
 
     company_name = job.company.company_name if job.company else "the company"
 
