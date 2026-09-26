@@ -859,6 +859,17 @@ what differs. Do not set recent_only for these questions unless the
 student says "new". Keep it short - the job card below already shows
 the details.
 
+MATCH SCORE VS ELIGIBILITY (important): these are two separate,
+unrelated checks - a student can have a high match_score (their SKILLS
+overlap with the job) while still being INELIGIBLE (they fail a hard
+requirement like minimum CGPA, department, graduation year, or age).
+A good match percentage never overrides an eligibility failure. If a
+student asks why they can't apply despite a good match, explain this
+distinction plainly and point to the specific eligibility reason
+given (e.g. "your 52% match means your skills fit well, but this role
+separately requires a 7.0+ CGPA and you have 6.98 - that's a fixed
+requirement the skill match doesn't change").
+
 JOB REQUIREMENTS: when get_job_details returns missing_skills, point
 those out clearly as what the student should focus on for that
 specific role, alongside skills_required.
@@ -1510,16 +1521,29 @@ def _apply_blocker(profile, job):
 
     if not eligibility.get("eligible", True):
 
-        why = eligibility.get("reasons") or eligibility.get("reason") or ""
+        # check_eligibility()'s real shape is
+        # {"eligible": bool, "conditions": [{"status": "fail"/"pass",
+        # "detail": "..."}, ...]} - the same structure the Apply modal
+        # reads. Earlier code here read "reasons"/"reason" (keys that
+        # don't exist on the real response), so a student was NEVER
+        # shown a real reason, only a generic "based on your current
+        # profile" with nothing specific - exactly the confusion of
+        # "why not, it's 52% match?" that this is meant to prevent.
 
-        if isinstance(why, (list, tuple)):
+        conditions = eligibility.get("conditions") or []
 
-            why = "; ".join(str(w) for w in why)
+        fail_details = [
+            c.get("detail", "")
+            for c in conditions
+            if isinstance(c, dict) and c.get("status") == "fail" and c.get("detail")
+        ]
+
+        why = "; ".join(fail_details)
 
         return (
             f"You're not eligible to apply to {job.title} at "
             f"{company_name} based on your current profile."
-            + (f" Reason: {why}" if why else "")
+            + (f" Specifically: {why}" if why else "")
         )
 
     return None
@@ -2004,7 +2028,11 @@ def _handle_ai_cover_letter_apply(profile, user, message, history):
     return None
 
 def _prepare_apply(profile, job):
-    """Confirmation question + Yes/No buttons for one job (writes nothing)."""
+    """Confirmation question + Yes/No buttons for one job (writes nothing).
+    Also shows the real job card (with the same match score/location the
+    Jobs page shows) - asking to apply directly, without going through
+    find_matching_jobs first, used to show a bare text question with no
+    card at all."""
 
     company_name = job.company.company_name if job.company else "the company"
 
@@ -2016,12 +2044,29 @@ def _prepare_apply(profile, job):
 
     confirm_text = _apply_chip_text(job)
 
+    from jobsystem.services.job_matching import compute_job_match
+
+    try:
+
+        match_score, reasons = compute_job_match(profile, job)
+
+    except Exception as e:
+
+        print("Chatbot apply-confirmation match score error:", e)
+
+        match_score, reasons = None, []
+
     return {
         "success": False,
         "needs_confirmation": True,
         "job_id": job.id,
         "job_title": job.title,
         "company": company_name,
+        "matched_jobs": [
+            _serialize_matched_job(
+                job, match_score, reasons, already_applied=False
+            )
+        ],
         "quick_replies": [
             confirm_text,
             _cover_letter_chip_text(job),
@@ -2173,13 +2218,17 @@ def _handle_apply_reference(profile, user, message, history):
 
     result = _prepare_apply(profile, job)
 
-    payload = {"reply": result["summary"]}
+    # Reuse the exact same forwarding logic the apply_to_job TOOL path
+    # already uses (_build_tool_payload), rather than hand-picking keys
+    # here - hand-picking is what silently dropped "matched_jobs" (no
+    # match-score card shown) and "awaiting_apply_decision_job_id" (a
+    # later "write a cover letter and apply" with no job named couldn't
+    # resolve it) when this function was first written, before
+    # _prepare_apply grew those fields.
 
-    if result.get("quick_replies"):
-
-        payload["quick_replies"] = result["quick_replies"]
-
-    return payload
+    return _build_tool_payload(
+        result["summary"], [(None, "prepare_apply", result)]
+    )
 
 
 def _user_facing(summary):
