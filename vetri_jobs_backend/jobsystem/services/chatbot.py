@@ -1076,9 +1076,61 @@ def _serialize_matched_job(job, match_score=None, reasons=None, already_applied=
     }
 
 
+def _explain_condition(profile, detail):
+    """
+    Adds the student's OWN current value to a requirement text that doesn't
+    already show it, so "your profile doesn't match" and "you haven't filled
+    it in" are easy to tell apart:
+        "Open to: CSE"  ->  "Open to: CSE (your department: not set)"
+    Requirement texts that already mention the student's value ("...you
+    have 6.98", "...add your age...") are left exactly as they are.
+    """
+
+    text = (detail or "").strip()
+
+    low = text.lower()
+
+    if not text or "you have" in low or "your " in low:
+
+        return text
+
+    if low.startswith("open to graduation year"):
+
+        value = getattr(profile, "graduation_year", None)
+
+        return f"{text} (your graduation year: {value or 'not set'})"
+
+    if low.startswith("open to"):
+
+        value = (getattr(profile, "department", "") or "").strip()
+
+        return f"{text} (your department: {value or 'not set'})"
+
+    return text
+
+
+def _failing_details(profile, eligibility):
+    """Every failing requirement in a check_eligibility() result, each with
+    the student's own value shown where the check doesn't already."""
+
+    details = []
+
+    for condition in eligibility.get("conditions") or []:
+
+        if (
+            isinstance(condition, dict)
+            and condition.get("status") == "fail"
+            and condition.get("detail")
+        ):
+
+            details.append(_explain_condition(profile, condition["detail"]))
+
+    return details
+
+
 def _eligibility_blocker(profile, job):
-    """(eligible, first_failing_detail) for a job. Never raises: if the
-    eligibility check itself fails, the job is NOT hidden from the student."""
+    """(eligible, [failing requirement texts]) for a job. Never raises: if
+    the eligibility check itself fails, the job is NOT hidden."""
 
     from jobsystem.services.eligibility import check_eligibility
 
@@ -1088,63 +1140,59 @@ def _eligibility_blocker(profile, job):
 
     except Exception:
 
-        return True, ""
+        return True, []
 
     if result.get("eligible", True):
 
-        return True, ""
+        return True, []
 
-    for condition in result.get("conditions") or []:
-
-        if (
-            isinstance(condition, dict)
-            and condition.get("status") == "fail"
-            and condition.get("detail")
-        ):
-
-            return False, condition["detail"]
-
-    return False, ""
+    return False, _failing_details(profile, result)
 
 
-def _join_limited(items, limit=3):
-    """"A, B and 2 more" - keeps a sentence short however many there are."""
+def _exclusion_note(applied_titles, blocked, cap=5):
+    """
+    Plain lines saying which open jobs were left out of a 'jobs for you'
+    answer and why, so nothing is silently hidden. `blocked` is a list of
+    (title, [failing requirement texts]).
+    """
 
-    items = list(items)
+    sections = []
 
-    if len(items) <= limit:
+    applied = list(dict.fromkeys(applied_titles))
 
-        return ", ".join(items)
+    if applied:
 
-    return ", ".join(items[:limit]) + f" and {len(items) - limit} more"
+        lines = ["Already applied:"] + [f"- {t}" for t in applied[:cap]]
 
+        if len(applied) > cap:
 
-def _exclusion_note(applied_titles, blocked):
-    """Plain sentences saying which open jobs were left out of a 'jobs for
-    you' answer and why, so nothing is silently hidden."""
+            lines.append(f"- and {len(applied) - cap} more")
 
-    parts = []
-
-    if applied_titles:
-
-        parts.append(
-            "You've already applied to "
-            + _join_limited(dict.fromkeys(applied_titles)) + "."
-        )
+        sections.append("\n".join(lines))
 
     if blocked:
 
-        described = [
-            f"{title} ({why})" if why else title
-            for title, why in blocked
-        ]
+        lines = ["You don't meet the requirements yet:"]
 
-        parts.append(
-            "You don't currently meet the requirements for "
-            + _join_limited(described) + "."
-        )
+        for title, reasons in blocked[:cap]:
 
-    return " ".join(parts)
+            lines.append(
+                f"- {title}: {'; '.join(reasons)}" if reasons else f"- {title}"
+            )
+
+        if len(blocked) > cap:
+
+            lines.append(f"- and {len(blocked) - cap} more")
+
+        sections.append("\n".join(lines))
+
+    return "\n\n".join(sections)
+
+
+_PROFILE_HINT = (
+    'If your profile details are missing or out of date, '
+    'tap "Update my profile".'
+)
 
 
 def _tool_find_matching_jobs(profile, user, args):
@@ -1222,11 +1270,11 @@ def _tool_find_matching_jobs(profile, user, args):
 
             continue
 
-        eligible, why = _eligibility_blocker(profile, job)
+        eligible, reasons_list = _eligibility_blocker(profile, job)
 
         if not eligible:
 
-            blocked.append((job.title, why))
+            blocked.append((job.title, reasons_list))
 
             continue
 
@@ -1239,24 +1287,32 @@ def _tool_find_matching_jobs(profile, user, args):
     extras = {
         "already_applied_titles": applied_titles,
         "not_eligible": [
-            {"title": title, "reason": why} for title, why in blocked
+            {"title": title, "reason": "; ".join(reasons), "reasons": reasons}
+            for title, reasons in blocked
         ],
     }
 
     if not shown:
 
-        return {
+        result = {
             "matched_jobs": [],
-            "summary": " ".join(filter(None, [
+            "summary": "\n\n".join(filter(None, [
                 (
                     "There are no newly posted jobs you can apply to right now."
                     if recent_only else
                     "None of the open jobs are available for you to apply to right now."
                 ),
                 note,
+                _PROFILE_HINT if blocked else "",
             ])),
             **extras,
         }
+
+        if blocked:
+
+            result["quick_replies"] = ["Update my profile"]
+
+        return result
 
     matched_jobs = [
         _serialize_matched_job(job, score, reasons, already_applied=False)
@@ -1283,9 +1339,17 @@ def _tool_find_matching_jobs(profile, user, args):
     result = {
         "matched_jobs": matched_jobs,
         "navigate_to": "/student/jobs",
-        "summary": " ".join(filter(None, [headline, note])),
+        "summary": "\n\n".join(filter(None, [
+            headline,
+            note,
+            _PROFILE_HINT if (blocked and limit != 1) else "",
+        ])),
         **extras,
     }
+
+    if blocked and limit != 1:
+
+        result["quick_replies"] = ["Update my profile"]
 
     # A single recommended job gets one-tap Yes / No buttons, so "would you
     # like to apply?" can be answered right away.
@@ -1695,15 +1759,7 @@ def _apply_blocker(profile, job):
         # profile" with nothing specific - exactly the confusion of
         # "why not, it's 52% match?" that this is meant to prevent.
 
-        conditions = eligibility.get("conditions") or []
-
-        fail_details = [
-            c.get("detail", "")
-            for c in conditions
-            if isinstance(c, dict) and c.get("status") == "fail" and c.get("detail")
-        ]
-
-        why = "; ".join(fail_details)
+        why = "; ".join(_failing_details(profile, eligibility))
 
         message = (
             f"You're not eligible to apply to {job.title} at "
@@ -2224,8 +2280,8 @@ def _handle_ai_cover_letter_apply(profile, user, message, history):
     return None
 
 def _apply_alternatives(profile, blocked_job):
-    """(sentence, cards): after telling a student why they can't apply to
-    one job, what they CAN apply to instead - or an honest 'nothing else'."""
+    """(text, cards): after telling a student why they can't apply to one
+    job, what they CAN apply to instead - or an honest 'nothing else'."""
 
     found = _tool_find_matching_jobs(profile, None, {"limit": 3})
 
@@ -2236,16 +2292,16 @@ def _apply_alternatives(profile, blocked_job):
         return "Here are jobs you can apply to instead:", cards
 
     others_blocked = [
-        (item["title"], item["reason"])
+        (item["title"], item.get("reasons") or [])
         for item in found.get("not_eligible", [])
         if item["title"] != blocked_job.title
     ]
 
     note = _exclusion_note(found.get("already_applied_titles", []), others_blocked)
 
-    return " ".join(filter(None, [
-        "There are no other open jobs you can apply to right now.", note,
-    ])), []
+    text = "There are no other open jobs you can apply to right now."
+
+    return (f"{text}\n\n{note}" if note else text), []
 
 
 def _prepare_apply(profile, job):
@@ -2270,7 +2326,7 @@ def _prepare_apply(profile, job):
 
             alt_text, alt_cards = _apply_alternatives(profile, job)
 
-            result["summary"] = f"{result['summary']} {alt_text}"
+            result["summary"] = f"{result['summary']}\n\n{alt_text}"
 
             if alt_cards:
 
