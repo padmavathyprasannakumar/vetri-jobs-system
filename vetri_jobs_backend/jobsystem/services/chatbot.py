@@ -819,6 +819,13 @@ title and company from the card you just showed.
 PLAIN TEXT ONLY: the chat window does not render markdown, so never use
 **bold**, # headings or markdown links - write plain sentences.
 
+NAMED JOB + WANTS TO APPLY: if the student names a specific job and says they
+want to apply ("teacher job i want to apply", "apply to Software Tester"),
+call apply_to_job for THAT job. Never answer with check_job_eligibility or
+a general list of jobs instead - they asked about one job, so the answer
+must be about that job: the confirmation, or exactly why they can't apply,
+followed by the jobs they can apply to.
+
 MORE THAN ONE REQUEST: if the student asks for several things at once (for
 example "show my applications and my interviews"), call all the matching
 tools in the same turn (up to 3) instead of only the first one.
@@ -1069,19 +1076,91 @@ def _serialize_matched_job(job, match_score=None, reasons=None, already_applied=
     }
 
 
+def _eligibility_blocker(profile, job):
+    """(eligible, first_failing_detail) for a job. Never raises: if the
+    eligibility check itself fails, the job is NOT hidden from the student."""
+
+    from jobsystem.services.eligibility import check_eligibility
+
+    try:
+
+        result = check_eligibility(profile, job)
+
+    except Exception:
+
+        return True, ""
+
+    if result.get("eligible", True):
+
+        return True, ""
+
+    for condition in result.get("conditions") or []:
+
+        if (
+            isinstance(condition, dict)
+            and condition.get("status") == "fail"
+            and condition.get("detail")
+        ):
+
+            return False, condition["detail"]
+
+    return False, ""
+
+
+def _join_limited(items, limit=3):
+    """"A, B and 2 more" - keeps a sentence short however many there are."""
+
+    items = list(items)
+
+    if len(items) <= limit:
+
+        return ", ".join(items)
+
+    return ", ".join(items[:limit]) + f" and {len(items) - limit} more"
+
+
+def _exclusion_note(applied_titles, blocked):
+    """Plain sentences saying which open jobs were left out of a 'jobs for
+    you' answer and why, so nothing is silently hidden."""
+
+    parts = []
+
+    if applied_titles:
+
+        parts.append(
+            "You've already applied to "
+            + _join_limited(dict.fromkeys(applied_titles)) + "."
+        )
+
+    if blocked:
+
+        described = [
+            f"{title} ({why})" if why else title
+            for title, why in blocked
+        ]
+
+        parts.append(
+            "You don't currently meet the requirements for "
+            + _join_limited(described) + "."
+        )
+
+    return " ".join(parts)
+
+
 def _tool_find_matching_jobs(profile, user, args):
+    """
+    Jobs the student can ACTUALLY apply to right now - open, not already
+    applied to, and eligible - best skill match first. Jobs left out for
+    those reasons are named in the summary instead of being listed as if
+    they were suitable: a "suitable for me" answer that includes a job
+    you already applied to, or one whose Apply button would then be
+    refused, is not a real answer.
+    """
 
     from datetime import timedelta
 
     from jobsystem.models import Job, Application
     from jobsystem.services.job_matching import rank_jobs_for_student
-
-    # "Any new jobs?" / "what's newly updated" means recently POSTED
-    # jobs the student hasn't acted on yet - not a full re-listing of
-    # every match including ones already applied to. recent_only
-    # restricts to postings from the last 14 days and always excludes
-    # already-applied jobs, since the whole point is "what's new that
-    # I haven't seen/acted on".
 
     recent_only = bool(args.get("recent_only"))
 
@@ -1110,7 +1189,18 @@ def _tool_find_matching_jobs(profile, user, args):
 
     jobs = jobs_qs[:40]
 
-    ranked = rank_jobs_for_student(profile, jobs)[:5]
+    ranked_all = rank_jobs_for_student(profile, jobs)
+
+    if not ranked_all:
+
+        return {
+            "matched_jobs": [],
+            "summary": (
+                "There are no newly posted jobs in the last two weeks."
+                if recent_only else
+                "No active job postings found right now."
+            ),
+        }
 
     applied_job_ids = set(
         Application.objects.filter(
@@ -1118,57 +1208,91 @@ def _tool_find_matching_jobs(profile, user, args):
         ).values_list("job_id", flat=True)
     )
 
-    if recent_only:
+    actionable = []
 
-        ranked = [
-            (job, score, reasons)
-            for job, score, reasons in ranked
-            if job.id not in applied_job_ids
-        ]
+    applied_titles = []
 
-    ranked = ranked[:limit]
+    blocked = []
 
-    if not ranked:
+    for job, score, reasons in ranked_all:
+
+        if job.id in applied_job_ids:
+
+            applied_titles.append(job.title)
+
+            continue
+
+        eligible, why = _eligibility_blocker(profile, job)
+
+        if not eligible:
+
+            blocked.append((job.title, why))
+
+            continue
+
+        actionable.append((job, score, reasons))
+
+    shown = actionable[:limit]
+
+    note = _exclusion_note(applied_titles, blocked)
+
+    extras = {
+        "already_applied_titles": applied_titles,
+        "not_eligible": [
+            {"title": title, "reason": why} for title, why in blocked
+        ],
+    }
+
+    if not shown:
 
         return {
             "matched_jobs": [],
-            "summary": (
-                "No newly posted jobs in the last two weeks that the "
-                "student hasn't already applied to."
-                if recent_only else
-                "No active job postings found right now."
-            ),
+            "summary": " ".join(filter(None, [
+                (
+                    "There are no newly posted jobs you can apply to right now."
+                    if recent_only else
+                    "None of the open jobs are available for you to apply to right now."
+                ),
+                note,
+            ])),
+            **extras,
         }
 
     matched_jobs = [
-        _serialize_matched_job(
-            job, score, reasons,
-            already_applied=(job.id in applied_job_ids),
-        )
-        for job, score, reasons in ranked
+        _serialize_matched_job(job, score, reasons, already_applied=False)
+        for job, score, reasons in shown
     ]
+
+    if limit == 1:
+
+        headline = (
+            f"Best job you can apply to right now: {matched_jobs[0]['title']} "
+            f"at {matched_jobs[0]['company']}."
+        )
+
+    else:
+
+        count = len(matched_jobs)
+
+        headline = (
+            f"Here {'is' if count == 1 else 'are'} {count} "
+            f"{'job' if count == 1 else 'jobs'} you can apply to right now, "
+            "best skill match first."
+        )
 
     result = {
         "matched_jobs": matched_jobs,
         "navigate_to": "/student/jobs",
-        "summary": (
-            f"Found {len(matched_jobs)} newly posted job(s) the student hasn't applied to yet."
-            if recent_only else
-            (
-                f"Top match for the student: {matched_jobs[0]['title']} "
-                f"at {matched_jobs[0]['company']}."
-                if limit < 5 else
-                f"Found {len(matched_jobs)} jobs matching the student's profile."
-            )
-        ),
+        "summary": " ".join(filter(None, [headline, note])),
+        **extras,
     }
 
     # A single recommended job gets one-tap Yes / No buttons, so "would you
     # like to apply?" can be answered right away.
 
-    if limit == 1 and not matched_jobs[0]["already_applied"]:
+    if limit == 1:
 
-        _best_job = ranked[0][0]
+        _best_job = shown[0][0]
 
         result["quick_replies"] = [
             _apply_chip_text(_best_job),
@@ -1183,65 +1307,15 @@ def _tool_find_matching_jobs(profile, user, args):
 
 
 def _tool_check_job_eligibility(profile, user, args):
+    """
+    "Which jobs am I eligible for?" - the open jobs the student meets the
+    requirements for AND hasn't already applied to (eligible jobs they've
+    already applied to, and jobs they don't qualify for, are named in the
+    summary instead of being listed as apply-able). Same logic as the job
+    search, so the two can never disagree about what "you can apply to" means.
+    """
 
-    from jobsystem.models import Job, Application
-    from jobsystem.services.eligibility import check_eligibility
-    from jobsystem.services.job_matching import compute_job_match
-
-    jobs = Job.objects.filter(
-        status="active", is_active=True
-    ).select_related("company")[:30]
-
-    eligible = []
-
-    for job in jobs:
-
-        result = check_eligibility(profile, job)
-
-        if result["eligible"]:
-
-            eligible.append(job)
-
-    if not eligible:
-
-        return {
-            "matched_jobs": [],
-            "summary": (
-                "The student isn't fully eligible for any open jobs "
-                "right now based on their current profile."
-            ),
-        }
-
-    applied_job_ids = set(
-        Application.objects.filter(
-            student=profile
-        ).values_list("job_id", flat=True)
-    )
-
-    matched_jobs = []
-
-    for job in eligible[:8]:
-
-        try:
-
-            score, reasons = compute_job_match(profile, job)
-
-        except Exception:
-
-            score, reasons = None, []
-
-        matched_jobs.append(
-            _serialize_matched_job(
-                job, score, reasons,
-                already_applied=(job.id in applied_job_ids),
-            )
-        )
-
-    return {
-        "matched_jobs": matched_jobs,
-        "navigate_to": "/student/jobs",
-        "summary": f"The student is eligible for {len(matched_jobs)} open jobs.",
-    }
+    return _tool_find_matching_jobs(profile, user, {"limit": 5})
 
 
 def _tool_get_job_details(profile, user, args):
@@ -1634,16 +1708,17 @@ def _apply_blocker(profile, job):
         message = (
             f"You're not eligible to apply to {job.title} at "
             f"{company_name} based on your current profile."
-            + (f" Specifically: {why}" if why else "")
+            + (f" Specifically: {why.rstrip('. ')}." if why else "")
         )
 
         # A real next step, not just a dead-end explanation - some
         # failures (like a missing age) are things the student can fix
-        # themselves right now on their Profile page.
+        # themselves on their Profile page. Offered as a BUTTON rather than
+        # an automatic page jump: the reply also shows the jobs they CAN
+        # apply to instead, and jumping away mid-answer would bury that.
 
         return {
             "message": message,
-            "navigate_to": "/student/profile",
             "quick_replies": ["Update my profile"],
         }
 
@@ -2148,6 +2223,31 @@ def _handle_ai_cover_letter_apply(profile, user, message, history):
 
     return None
 
+def _apply_alternatives(profile, blocked_job):
+    """(sentence, cards): after telling a student why they can't apply to
+    one job, what they CAN apply to instead - or an honest 'nothing else'."""
+
+    found = _tool_find_matching_jobs(profile, None, {"limit": 3})
+
+    cards = found.get("matched_jobs") or []
+
+    if cards:
+
+        return "Here are jobs you can apply to instead:", cards
+
+    others_blocked = [
+        (item["title"], item["reason"])
+        for item in found.get("not_eligible", [])
+        if item["title"] != blocked_job.title
+    ]
+
+    note = _exclusion_note(found.get("already_applied_titles", []), others_blocked)
+
+    return " ".join(filter(None, [
+        "There are no other open jobs you can apply to right now.", note,
+    ])), []
+
+
 def _prepare_apply(profile, job):
     """Confirmation question + Yes/No buttons for one job (writes nothing).
     Also shows the real job card (with the same match score/location the
@@ -2161,7 +2261,22 @@ def _prepare_apply(profile, job):
 
     if blocker:
 
-        return {"success": False, **_blocker_payload(blocker, "summary")}
+        result = {"success": False, **_blocker_payload(blocker, "summary")}
+
+        # Not eligible (as opposed to "already applied"): the student
+        # asked to apply and got a no - so also show what they CAN apply to.
+
+        if blocker.get("quick_replies"):
+
+            alt_text, alt_cards = _apply_alternatives(profile, job)
+
+            result["summary"] = f"{result['summary']} {alt_text}"
+
+            if alt_cards:
+
+                result["matched_jobs"] = alt_cards
+
+        return result
 
     confirm_text = _apply_chip_text(job)
 
@@ -2349,6 +2464,83 @@ def _handle_apply_reference(profile, user, message, history):
 
     return _build_tool_payload(
         result["summary"], [(None, "prepare_apply", result)]
+    )
+
+
+# "teacher job i want to apply", "i want to apply for the teacher role",
+# "apply to Software Tester" ... a NAMED job plus a wish to apply. Sent
+# straight to the apply flow instead of leaving it to the AI to pick the
+# right tool - which once answered "teacher job i want to apply" with a
+# generic list of eligible jobs and never explained why Teacher was blocked.
+
+_NAMED_APPLY_PATTERNS = [
+    re.compile(
+        r"^\s*(?P<job>.+?)\s+(?:job|position|role)\s*,?\s*"
+        r"(?:i\s+)?(?:want\s+to|would\s+like\s+to|wanna|need\s+to)\s+apply\s*[.!]?\s*$",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"^\s*(?:please\s+)?(?:i\s+)?(?:want\s+to|would\s+like\s+to|wanna|need\s+to)\s+apply"
+        r"\s+(?:to\s+|for\s+)?(?:the\s+)?(?P<job>.+?)\s*[.!]?\s*$",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"^\s*(?:please\s+)?apply\s+(?:to\s+|for\s+)?(?:the\s+)?(?P<job>.+?)\s*[.!]?\s*$",
+        re.IGNORECASE,
+    ),
+]
+
+_GENERIC_JOB_WORDS = {
+    "job", "jobs", "position", "positions", "role", "roles", "opening",
+    "openings", "vacancy", "vacancies", "a", "an", "the", "some", "any",
+    "one", "ones", "it", "this", "that", "these", "those", "now", "please",
+}
+
+
+def _handle_named_apply(profile, user, message, history=None):
+    """
+    A named job + intent to apply -> the apply flow (a confirmation, or the
+    real reasons it's blocked plus the jobs they CAN apply to). Returns None
+    - so the normal AI flow continues - unless the name matches a real open
+    job, so ordinary sentences containing the word "apply" are left alone.
+    """
+
+    text = (message or "").strip()
+
+    if not text or _is_apply_pointer_phrase(text):
+
+        return None
+
+    job_text = None
+
+    for pattern in _NAMED_APPLY_PATTERNS:
+
+        match = pattern.match(text)
+
+        if match:
+
+            job_text = match.group("job").strip()
+
+            break
+
+    if not job_text or len(job_text.split()) > 8:
+
+        return None
+
+    words = re.findall(r"[a-z0-9']+", _normalize_job_query(job_text).lower())
+
+    if not words or all(w in _GENERIC_JOB_WORDS or w in _APPLY_POINTER_WORDS for w in words):
+
+        return None
+
+    if not _resolve_jobs(job_text):
+
+        return None
+
+    result = _tool_apply_to_job(profile, user, {"job_title": job_text})
+
+    return _build_tool_payload(
+        result["summary"], [(None, "apply_to_job", result)]
     )
 
 
@@ -3583,11 +3775,14 @@ TOOL_SCHEMAS = [
         "function": {
             "name": "find_matching_jobs",
             "description": (
-                "Find active job postings that best match the "
-                "student's skills, course, and profile. Use whenever "
+                "Find the open jobs this student can actually apply "
+                "to right now, best skill match first. Use whenever "
                 "the student asks to find, search, see, or get "
-                "suitable/recommended jobs for themselves. Results "
-                "include an already_applied flag per job."
+                "suitable/recommended jobs for themselves. Only jobs "
+                "they are eligible for and have not already applied "
+                "to are returned as cards; jobs left out for those "
+                "reasons are named in the summary, so never describe "
+                "an excluded job as suitable."
             ),
             "parameters": {
                 "type": "object",
@@ -3625,11 +3820,14 @@ TOOL_SCHEMAS = [
         "function": {
             "name": "check_job_eligibility",
             "description": (
-                "List open jobs the student is currently eligible "
-                "for, based on their profile (CGPA, department, "
-                "backlogs, etc). Use when the student asks which "
-                "jobs they're eligible for. Results include an "
-                "already_applied flag per job."
+                "List the open jobs the student is eligible for and "
+                "hasn't applied to yet, based on their profile (CGPA, "
+                "department, backlogs, etc). Use ONLY for a general "
+                "'which jobs am I eligible for' question - never when "
+                "the student names one specific job and wants to apply "
+                "to it (use apply_to_job for that). Jobs left out "
+                "(already applied / not eligible) are named in the "
+                "summary."
             ),
             "parameters": {"type": "object", "properties": {}, "required": []},
         },
@@ -5492,6 +5690,8 @@ _STUDENT_SHORTCUTS = {
     "find jobs for me": ("find_matching_jobs", {}),
     "show me new jobs": ("find_matching_jobs", {"recent_only": True}),
     "show my notifications": ("get_notifications", {}),
+    "update my profile": ("get_my_profile", {}),
+    "show my profile": ("get_my_profile", {}),
 }
 
 
@@ -5829,6 +6029,14 @@ def _generate_reply_inner(user, message, history=None, page_context=None):
         if reference_reply is not None:
 
             return reference_reply
+
+        # "teacher job i want to apply" - a job NAMED in the message
+
+        named_reply = _handle_named_apply(actor_profile, user, message, history)
+
+        if named_reply is not None:
+
+            return named_reply
 
     # ---------------- SHORTLIST / REJECT CONFIRMATION (Yes / No) ----------------
     # Same safety pattern as the student apply flow: the AI can only ask
