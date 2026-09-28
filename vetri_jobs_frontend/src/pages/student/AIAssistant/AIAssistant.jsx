@@ -653,6 +653,16 @@ job.match_score !== null && job.match_score !== undefined &&
 
 </p>
 
+{
+job.eligible === false && !job.already_applied && job.eligibility_note &&
+
+<p className="ai-chat-job-card-sub" style={{color:"#b45309"}}>
+
+{job.eligibility_note}
+
+</p>
+}
+
 
 <div className="ai-chat-job-card-actions">
 
@@ -660,6 +670,12 @@ job.match_score !== null && job.match_score !== undefined &&
 job.already_applied ?
 
 <span className="ai-chat-job-card-score">✓ Already Applied</span>
+
+:
+
+job.eligible === false ?
+
+<span className="ai-chat-job-card-score" style={{background:"#fff4e5", color:"#b45309"}}>Not eligible yet</span>
 
 :
 
