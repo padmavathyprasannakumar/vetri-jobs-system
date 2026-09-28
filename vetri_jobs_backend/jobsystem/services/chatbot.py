@@ -766,14 +766,22 @@ clearly what you are about to do and why, and never claim it is done. If a step
 fails, say what failed and what you will do instead. Never invent data: if you
 don't have it, say so and use a tool or ask.
 
-TOPIC SCOPE: you help with placements and careers - job search, applications,
-interviews, resumes, skills, career guidance, placement drives, and (for a
-company) hiring, candidates and analytics. That includes teaching what a
-student needs for their search: interview questions and how to answer them,
-technical topics they will be asked about, how to write a resume or cover
-letter, salary and offer questions, and study plans for a role. Politely decline
-only what is clearly unrelated to careers or this platform (weather, sports,
-entertainment, general trivia) and steer back to what you can do.
+TOPIC SCOPE (strict): you help with placements and careers ONLY - job search,
+applications, interviews and mock interviews, resumes, skills, career guidance,
+placement drives, the user's own portal data (profile, applications,
+notifications), and (for a company) hiring, candidates and analytics. That
+includes teaching what a student needs for their search: interview questions and how to answer them,
+technical topics they will be asked about in interviews, resume and cover letter
+writing, salary and offer questions, and study plans for a role.
+EVERYTHING ELSE is off-topic: cooking and meals (lunch, recipes), health,
+movies, songs, games, sports, weather, news, politics, shopping, travel,
+relationships, jokes, stories, homework unrelated to career prep, and general
+knowledge. For an off-topic message reply with ONE short friendly sentence
+saying you can only help with placements and this job portal, and offer two or
+three things you can do. Do not answer the off-topic question itself, not even
+briefly. Never call a tool, raise a query, add a skill or take any action because
+of an off-topic message, and never treat an off-topic message as the answer to a
+question you just asked.
 
 You have been given the signed-in user's REAL, CURRENT data from the
 platform database as JSON below. Always answer questions about "my
@@ -3696,6 +3704,16 @@ def _tool_raise_placement_query(profile, user, args):
 
     message_text = (args.get("message") or "").strip()
 
+    if len(message_text) < 5:
+
+        return {
+            "success": False,
+            "summary": (
+                "What would you like to ask the placement team? Tell me the "
+                "question or problem and I'll send it."
+            ),
+        }
+
     PlacementQuery.objects.create(
         student=profile,
         category="general",
@@ -3824,6 +3842,15 @@ def _tool_get_my_profile(profile, user, args):
     }
 
 
+def _looks_like_a_skill(text):
+    """A skill is a short name ('SQL', 'API Testing', 'C++'), never a sentence
+    such as 'i want to prepare lunch today'."""
+
+    words = re.findall(r"[a-z0-9+#.']+", (text or "").lower())
+
+    return 0 < len(words) <= 4 and len(text) <= 30 and not (set(words) & _SENTENCE_WORDS)
+
+
 def _tool_update_my_skills(profile, user, args):
     """
     A real write action - adds new skills directly to the student's
@@ -3855,11 +3882,24 @@ def _tool_update_my_skills(profile, user, args):
 
     added = []
 
-    for skill in new_skills_raw.split(","):
+    candidates = [x.strip() for x in new_skills_raw.split(",") if x.strip()]
 
-        skill = skill.strip()
+    valid = [x for x in candidates if _looks_like_a_skill(x)]
 
-        if skill and skill.lower() not in existing_lower:
+    if not valid:
+
+        return {
+            "success": False,
+            "summary": (
+                "Those don't look like skills, so I haven't added anything. "
+                "Tell me the skills as a comma-separated list, for example: "
+                "Selenium, API Testing, SQL."
+            ),
+        }
+
+    for skill in valid:
+
+        if skill.lower() not in existing_lower:
 
             added.append(skill)
 
@@ -6813,6 +6853,246 @@ def _build_tool_payload(final_text, executed):
     return result_payload
 
 
+# ------------------------------- staying on topic -------------------------------
+#
+# This assistant is for placements and the job portal. A message that is clearly
+# about something else ("i want to prepare lunch today") gets a short polite
+# refusal and NOTHING else - no model call, no tool, no record created. It is a
+# deliberately conservative list (a message containing ANY career word is never
+# blocked), so a real question is never refused; anything unusual that isn't on
+# the list is left to the prompt's strict scope rule, and the write tools below
+# still refuse to act unless the user actually asked for the action.
+
+_OFF_TOPIC_WORDS = {
+    # cooking and meals
+    "lunch", "dinner", "breakfast", "recipe", "recipes", "cook", "cooking",
+    "cooked", "biryani", "pizza", "burger", "snack", "snacks", "hungry",
+    # weather, entertainment, sports, chit-chat
+    "weather", "forecast", "movie", "movies", "film", "films", "song",
+    "songs", "lyrics", "netflix", "anime", "cartoon", "bollywood",
+    "kollywood", "tollywood", "celebrity", "gossip", "cricket", "football",
+    "ipl", "fifa", "joke", "jokes", "riddle", "riddles", "poem", "poems",
+    "horoscope", "astrology",
+    # relationships and politics
+    "girlfriend", "boyfriend", "dating", "election", "elections",
+    "politics", "politician",
+}
+
+_OFF_TOPIC_PHRASES = (
+    "tell me a story", "bedtime story", "sing a song", "write a poem",
+    "write me a poem", "write a story", "write a song", "capital of",
+    "who invented", "who is the prime minister", "who is the president",
+    "who won the", "how far is", "recipe for", "how to cook", "how to bake",
+    "how to make tea", "how to make coffee",
+)
+
+_CAREER_WORDS = {
+    "job", "jobs", "career", "careers", "interview", "interviews", "mock",
+    "resume", "resumes", "cv", "apply", "applied", "applying", "application",
+    "applications", "skill", "skills", "placement", "placements", "company",
+    "companies", "drive", "drives", "hiring", "hire", "hired", "salary",
+    "salaries", "offer", "offers", "candidate", "candidates", "cgpa",
+    "eligible", "eligibility", "profile", "notification", "notifications",
+    "portal", "ats", "cover", "letter", "internship", "internships",
+    "fresher", "freshers", "aptitude", "employer", "recruiter", "recruiters",
+    "shortlist", "shortlisted", "vacancy", "vacancies",
+}
+
+# words that make something a sentence, not a list of skills
+
+_SENTENCE_WORDS = {
+    "i", "want", "to", "my", "is", "am", "are", "the", "today", "please",
+    "would", "like", "need", "how", "what", "when", "why", "can", "you", "me",
+}
+
+_OFF_TOPIC_REPLIES = {
+    "student": (
+        "That's outside what I can help with - I'm here for placements and "
+        "your job search: jobs, applications, interviews, mock interviews, "
+        "your resume and skills.",
+        ["Find jobs for me", "Start a mock interview", "Help me improve my resume"],
+    ),
+    "company": (
+        "That's outside what I can help with - I'm here for hiring on this "
+        "portal: your job postings, applicants, interviews and analytics.",
+        ["Show my applications", "Find candidates with Python skills"],
+    ),
+    "placement_admin": (
+        "That's outside what I can help with - I'm here for placement "
+        "management: students, companies, drives, applications and reports.",
+        ["How are we doing overall?", "Show the candidate pipeline"],
+    ),
+}
+
+
+def _is_clearly_off_topic(message):
+
+    text = " ".join(re.findall(r"[a-z0-9']+", (message or "").lower()))
+
+    words = set(text.split())
+
+    if not words or words & _CAREER_WORDS:
+
+        return False
+
+    if words & _OFF_TOPIC_WORDS:
+
+        return True
+
+    return any(phrase in text for phrase in _OFF_TOPIC_PHRASES)
+
+
+def _last_bot_text(history):
+    """What the assistant said last (lower-case), or ''."""
+
+    if not history:
+
+        return ""
+
+    last = history[-1]
+
+    if isinstance(last, dict) and last.get("sender") == "bot":
+
+        return (last.get("message") or "").lower()
+
+    return ""
+
+
+def _last_bot_asked_for_skills(history):
+
+    text = _last_bot_text(history)
+
+    return "skill" in text and "?" in text
+
+
+def _looks_like_skill_list(message):
+    """'Cooking, Baking' / 'Selenium, API Testing' - not 'i want to ...'."""
+
+    words = re.findall(r"[a-z0-9+#.']+", (message or "").lower())
+
+    return 0 < len(words) <= 6 and not (set(words) & _SENTENCE_WORDS)
+
+
+def _off_topic_applies(message, history):
+    """True when this message should get the polite refusal. Never true for
+    someone mid cover-letter, or answering "which skills?" with a skill list."""
+
+    if not _is_clearly_off_topic(message):
+
+        return False
+
+    if _awaiting_cover_letter_job(history):
+
+        return False
+
+    if _last_bot_asked_for_skills(history) and _looks_like_skill_list(message):
+
+        return False
+
+    return True
+
+
+def _off_topic_reply(role):
+
+    text, chips = _OFF_TOPIC_REPLIES.get(
+        role,
+        ("That's outside what I can help with - I only help with placements "
+         "and the job portal.", []),
+    )
+
+    payload = {"reply": text + (" Want to try one of these?" if chips else "")}
+
+    if chips:
+
+        payload["quick_replies"] = list(chips)
+
+    return payload
+
+
+# An action that writes data must be something the user actually asked for. If the
+# model calls one on a message that doesn't ask for it (it once raised a placement
+# query because someone typed "i want to prepare lunch today"), it is NOT run.
+
+_AFFIRMATIVE_RE = re.compile(
+    r"^\s*(yes|yeah|yep|yup|ok|okay|sure|please|go ahead|do it|confirm|send it)\b",
+    re.IGNORECASE,
+)
+
+_QUERY_INTENT_RE = re.compile(
+    r"\b(quer(y|ies)|ticket|complain\w*|placement (team|officer|office|cell|"
+    r"department|staff|coordinator)|(contact|ask|tell|message|inform) "
+    r"(the )?placement|write to (the )?placement|report (a |an |this )?"
+    r"(problem|issue|bug))\b",
+    re.IGNORECASE,
+)
+
+_SLOT_INTENT_RE = re.compile(
+    r"\binterview\b.*\b(slot|schedule|reschedule|book|arrange|date|time|request)\b"
+    r"|\b(slot|schedule|reschedule|book|arrange)\b.*\binterview\b",
+    re.IGNORECASE,
+)
+
+_SKILL_INTENT_RE = re.compile(
+    r"\b(skills?|add|learn(t|ed)?|know|include|put|have)\b", re.IGNORECASE
+)
+
+_INTENT_MISSING_REPLIES = {
+    "raise_placement_query": (
+        "I haven't sent anything to the placement team, because I wasn't sure "
+        "that's what you wanted. If you'd like me to, tell me what to ask them - "
+        "for example: \"Raise a query: my resume upload isn't working\"."
+    ),
+    "request_interview_slot": (
+        "I haven't requested an interview slot. If you want one, say something "
+        "like: \"Request an interview slot for my Software Tester interview\"."
+    ),
+    "update_my_skills": (
+        "I haven't changed your skills. To add some, tell me which ones - for "
+        "example: \"Add Selenium and API Testing to my skills\"."
+    ),
+}
+
+
+def _affirming_a_proposal(message, history, needles):
+    """'yes' / 'ok please' right after the assistant offered to do it."""
+
+    if not _AFFIRMATIVE_RE.match(message or ""):
+
+        return False
+
+    last = _last_bot_text(history)
+
+    return any(needle in last for needle in needles)
+
+
+def _write_intent_missing(name, message, history):
+    """True if `name` is a write action the user did NOT ask for."""
+
+    text = message or ""
+
+    if name == "raise_placement_query":
+
+        ok = bool(_QUERY_INTENT_RE.search(text)) or _affirming_a_proposal(
+            text, history, ("placement team", "query")
+        )
+
+    elif name == "request_interview_slot":
+
+        ok = bool(_SLOT_INTENT_RE.search(text)) or _affirming_a_proposal(
+            text, history, ("slot",)
+        )
+
+    elif name == "update_my_skills":
+
+        ok = bool(_SKILL_INTENT_RE.search(text)) or _last_bot_asked_for_skills(history)
+
+    else:
+
+        return False
+
+    return not ok
+
+
 def generate_reply(user, message, history=None, page_context=None):
     """Public entry point. Gives each chat message its own AI time
     budget (see GROQ_REQUEST_BUDGET), then runs the real logic."""
@@ -6948,6 +7228,14 @@ def _generate_reply_inner(user, message, history=None, page_context=None):
             else:
 
                 return _handle_mock_interview_turn(active_session, user, message)
+
+    # ---------------- OFF-TOPIC GUARD ----------------
+    # Placed after the mock-interview check on purpose: an answer inside a
+    # mock interview is never treated as off-topic.
+
+    if _off_topic_applies(message, history):
+
+        return _off_topic_reply(role)
 
     # ---------------- APPLY CONFIRMATION (Yes / No buttons) ----------------
     # Handled without the AI: "Yes, apply to X at Y" creates the
@@ -7172,9 +7460,41 @@ def _generate_reply_inner(user, message, history=None, page_context=None):
 
             break
 
-        executed = _execute_tool_calls(
-            fresh_calls, tool_executors, actor_profile, user
+        # A write the user didn't ask for is not run - the model is told so
+        # and the reply explains what to say if they DO want it.
+
+        allowed_calls = []
+
+        blocked_calls = []
+
+        for call in fresh_calls:
+
+            if _write_intent_missing(call.function.name, message, history):
+
+                blocked_calls.append(call)
+
+            else:
+
+                allowed_calls.append(call)
+
+        executed = (
+            _execute_tool_calls(allowed_calls, tool_executors, actor_profile, user)
+            if allowed_calls else []
         )
+
+        for call in blocked_calls:
+
+            print("[chatbot] not run - the user didn't ask for it:", call.function.name)
+
+            executed.append((
+                call,
+                call.function.name,
+                {
+                    "failed": True,
+                    "success": False,
+                    "summary": _INTENT_MISSING_REPLIES[call.function.name],
+                },
+            ))
 
         # A single tool that couldn't run, before anything else worked:
         # same plain message as before.
