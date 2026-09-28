@@ -862,6 +862,18 @@ a general list of jobs instead - they asked about one job, so the answer
 must be about that job: the confirmation, or exactly why they can't apply,
 followed by the jobs they can apply to.
 
+THREE DIFFERENT JOB QUESTIONS - never mix them up:
+- "New / latest / recently posted jobs" = a plain list of what was recently
+  uploaded (find_matching_jobs with recent_only true). Do not analyse their
+  profile or list what they are missing.
+- "Jobs for me / that match my profile / suitable for me" = the profile-matched
+  answer (find_matching_jobs, recent_only false): what they can apply to, and
+  what blocks the rest.
+- "Show all jobs / the list of jobs / the jobs tab / what jobs are open / even
+  the ones I'm not eligible for" = EVERY open job (list_open_jobs). Show them
+  all; the cards say which are applied, eligible or not eligible. Never answer
+  this with only the jobs they qualify for.
+
 MORE THAN ONE REQUEST: if the student asks for several things at once (for
 example "show my applications and my interviews"), call all the matching
 tools in the same turn (up to 3) instead of only the first one. When one
@@ -1547,6 +1559,65 @@ _PROFILE_HINT = (
 )
 
 
+def _created_timestamp(job):
+
+    created = getattr(job, "created_at", None)
+
+    try:
+
+        return created.timestamp()
+
+    except Exception:
+
+        return 0
+
+
+def _new_jobs_result(ranked_all, applied_job_ids, cap=8):
+    """A plain list of the recently posted jobs the student hasn't applied to,
+    newest first (each card carries the student's own match score)."""
+
+    unapplied = [item for item in ranked_all if item[0].id not in applied_job_ids]
+
+    applied_titles = [
+        job.title for job, _s, _r in ranked_all if job.id in applied_job_ids
+    ]
+
+    unapplied.sort(key=lambda item: _created_timestamp(item[0]), reverse=True)
+
+    if not unapplied:
+
+        return {
+            "kind": "new_jobs",
+            "matched_jobs": [],
+            "total_new": 0,
+            "already_applied_titles": applied_titles,
+            "summary": (
+                f"You've already applied to every job posted in the last "
+                f"{RECENT_JOB_DAYS} days."
+            ),
+        }
+
+    shown = unapplied[:cap]
+
+    total = len(unapplied)
+
+    return {
+        "kind": "new_jobs",
+        "matched_jobs": [
+            _serialize_matched_job(job, score, reasons, already_applied=False)
+            for job, score, reasons in shown
+        ],
+        "total_new": total,
+        "already_applied_titles": applied_titles,
+        "navigate_to": "/student/jobs",
+        "summary": (
+            f"{total} new job{'s' if total != 1 else ''} posted in the last "
+            f"{RECENT_JOB_DAYS} days that you haven't applied to"
+            + (f" (showing the {len(shown)} newest)." if len(shown) < total else ".")
+        ),
+    }
+
+
 def _tool_find_matching_jobs(profile, user, args):
     """
     Jobs the student can ACTUALLY apply to right now - open, not already
@@ -1593,13 +1664,17 @@ def _tool_find_matching_jobs(profile, user, args):
 
     if not ranked_all:
 
+        if recent_only:
+
+            return {
+                "kind": "new_jobs",
+                "matched_jobs": [],
+                "summary": f"There are no new jobs posted in the last {RECENT_JOB_DAYS} days.",
+            }
+
         return {
             "matched_jobs": [],
-            "summary": (
-                "There are no newly posted jobs in the last two weeks."
-                if recent_only else
-                "No active job postings found right now."
-            ),
+            "summary": "No active job postings found right now.",
         }
 
     applied_job_ids = set(
@@ -1607,6 +1682,19 @@ def _tool_find_matching_jobs(profile, user, args):
             student=profile
         ).values_list("job_id", flat=True)
     )
+
+    if recent_only:
+
+        # "Show me new jobs" = what was uploaded recently, like the Jobs page
+        # shows it - newest first, with the student's match score on each. It
+        # is NOT the "jobs you can apply to" analysis (that is "find jobs for
+        # me / that match my profile"), so nothing is filtered or explained
+        # by eligibility here.
+
+        return _new_jobs_result(
+            ranked_all, applied_job_ids,
+            cap=limit if args.get("limit") else 8,
+        )
 
     actionable = []
 
@@ -1720,6 +1808,103 @@ def _tool_find_matching_jobs(profile, user, args):
         result["awaiting_apply_decision_job_id"] = _best_job.id
 
     return result
+
+
+def _tool_list_open_jobs(profile, user, args):
+    """
+    The whole Jobs tab: EVERY open job, best skill match first, whether or not
+    the student can apply to it. Each card says which it is - already applied,
+    eligible, or not eligible yet (with the first reason) - so nothing is hidden
+    and nothing is described as apply-able when it isn't. Used for "show all the
+    jobs", "the list of jobs from the jobs tab", "even the ones I'm not eligible
+    for" - as opposed to "jobs for me" (only what they can apply to) and
+    "new jobs" (only what was recently posted).
+    """
+
+    from jobsystem.models import Job, Application
+    from jobsystem.services.job_matching import rank_jobs_for_student
+
+    jobs = Job.objects.filter(
+        status="active", is_active=True
+    ).select_related("company").order_by("-created_at")[:40]
+
+    ranked_all = rank_jobs_for_student(profile, jobs)
+
+    if not ranked_all:
+
+        return {
+            "kind": "all_jobs",
+            "matched_jobs": [],
+            "total_open": 0,
+            "summary": "There are no open jobs right now.",
+        }
+
+    applied_job_ids = set(
+        Application.objects.filter(
+            student=profile
+        ).values_list("job_id", flat=True)
+    )
+
+    cards = []
+
+    can_apply = applied_count = blocked_count = 0
+
+    for job, score, reasons in ranked_all:
+
+        applied = job.id in applied_job_ids
+
+        if applied:
+
+            eligible, why = True, []
+
+            applied_count += 1
+
+        else:
+
+            eligible, why = _eligibility_blocker(profile, job)
+
+            if eligible:
+
+                can_apply += 1
+
+            else:
+
+                blocked_count += 1
+
+        card = _serialize_matched_job(job, score, reasons, already_applied=applied)
+
+        card["eligible"] = eligible
+
+        # first reason only, so a card stays small: "Requires 7.0+ CGPA... (+2 more)"
+
+        card["eligibility_note"] = (
+            "" if eligible
+            else (why[0] + (f" (+{len(why) - 1} more)" if len(why) > 1 else "") if why else "Not eligible yet")
+        )
+
+        cards.append(card)
+
+    total = len(cards)
+
+    cap = 10
+
+    shown = cards[:cap]
+
+    return {
+        "kind": "all_jobs",
+        "matched_jobs": shown,
+        "total_open": total,
+        "can_apply": can_apply,
+        "applied_count": applied_count,
+        "blocked_count": blocked_count,
+        "navigate_to": "/student/jobs",
+        "summary": (
+            f"{total} open job{'s' if total != 1 else ''}: you can apply to "
+            f"{can_apply}, you've already applied to {applied_count}, and "
+            f"{blocked_count} need something your profile doesn't have yet"
+            + (f" (showing the {len(shown)} best matches)." if len(shown) < total else ".")
+        ),
+    }
 
 
 def _tool_check_job_eligibility(profile, user, args):
@@ -4186,14 +4371,18 @@ TOOL_SCHEMAS = [
         "function": {
             "name": "find_matching_jobs",
             "description": (
-                "Find the open jobs this student can actually apply "
-                "to right now, best skill match first. Use whenever "
-                "the student asks to find, search, see, or get "
-                "suitable/recommended jobs for themselves. Only jobs "
-                "they are eligible for and have not already applied "
-                "to are returned as cards; jobs left out for those "
-                "reasons are named in the summary, so never describe "
-                "an excluded job as suitable."
+                "Two different uses. (1) DEFAULT - jobs for THIS student: "
+                "the open jobs they can actually apply to right now, best "
+                "skill match first. Use when they ask to find, search, see "
+                "or get suitable / recommended / matching jobs for "
+                "themselves or their profile. Only jobs they are eligible "
+                "for and have not applied to come back as cards; jobs left "
+                "out are named in the summary, so never describe an "
+                "excluded job as suitable. (2) recent_only=true - what was "
+                "NEW on the platform: a plain list of recently posted jobs "
+                "they haven't applied to, newest first, NOT filtered by "
+                "their profile. Use when they ask for new / latest / "
+                "recently posted jobs."
             ),
             "parameters": {
                 "type": "object",
@@ -4201,13 +4390,13 @@ TOOL_SCHEMAS = [
                     "recent_only": {
                         "type": "boolean",
                         "description": (
-                            "Set true when the student specifically "
-                            "asks about NEW, newly posted, newly "
-                            "updated, or recently added jobs - this "
-                            "restricts to postings from the last two "
-                            "weeks and excludes jobs already applied "
-                            "to. Leave false/omitted for a general "
-                            "'find jobs for me' request."
+                            "Set true when the student asks about NEW, "
+                            "latest, newly posted or recently added jobs - "
+                            "returns a plain list of postings from the last "
+                            "two weeks that they haven't applied to, newest "
+                            "first, without checking their profile. Leave "
+                            "false/omitted for 'find jobs for me' or 'jobs "
+                            "that match my profile'."
                         ),
                     },
                     "limit": {
@@ -4224,6 +4413,23 @@ TOOL_SCHEMAS = [
                 },
                 "required": [],
             },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_open_jobs",
+            "description": (
+                "The whole Jobs tab: EVERY open job, best match first, "
+                "including ones the student is not eligible for or has "
+                "already applied to - each card is marked so. Use when they "
+                "ask to see ALL jobs, the list of jobs, the jobs tab, what "
+                "jobs are available/open, or say 'even if I'm not eligible'. "
+                "Not for 'jobs for me / that match my profile' "
+                "(find_matching_jobs) or 'new jobs' (find_matching_jobs with "
+                "recent_only)."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
         },
     },
     {
@@ -4603,6 +4809,7 @@ TOOL_SCHEMAS = [
 
 TOOL_EXECUTORS = {
     "find_matching_jobs": _tool_find_matching_jobs,
+    "list_open_jobs": _tool_list_open_jobs,
     "check_job_eligibility": _tool_check_job_eligibility,
     "get_job_details": _tool_get_job_details,
     "get_skill_suggestions": _tool_get_skill_suggestions,
@@ -6053,7 +6260,7 @@ def _execute_tool_calls(tool_calls, tool_executors, actor_profile, user):
 # what actually shows the details.
 
 _FAST_REPLY_TOOLS = {
-    "find_matching_jobs", "check_job_eligibility",
+    "find_matching_jobs", "check_job_eligibility", "list_open_jobs",
     "get_saved_jobs", "get_notifications",
 }
 
@@ -6196,6 +6403,68 @@ def _friendly_fast_text(name, result):
 
     summary = _user_facing(result.get("summary", "Here's what I found."))
 
+    if name == "list_open_jobs":
+
+        cards = result.get("matched_jobs") or []
+
+        if not cards:
+
+            return summary
+
+        total = result.get("total_open", len(cards))
+
+        can = result.get("can_apply", 0)
+
+        applied = result.get("applied_count", 0)
+
+        blocked = result.get("blocked_count", 0)
+
+        one = total == 1
+
+        if one:
+
+            lead = "There is 1 open job right now."
+
+        elif len(cards) < total:
+
+            lead = f"There are {total} open jobs - here are the {len(cards)} best matches."
+
+        else:
+
+            lead = f"Here are all {total} open jobs, best match first."
+
+        bits = []
+
+        if can:
+
+            bits.append("you can apply to it right now" if one else f"you can apply to {can} of them right now")
+
+        if applied:
+
+            bits.append("you've already applied to it" if one else f"you've already applied to {applied}")
+
+        if blocked:
+
+            bits.append(
+                "it needs something your profile doesn't have yet" if one
+                else f"{blocked} need something your profile doesn't have yet"
+            )
+
+        status = ""
+
+        if bits:
+
+            joined = bits[0] if len(bits) == 1 else ", ".join(bits[:-1]) + ", and " + bits[-1]
+
+            status = " " + joined[0].upper() + joined[1:] + "."
+
+        tail = (
+            ' Ask me "find jobs that match my profile" to see exactly what each one needs.'
+            if blocked else ""
+        )
+
+        return lead + status + tail
+
     if name in ("find_matching_jobs", "check_job_eligibility"):
 
         cards = result.get("matched_jobs") or []
@@ -6203,6 +6472,36 @@ def _friendly_fast_text(name, result):
         if not cards:
 
             return summary
+
+        if result.get("kind") == "new_jobs":
+
+            newest = cards[0]
+
+            score = newest.get("match_score")
+
+            best = (
+                f"{newest.get('title')} at {newest.get('company')}"
+                + (f" ({score}% match)" if score is not None else "")
+            )
+
+            total = result.get("total_new", len(cards))
+
+            if total == 1:
+
+                lead = f"1 new job was posted in the last {RECENT_JOB_DAYS} days: {best}."
+
+            else:
+
+                lead = (
+                    f"{total} new jobs were posted in the last {RECENT_JOB_DAYS} "
+                    f"days. The newest is {best}"
+                    + (
+                        f" - here are the {len(cards)} newest."
+                        if len(cards) < total else "."
+                    )
+                )
+
+            return lead + " Want me to check which ones match your profile?"
 
         top = cards[0]
 
@@ -6260,7 +6559,30 @@ def _next_step_chips(executed):
 
                 title = cards[0].get("title")
 
+                if result.get("kind") == "new_jobs":
+
+                    return ["Find jobs that match my profile", f"Tell me more about {title}"]
+
                 return [f"Tell me more about {title}", f"Apply to {title}"]
+
+        if name == "list_open_jobs":
+
+            cards = result.get("matched_jobs") or []
+
+            if cards:
+
+                chips = ["Find jobs that match my profile"]
+
+                open_card = next(
+                    (c for c in cards if c.get("eligible") and not c.get("already_applied")),
+                    None,
+                )
+
+                if open_card:
+
+                    chips.append(f"Apply to {open_card.get('title')}")
+
+                return chips
 
         if name == "get_upcoming_interviews" and (result.get("interviews") or []):
 
@@ -6276,6 +6598,56 @@ def _next_step_chips(executed):
 # Exact texts the chat's own buttons send (quick actions / alert chips).
 # Tapping one runs the matching tool directly - no AI call at all, so
 # these answer almost instantly.
+
+_NEW_JOBS_PHRASES = {
+    "show me new jobs", "show new jobs", "new jobs", "any new jobs",
+    "are there any new jobs", "list new jobs", "find new jobs",
+    "latest jobs", "show me latest jobs", "show me the latest jobs",
+    "recent jobs", "show me recent jobs", "newly posted jobs",
+    "show me newly posted jobs", "what are the new jobs",
+}
+
+# "find jobs that match my profile", "find jobs match at my profile",
+# "show me jobs that suit me", "get jobs for my skills" ...
+
+_PROFILE_MATCH_RE = re.compile(
+    r"^(?:find|show|get|give) (?:me )?(?:the )?(?:all )?(?:best )?jobs? "
+    r"(?:that |which )?(?:match|matches|matching|suit|suits|fit|fits|for) "
+    r"(?:at |with |to |for )?(?:my|me)(?: profile| skills| resume)?$"
+)
+
+
+# "show all the jobs even though its not eligible to my profile",
+# "show me the list of jobs from jobs tab", "list all jobs", "all jobs"...
+# Taken over ONLY when every word is ordinary "show me all the jobs" wording, so
+# anything with an extra ask (apply, new, match, a place, a salary...) still
+# goes to the model.
+
+_ALL_JOBS_WORDS = {
+    "show", "list", "see", "display", "give", "get", "open", "what", "are",
+    "is", "there", "any", "me", "all", "every", "the", "of", "jobs", "job",
+    "available", "posted", "from", "in", "on", "tab", "page", "even",
+    "though", "thought", "if", "when", "its", "it", "s", "not", "eligible",
+    "ineligible", "to", "for", "my", "profile", "please", "whole",
+    "complete", "full",
+}
+
+_ALL_JOBS_CUES = {
+    "all", "list", "tab", "page", "eligible", "ineligible", "available",
+    "every", "whole", "complete", "full",
+}
+
+
+def _wants_all_jobs(normalized):
+
+    words = normalized.split()
+
+    if not words or len(words) > 18 or not ({"job", "jobs"} & set(words)):
+
+        return False
+
+    return set(words) <= _ALL_JOBS_WORDS and bool(set(words) & _ALL_JOBS_CUES)
+
 
 _STUDENT_SHORTCUTS = {
     "find jobs for me": ("find_matching_jobs", {}),
@@ -6298,7 +6670,21 @@ def _handle_student_shortcut(profile, user, message):
     carry on with the normal AI flow (not a button text, or the tool
     raised)."""
 
-    entry = _STUDENT_SHORTCUTS.get(_normalize_shortcut(message))
+    normalized = _normalize_shortcut(message)
+
+    entry = _STUDENT_SHORTCUTS.get(normalized)
+
+    if not entry and normalized in _NEW_JOBS_PHRASES:
+
+        entry = ("find_matching_jobs", {"recent_only": True})
+
+    if not entry and _PROFILE_MATCH_RE.match(normalized):
+
+        entry = ("find_matching_jobs", {})
+
+    if not entry and _wants_all_jobs(normalized):
+
+        entry = ("list_open_jobs", {})
 
     if not entry:
 
