@@ -153,6 +153,25 @@ const loadSavedMessages = (key)=>{
 
 
 
+// NAV-DECISION-START
+// This full-page assistant is a conversation: answers - job lists, saved
+// jobs, applications, interviews, notifications, drives, one job's details,
+// the career plan - are shown right here in the chat and the page stays put.
+// The ONLY time it opens another page is when the answer is about something
+// the student edits themselves: their profile or their resume.
+
+const NAVIGATE_ONLY_TO = ["/student/profile", "/student/resume"];
+
+const shouldNavigateAfterReply = (data)=>{
+
+    if(!data || !data.navigate_to) return false;
+
+    return NAVIGATE_ONLY_TO.includes(data.navigate_to);
+
+};
+// NAV-DECISION-END
+
+
 const AIAssistant = ()=>{
 
 
@@ -431,11 +450,11 @@ mockInterviewReport: data.mock_interview_report || null
 
 emitChatbotRefresh(data);
 
-// Auto-navigate to the matching tab when the bot's action says
-// to. The conversation is saved above, so it is still here when
-// the student comes back to this page.
+// Answers stay in this chat (see shouldNavigateAfterReply); only the
+// profile and resume open their page. The conversation is saved above, so
+// it is still here when the student comes back.
 
-if(data.navigate_to){
+if(shouldNavigateAfterReply(data)){
 
 navigate(data.navigate_to);
 
