@@ -42,6 +42,8 @@ Resume page always show the identical number.
 
 import json
 import re
+import threading
+import time
 
 from datetime import timedelta
 
@@ -52,9 +54,69 @@ from groq import Groq
 import os
 
 
-client = Groq(
-    api_key=os.getenv("GROQ_API_KEY")
-)
+# Speed / reliability settings (all overridable from Render's environment
+# variables without touching code).
+#
+# The Groq SDK's defaults are a 60-second timeout AND 2 automatic retries
+# per request - and this file also falls back through several models. One
+# slow or rate-limited response could therefore burn the browser's whole
+# 60-second window (the "timeout of 60000ms exceeded" error) with no reply.
+# Instead: each attempt gets a short timeout, retries are handled by our
+# own model fallback below (max_retries=0), and one overall time budget
+# per chat message stops us trying more models once it's nearly used up,
+# so the student always gets an answer or a clear message well before
+# the browser gives up.
+
+GROQ_ATTEMPT_TIMEOUT = float(os.getenv("GROQ_ATTEMPT_TIMEOUT", "12"))
+
+GROQ_REQUEST_BUDGET = float(os.getenv("GROQ_REQUEST_BUDGET", "28"))
+
+GROQ_MIN_ATTEMPT_WINDOW = 8.0   # don't start a new attempt with less than this left
+
+
+try:
+
+    client = Groq(
+        api_key=os.getenv("GROQ_API_KEY"),
+        timeout=GROQ_ATTEMPT_TIMEOUT,
+        max_retries=0,
+    )
+
+except TypeError:
+
+    # An older SDK that doesn't accept these options - keep working with
+    # its defaults rather than failing at import time.
+
+    client = Groq(
+        api_key=os.getenv("GROQ_API_KEY")
+    )
+
+
+# One clock per chat message (per thread), started in generate_reply().
+
+_request_clock = threading.local()
+
+
+def _start_request_clock():
+
+    _request_clock.started = time.monotonic()
+
+
+def _stop_request_clock():
+
+    _request_clock.started = None
+
+
+def _time_left():
+    """Seconds left in this message's AI budget, or None if no clock."""
+
+    started = getattr(_request_clock, "started", None)
+
+    if started is None:
+
+        return None
+
+    return GROQ_REQUEST_BUDGET - (time.monotonic() - started)
 
 
 GROQ_MODEL_FALLBACKS = [
@@ -5175,6 +5237,16 @@ def _call_groq_plain(messages):
 
     for model_name in GROQ_MODEL_FALLBACKS:
 
+        left = _time_left()
+
+        if left is not None and left < GROQ_MIN_ATTEMPT_WINDOW:
+
+            print(f"[chatbot] time budget used up ({left:.1f}s left) - not trying {model_name}")
+
+            break
+
+        started = time.monotonic()
+
         try:
 
             response = client.chat.completions.create(
@@ -5184,15 +5256,22 @@ def _call_groq_plain(messages):
                 max_tokens=500,
             )
 
+            print(f"[chatbot] {model_name} answered in {time.monotonic() - started:.1f}s")
+
             return response.choices[0].message.content.strip()
 
         except Exception as e:
 
             last_error = e
 
+            print(
+                f"[chatbot] {model_name} failed after "
+                f"{time.monotonic() - started:.1f}s: {type(e).__name__}: {e}"
+            )
+
             continue
 
-    raise last_error or Exception("Chatbot: all models failed")
+    raise last_error or Exception("Chatbot: all models failed or time budget used up")
 
 
 def _call_groq_with_tools(messages, tools, tool_choice="auto"):
@@ -5201,9 +5280,19 @@ def _call_groq_with_tools(messages, tools, tool_choice="auto"):
 
     for model_name in GROQ_MODEL_FALLBACKS:
 
+        left = _time_left()
+
+        if left is not None and left < GROQ_MIN_ATTEMPT_WINDOW:
+
+            print(f"[chatbot] time budget used up ({left:.1f}s left) - not trying {model_name}")
+
+            break
+
+        started = time.monotonic()
+
         try:
 
-            return client.chat.completions.create(
+            response = client.chat.completions.create(
                 model=model_name,
                 messages=messages,
                 tools=tools,
@@ -5212,13 +5301,22 @@ def _call_groq_with_tools(messages, tools, tool_choice="auto"):
                 max_tokens=600,
             )
 
+            print(f"[chatbot] {model_name} answered in {time.monotonic() - started:.1f}s")
+
+            return response
+
         except Exception as e:
 
             last_error = e
 
+            print(
+                f"[chatbot] {model_name} failed after "
+                f"{time.monotonic() - started:.1f}s: {type(e).__name__}: {e}"
+            )
+
             continue
 
-    raise last_error or Exception("Chatbot: all models failed")
+    raise last_error or Exception("Chatbot: all models failed or time budget used up")
 
 
 # =====================================================
@@ -5312,9 +5410,13 @@ def _execute_tool_calls(tool_calls, tool_executors, actor_profile, user):
 
         else:
 
+            tool_started = time.monotonic()
+
             try:
 
                 result = executor(actor_profile, user, args)
+
+                print(f"[chatbot] tool {name} took {time.monotonic() - tool_started:.2f}s")
 
             except Exception as e:
 
@@ -5331,6 +5433,112 @@ def _execute_tool_calls(tool_calls, tool_executors, actor_profile, user):
         executed.append((call, name, result))
 
     return executed
+
+
+# Tools whose result is shown as real cards in BOTH chat screens (job cards,
+# notification list), so the reply text only needs to be a short intro line
+# that the tool's own summary already provides. For these the second AI call
+# (which only re-words that summary) is skipped - roughly halving the wait.
+# Deliberately NOT included: tools whose lists the widget can't render as
+# cards (interviews, applications, drives...), where the AI's wording is
+# what actually shows the details.
+
+_FAST_REPLY_TOOLS = {
+    "find_matching_jobs", "check_job_eligibility",
+    "get_saved_jobs", "get_notifications",
+}
+
+
+def _can_skip_text_pass(executed):
+    """True when every executed tool is a card-rendered list tool whose own
+    summary is a fine reply (no AI re-wording needed)."""
+
+    if not executed:
+
+        return False
+
+    for call, name, result in executed:
+
+        if name not in _FAST_REPLY_TOOLS or result.get("failed"):
+
+            return False
+
+        if name == "find_matching_jobs":
+
+            # "which job is best?" (limit=1) needs the AI to explain WHY.
+
+            try:
+
+                args = json.loads(call.function.arguments or "{}")
+
+                limit = int(args.get("limit") or 5)
+
+            except Exception:
+
+                limit = 5
+
+            if limit == 1:
+
+                return False
+
+    return True
+
+
+# Exact texts the chat's own buttons send (quick actions / alert chips).
+# Tapping one runs the matching tool directly - no AI call at all, so
+# these answer almost instantly.
+
+_STUDENT_SHORTCUTS = {
+    "find jobs for me": ("find_matching_jobs", {}),
+    "show me new jobs": ("find_matching_jobs", {"recent_only": True}),
+    "show my notifications": ("get_notifications", {}),
+}
+
+
+def _normalize_shortcut(message):
+
+    text = re.sub(r"[^a-z0-9 ]+", "", (message or "").lower())
+
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _handle_student_shortcut(profile, user, message):
+    """Runs a button's tool directly. Returns a reply dict, or None to
+    carry on with the normal AI flow (not a button text, or the tool
+    raised)."""
+
+    entry = _STUDENT_SHORTCUTS.get(_normalize_shortcut(message))
+
+    if not entry:
+
+        return None
+
+    tool_name, args = entry
+
+    executor = TOOL_EXECUTORS.get(tool_name)
+
+    if not executor:
+
+        return None
+
+    started = time.monotonic()
+
+    try:
+
+        result = executor(profile, user, dict(args))
+
+    except Exception as e:
+
+        print("Chatbot shortcut error:", tool_name, e)
+
+        return None
+
+    print(f"[chatbot] shortcut {tool_name} took {time.monotonic() - started:.2f}s")
+
+    return _build_tool_payload(
+        _user_facing(result.get("summary", "Here's what I found.")),
+        [(None, tool_name, result)],
+    )
 
 
 def _build_tool_payload(final_text, executed):
@@ -5419,6 +5627,21 @@ def _build_tool_payload(final_text, executed):
 
 
 def generate_reply(user, message, history=None, page_context=None):
+    """Public entry point. Gives each chat message its own AI time
+    budget (see GROQ_REQUEST_BUDGET), then runs the real logic."""
+
+    _start_request_clock()
+
+    try:
+
+        return _generate_reply_inner(user, message, history, page_context)
+
+    finally:
+
+        _stop_request_clock()
+
+
+def _generate_reply_inner(user, message, history=None, page_context=None):
     """
     history: optional list of {"sender": "user"|"bot", "message": "..."}
     for short conversational continuity.
@@ -5544,6 +5767,15 @@ def generate_reply(user, message, history=None, page_context=None):
     # application, "No, cancel" drops it. The AI itself can never apply.
 
     if role == "student" and actor_profile:
+
+        # A tap on one of the chat's own buttons ("Find jobs for me",
+        # "Show my notifications", ...) - answered directly, no AI call.
+
+        shortcut_reply = _handle_student_shortcut(actor_profile, user, message)
+
+        if shortcut_reply is not None:
+
+            return shortcut_reply
 
         confirmation_reply = _handle_apply_confirmation(
             actor_profile, user, message
@@ -5765,8 +5997,11 @@ def generate_reply(user, message, history=None, page_context=None):
             "content": json.dumps(tool_content, default=str),
         })
 
+    # These are shown to the user word for word, so any that were written
+    # for the AI ("...the student's skills") are turned into second person.
+
     write_summaries = [
-        result.get("summary", "Done.")
+        _user_facing(result.get("summary", "Done."))
         for _call, name, result in executed
         if name in _WRITE_ACTION_TOOLS
     ]
@@ -5795,6 +6030,13 @@ def generate_reply(user, message, history=None, page_context=None):
     elif not read_items:
 
         final_text = "\n\n".join(write_summaries) or "Done."
+
+    elif not write_summaries and _can_skip_text_pass(executed):
+
+        final_text = " ".join(
+            _user_facing(result.get("summary", "Here's what I found."))
+            for _call, _name, result in executed
+        )
 
     else:
 
