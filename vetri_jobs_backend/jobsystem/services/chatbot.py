@@ -73,6 +73,13 @@ GROQ_REQUEST_BUDGET = float(os.getenv("GROQ_REQUEST_BUDGET", "28"))
 
 GROQ_MIN_ATTEMPT_WINDOW = 8.0   # don't start a new attempt with less than this left
 
+# What "new jobs" means, everywhere: the "new jobs" alert AND the "Show me new
+# jobs" search must agree (the alert used to look back 3 days while the search
+# looked back 14, so a student could get "no new jobs" from the assistant and
+# then a list from the button).
+
+RECENT_JOB_DAYS = 14
+
 
 try:
 
@@ -434,14 +441,15 @@ def _build_student_proactive_alerts(user):
             "actions": [],
         })
 
-    # 4) New jobs from the last 3 days that the student hasn't applied to
+    # 4) New jobs (posted within RECENT_JOB_DAYS - the same window the
+    # "Show me new jobs" search uses) that the student hasn't applied to
     applied_ids = Application.objects.filter(
         student=profile
     ).values_list("job_id", flat=True)
 
     new_jobs = Job.objects.filter(
         status="active", is_active=True,
-        created_at__gte=now - timedelta(days=3),
+        created_at__gte=now - timedelta(days=RECENT_JOB_DAYS),
     ).exclude(id__in=applied_ids).count()
 
     if new_jobs:
@@ -450,8 +458,8 @@ def _build_student_proactive_alerts(user):
             "key": f"newjobs:{new_jobs}:{now:%Y%m%d}",
             "type": "new_jobs",
             "text": (
-                f"{new_jobs} new job(s) were posted in the last 3 days "
-                "that you haven't applied to."
+                f"{new_jobs} new job(s) were posted in the last "
+                f"{RECENT_JOB_DAYS} days that you haven't applied to."
             ),
             "actions": ["Show me new jobs"],
         })
@@ -730,14 +738,42 @@ def get_knowledge_base_snippets(limit=12):
 SYSTEM_TEMPLATE = """You are the Vetri Jobs AI Placement Assistant, built into a
 campus recruitment platform used by students, companies, and placement staff.
 
-TOPIC SCOPE (strict): you only help with placement, career, and job-related
-topics - job search, applications, interviews, resumes, skills, career
-guidance, placement drives, and (for a company) candidates/hiring/analytics.
-If the user asks something clearly unrelated to this - general knowledge,
-weather, entertainment, coding help unrelated to their career, or anything
-else off-topic - politely decline and redirect them back to what you can
-help with. Do not answer the off-topic question itself, even briefly, even
-if you know the answer.
+HOW TO TALK: you are a warm, sharp career mentor having a real conversation,
+not a search box. Answer the question that was actually asked, in natural
+sentences, the way a knowledgeable person would say it out loud. Use what was
+said earlier in this conversation - "it", "that one", "the second job" mean
+what they meant a moment ago. Be direct and concrete: use the real names,
+numbers and dates from the data. Keep replies short unless the question needs
+depth. Never open with filler ("Sure!", "Great question!") and never answer
+with just a label like "Here are your applications." - say something useful
+about what the data shows: what stands out, what needs attention.
+
+ASK WHEN IT MATTERS: if a request is ambiguous, or you are missing something
+you truly need (which job? which company? which date?), ask ONE short
+clarifying question - offering two or three concrete options when that helps -
+instead of guessing or giving a vague answer. Never ask permission for a
+read-only lookup; just do it. When a natural next step would genuinely help,
+end with one short suggestion or question (not every time, and never more
+than one).
+
+WORK LIKE AN AGENT: work out what the person is really trying to achieve, then
+use your tools to get the facts you need - and use several in a row when one
+answer depends on another (for example: find jobs, then get the details of the
+best one, then say what is missing). Lookups need no permission. Anything that
+changes data (applying, adding skills, shortlisting, rejecting, raising a query)
+is only ever PREPARED by you and confirmed by the user tapping a button - say
+clearly what you are about to do and why, and never claim it is done. If a step
+fails, say what failed and what you will do instead. Never invent data: if you
+don't have it, say so and use a tool or ask.
+
+TOPIC SCOPE: you help with placements and careers - job search, applications,
+interviews, resumes, skills, career guidance, placement drives, and (for a
+company) hiring, candidates and analytics. That includes teaching what a
+student needs for their search: interview questions and how to answer them,
+technical topics they will be asked about, how to write a resume or cover
+letter, salary and offer questions, and study plans for a role. Politely decline
+only what is clearly unrelated to careers or this platform (weather, sports,
+entertainment, general trivia) and steer back to what you can do.
 
 You have been given the signed-in user's REAL, CURRENT data from the
 platform database as JSON below. Always answer questions about "my
@@ -828,7 +864,10 @@ followed by the jobs they can apply to.
 
 MORE THAN ONE REQUEST: if the student asks for several things at once (for
 example "show my applications and my interviews"), call all the matching
-tools in the same turn (up to 3) instead of only the first one.
+tools in the same turn (up to 3) instead of only the first one. When one
+answer depends on another (for example "find the best job and tell me what
+I'm missing for it"), call the tools one after another: look at the first
+result, then call the next tool with what you learned.
 
 DOWNLOADS: when get_resume_download_link runs successfully, tell the
 student their resume is ready and that a download button is shown
@@ -852,12 +891,11 @@ those render as their own visual cards/list right below your reply -
 do NOT also write them out again as a table, a bulleted list of each
 one, or markdown links like [text](url). Never write a raw URL or a
 markdown-style link anywhere in your reply - links only ever appear
-as the real buttons on those cards. Your reply text should just be
-one or two short sentences introducing what's shown below (e.g. "Here
-are 3 new jobs you haven't applied to yet.") - the cards carry all the
-detail, so repeating it in text is redundant and, since this chat
-doesn't render markdown tables or links, would show up as broken
-formatting.
+as the real buttons on those cards. Do not re-list them item by
+item in text. Instead say something useful ABOUT them in one to three short
+sentences - how many there are, which one stands out (the best match, the one
+with an interview coming up, the one that needs attention) and what the person
+could do next. The cards carry the detail; you add the insight.
 
 INTERVIEW PREP ROLE MATCHING (important): "help me prepare for [a role]"
 and "help me prepare for MY interview" are different requests - do not
@@ -1232,7 +1270,7 @@ def _tool_find_matching_jobs(profile, user, args):
     if recent_only:
 
         jobs_qs = jobs_qs.filter(
-            created_at__gte=timezone.now() - timedelta(days=14)
+            created_at__gte=timezone.now() - timedelta(days=RECENT_JOB_DAYS)
         )
 
     jobs = jobs_qs[:40]
@@ -5738,6 +5776,186 @@ def _can_skip_text_pass(executed):
     return True
 
 
+# ----------------------------- agent loop helpers -----------------------------
+
+# The assistant can look something up, read the result, then decide to look up
+# something else - up to this many rounds of tools per message. Writes are never
+# part of the loop: they only ever PREPARE a confirmation and end it.
+
+_MAX_TOOL_ROUNDS = 3
+
+
+def _call_signature(call):
+    """Same tool + same arguments = same call, however the JSON is spaced."""
+
+    try:
+
+        args = json.dumps(json.loads(call.function.arguments or "{}"), sort_keys=True)
+
+    except Exception:
+
+        args = str(call.function.arguments)
+
+    return f"{call.function.name}:{args}"
+
+
+def _is_simple_request(message):
+    """Short, single-purpose messages ("find jobs for me") can be answered
+    from the tool's own result without another model call. Longer ones may
+    be asking for something that needs a second lookup or real reasoning."""
+
+    return len((message or "").split()) <= 8
+
+
+def _append_tool_round(messages, choice_message, executed):
+    """Adds one round of (assistant tool calls -> tool results) to the
+    conversation the model sees."""
+
+    messages.append({
+        "role": "assistant",
+        "content": choice_message.content or "",
+        "tool_calls": [
+            {
+                "id": call.id,
+                "type": "function",
+                "function": {
+                    "name": name,
+                    "arguments": call.function.arguments,
+                },
+            }
+            for call, name, _result in executed
+        ],
+    })
+
+    for call, name, result in executed:
+
+        if name in _WRITE_ACTION_TOOLS:
+
+            # The model must not restate these - their confirmation text
+            # is appended to the reply automatically.
+
+            tool_content = {
+                "success": bool(result.get("success")),
+                "note": (
+                    "The result of this action is added to your reply "
+                    "automatically - do not describe or repeat it."
+                ),
+            }
+
+        else:
+
+            tool_content = result
+
+        messages.append({
+            "role": "tool",
+            "tool_call_id": call.id,
+            "content": json.dumps(tool_content, default=str),
+        })
+
+
+def _round_is_final(all_executed, message):
+    """True when nothing more should be asked of the model this message:
+    a write was prepared (its confirmation IS the answer), a mock interview
+    started (its first question is the answer), or it was a short request
+    whose card-rendered result already says it all."""
+
+    names = [name for _call, name, _result in all_executed]
+
+    if any(name in _WRITE_ACTION_TOOLS for name in names):
+
+        return True
+
+    if "start_mock_interview" in names:
+
+        return True
+
+    return _can_skip_text_pass(all_executed) and _is_simple_request(message)
+
+
+def _friendly_fast_text(name, result):
+    """A natural-sounding reply for a card-rendered result when no model call
+    is made - says something about the results and asks the natural next
+    question, instead of a bare "Found 3 jobs."."""
+
+    summary = _user_facing(result.get("summary", "Here's what I found."))
+
+    if name in ("find_matching_jobs", "check_job_eligibility"):
+
+        cards = result.get("matched_jobs") or []
+
+        if not cards:
+
+            return summary
+
+        top = cards[0]
+
+        score = top.get("match_score")
+
+        best = (
+            f"{top.get('title')} at {top.get('company')}"
+            + (f" ({score}% match)" if score is not None else "")
+        )
+
+        count = len(cards)
+
+        lead = (
+            f"I found 1 job you can apply to right now: {best}. "
+            "Want me to apply, or tell you more about it?"
+            if count == 1 else
+            f"I found {count} jobs you can apply to right now, and the best "
+            f"match is {best}. Want me to apply to one, or tell you more "
+            "about any of them?"
+        )
+
+        # keep the "already applied / requirements / profile" notes that
+        # follow the headline in the tool's own summary
+
+        return "\n\n".join([lead] + summary.split("\n\n")[1:])
+
+    if name == "get_notifications" and not (result.get("notifications") or []):
+
+        return "You're all caught up - you don't have any notifications yet."
+
+    return summary
+
+
+def _fast_reply_text(executed):
+
+    parts = [
+        _friendly_fast_text(name, result)
+        for _call, name, result in executed
+    ]
+
+    return "\n\n".join(part for part in parts if part)
+
+
+def _next_step_chips(executed):
+    """One-tap follow-ups that fit what was just shown. Only used when the
+    reply has no buttons of its own (apply confirmations etc. always win)."""
+
+    for _call, name, result in executed:
+
+        if name in ("find_matching_jobs", "check_job_eligibility"):
+
+            cards = result.get("matched_jobs") or []
+
+            if cards:
+
+                title = cards[0].get("title")
+
+                return [f"Tell me more about {title}", f"Apply to {title}"]
+
+        if name == "get_upcoming_interviews" and (result.get("interviews") or []):
+
+            return ["Help me prepare for my interview", "Start a mock interview"]
+
+        if name == "get_application_status" and result.get("has_interview_scheduled"):
+
+            return ["Help me prepare for my interview"]
+
+    return []
+
+
 # Exact texts the chat's own buttons send (quick actions / alert chips).
 # Tapping one runs the matching tool directly - no AI call at all, so
 # these answer almost instantly.
@@ -5792,7 +6010,7 @@ def _handle_student_shortcut(profile, user, message):
     print(f"[chatbot] shortcut {tool_name} took {time.monotonic() - started:.2f}s")
 
     return _build_tool_payload(
-        _user_facing(result.get("summary", "Here's what I found.")),
+        _friendly_fast_text(tool_name, result),
         [(None, tool_name, result)],
     )
 
@@ -5878,6 +6096,16 @@ def _build_tool_payload(final_text, executed):
     if refresh:
 
         result_payload["refresh"] = refresh
+
+    # Suggested next steps - only when nothing else already offered buttons.
+
+    if not result_payload.get("quick_replies"):
+
+        chips = _next_step_chips(executed)
+
+        if chips:
+
+            result_payload["quick_replies"] = chips
 
     return result_payload
 
@@ -6160,7 +6388,7 @@ def _generate_reply_inner(user, message, history=None, page_context=None):
         {"role": "system", "content": system_prompt}
     ]
 
-    for turn in (history or [])[-6:]:
+    for turn in (history or [])[-12:]:
 
         role_for_turn = "assistant" if turn.get("sender") == "bot" else "user"
 
@@ -6210,83 +6438,109 @@ def _generate_reply_inner(user, message, history=None, page_context=None):
 
         return _clean_reply(choice_message.content or "")
 
-    executed = _execute_tool_calls(
-        tool_calls, tool_executors, actor_profile, user
-    )
+    # ---------------------------- agent loop ----------------------------
+    # Run the tools the model asked for, show it the results, and let it
+    # decide whether it needs another lookup or is ready to answer - up to
+    # _MAX_TOOL_ROUNDS times. The same call is never run twice, a write only
+    # ever prepares a confirmation and ends the loop, and every model call
+    # still shares the one time budget for this message.
 
-    # A single tool that couldn't run: same plain message as before.
+    all_executed = []
 
-    if len(executed) == 1 and executed[0][2].get("failed"):
+    seen_calls = set()
 
-        return executed[0][2]["summary"]
+    model_text = None
 
-    messages.append({
-        "role": "assistant",
-        "content": choice_message.content or "",
-        "tool_calls": [
-            {
-                "id": call.id,
-                "type": "function",
-                "function": {
-                    "name": name,
-                    "arguments": call.function.arguments,
-                },
-            }
-            for call, name, _result in executed
-        ],
-    })
+    for _round in range(_MAX_TOOL_ROUNDS):
 
-    for call, name, result in executed:
+        fresh_calls = []
 
-        if name in _WRITE_ACTION_TOOLS:
+        for call in tool_calls:
 
-            # The model must not restate these - their confirmation text
-            # is appended to the reply automatically below.
+            signature = _call_signature(call)
 
-            tool_content = {
-                "success": bool(result.get("success")),
-                "note": (
-                    "The result of this action is added to your reply "
-                    "automatically - do not describe or repeat it."
-                ),
-            }
+            if signature not in seen_calls:
 
-        else:
+                seen_calls.add(signature)
 
-            tool_content = result
+                fresh_calls.append(call)
 
-        messages.append({
-            "role": "tool",
-            "tool_call_id": call.id,
-            "content": json.dumps(tool_content, default=str),
-        })
+        if not fresh_calls:
+
+            break
+
+        executed = _execute_tool_calls(
+            fresh_calls, tool_executors, actor_profile, user
+        )
+
+        # A single tool that couldn't run, before anything else worked:
+        # same plain message as before.
+
+        if len(executed) == 1 and executed[0][2].get("failed") and not all_executed:
+
+            return executed[0][2]["summary"]
+
+        all_executed.extend(executed)
+
+        _append_tool_round(messages, choice_message, executed)
+
+        if _round_is_final(all_executed, message):
+
+            break
+
+        # Out of rounds: go straight to the final text pass rather than
+        # asking for more tool calls that would only be thrown away.
+
+        if _round == _MAX_TOOL_ROUNDS - 1:
+
+            break
+
+        try:
+
+            response = _call_groq_with_tools(messages, tool_schemas)
+
+        except Exception as e:
+
+            print("Chatbot follow-up error:", e)
+
+            break
+
+        choice_message = response.choices[0].message
+
+        tool_calls = getattr(choice_message, "tool_calls", None)
+
+        if not tool_calls:
+
+            model_text = _clean_reply(choice_message.content or "")
+
+            break
 
     # These are shown to the user word for word, so any that were written
     # for the AI ("...the student's skills") are turned into second person.
 
     write_summaries = [
         _user_facing(result.get("summary", "Done."))
-        for _call, name, result in executed
+        for _call, name, result in all_executed
         if name in _WRITE_ACTION_TOOLS
     ]
 
     read_items = [
-        item for item in executed
+        item for item in all_executed
         if item[1] not in _WRITE_ACTION_TOOLS
     ]
 
-    first_name = executed[0][1]
+    first_name = all_executed[0][1]
 
-    first_result = executed[0][2]
+    first_result = all_executed[0][2]
 
     if (
-        len(executed) == 1
+        len(all_executed) == 1
         and first_name == "start_mock_interview"
         and first_result.get("question")
     ):
 
         # The interviewer question is already exactly what should be
-        # shown - skipping the second Groq pass means it's never
+        # shown - skipping another model pass means it's never
         # paraphrased, shortened, or mixed with commentary.
 
         final_text = first_result["question"]
@@ -6295,19 +6549,26 @@ def _generate_reply_inner(user, message, history=None, page_context=None):
 
         final_text = "\n\n".join(write_summaries) or "Done."
 
-    elif not write_summaries and _can_skip_text_pass(executed):
+    elif not write_summaries and model_text:
 
-        final_text = " ".join(
-            _user_facing(result.get("summary", "Here's what I found."))
-            for _call, _name, result in executed
-        )
+        # The model looked at the results and answered in its own words.
+
+        final_text = model_text
+
+    elif (
+        not write_summaries
+        and _can_skip_text_pass(all_executed)
+        and _is_simple_request(message)
+    ):
+
+        final_text = _fast_reply_text(all_executed)
 
     else:
 
         try:
 
-            # tool_choice="none": this second pass must only write the
-            # reply text, never call another tool.
+            # tool_choice="none": this last pass only writes the reply text
+            # (the loop ended, or ran out of rounds).
 
             final_response = _call_groq_with_tools(
                 messages, tool_schemas, tool_choice="none"
@@ -6332,4 +6593,4 @@ def _generate_reply_inner(user, message, history=None, page_context=None):
 
             final_text = final_text + "\n\n" + "\n\n".join(write_summaries)
 
-    return _build_tool_payload(final_text, executed)
+    return _build_tool_payload(final_text, all_executed)
