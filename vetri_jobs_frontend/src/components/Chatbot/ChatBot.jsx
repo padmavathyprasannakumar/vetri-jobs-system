@@ -94,6 +94,107 @@ const getGreeting = (role)=>{
 
 
 
+// LIST-ITEM-HELPER-START
+// Turns one item from any tool's list (a student's application or interview,
+// a drive, a company's applicant or job posting, a placement admin's company
+// or student ...) into a title plus one detail line, whatever its shape.
+// Without this the widget drew nothing for these lists - so "show my
+// applications" showed only the assistant's one-line intro and no data.
+
+const describeListItem = (item)=>{
+
+    const entry = item || {};
+
+    const title =
+
+        entry.candidate ||
+
+        entry.job_title ||
+
+        entry.title ||
+
+        entry.company_name ||
+
+        entry.full_name ||
+
+        entry.name ||
+
+        "";
+
+    const details = [];
+
+    if(entry.candidate && entry.job_title) details.push(entry.job_title);
+
+    if(entry.company && entry.company !== title) details.push(entry.company);
+
+    if(entry.industry) details.push(entry.industry);
+
+    if(entry.department) details.push(entry.department);
+
+    if(entry.date){
+
+        details.push(entry.time ? `${entry.date} at ${entry.time}` : String(entry.date));
+
+    }
+
+    if(entry.submitted_on) details.push(String(entry.submitted_on).slice(0,10));
+
+    if(entry.mode) details.push(entry.mode);
+
+    if(entry.status) details.push(entry.status);
+
+    if(typeof entry.applications === "number"){
+
+        details.push(`${entry.applications} application${entry.applications===1 ? "" : "s"}`);
+
+    }
+
+    if(entry.interview && entry.interview.date){
+
+        details.push(
+
+            `Interview ${entry.interview.date}` +
+
+            (entry.interview.time ? ` at ${entry.interview.time}` : "")
+
+        );
+
+    }
+
+    return { title, detail: details.join(" \u2022 ") };
+
+};
+
+// One detail line for a candidate card - separators only between real parts.
+
+const describeCandidate = (candidate)=>{
+
+    const entry = candidate || {};
+
+    const parts = [];
+
+    if(entry.job_title){
+
+        parts.push(entry.company ? `${entry.job_title} at ${entry.company}` : entry.job_title);
+
+    }
+
+    if(entry.course || entry.department) parts.push(entry.course || entry.department);
+
+    if(entry.cgpa) parts.push(`CGPA ${entry.cgpa}`);
+
+    if(entry.status) parts.push(entry.status);
+
+    return parts.join(" \u2022 ");
+
+};
+
+const LIST_KEYS = ["applications","interviews","drives","jobs","companies","students"];
+// LIST-ITEM-HELPER-END
+
+
+
+
 function Chatbot(){
 
 
@@ -487,6 +588,22 @@ function Chatbot(){
 
 
                     candidates: data.candidates || null,
+
+
+                    // Lists the assistant introduces with one line and
+                    // expects to be shown below it.
+
+                    applications: data.applications || null,
+
+                    interviews: data.interviews || null,
+
+                    drives: data.drives || null,
+
+                    jobs: data.jobs || null,
+
+                    companies: data.companies || null,
+
+                    students: data.students || null,
 
 
                     // Yes / No style buttons (e.g. "Apply to X at Y?")
@@ -1008,9 +1125,7 @@ function Chatbot(){
 
                                         <p className="chat-job-card-sub">
 
-                                            {c.course || c.department || ""}
-                                            {c.cgpa ? ` \u2022 CGPA ${c.cgpa}` : ""}
-                                            {c.status ? ` \u2022 ${c.status}` : ""}
+                                            {describeCandidate(c)}
 
                                         </p>
 
@@ -1046,6 +1161,51 @@ function Chatbot(){
                                 }
 
                             </div>
+                            }
+
+
+
+
+                            {/* APPLICATIONS / INTERVIEWS / DRIVES / JOB POSTINGS / COMPANIES / STUDENTS */}
+
+                            {
+                            LIST_KEYS.map(listKey=>(
+
+                                item[listKey] && item[listKey].length > 0 &&
+
+                                <div className="chat-job-cards" key={listKey}>
+
+                                    {
+                                    item[listKey].map((entry,idx)=>{
+
+                                        const info = describeListItem(entry);
+
+                                        return(
+
+                                            <div className="chat-job-card" key={idx}>
+
+                                                <div className="chat-job-card-top">
+
+                                                    <strong>{info.title}</strong>
+
+                                                </div>
+
+                                                {
+                                                info.detail &&
+
+                                                <p className="chat-job-card-sub">{info.detail}</p>
+                                                }
+
+                                            </div>
+
+                                        );
+
+                                    })
+                                    }
+
+                                </div>
+
+                            ))
                             }
 
 
