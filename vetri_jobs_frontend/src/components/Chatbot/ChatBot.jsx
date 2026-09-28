@@ -1023,6 +1023,16 @@ function Chatbot(){
 
                                         </p>
 
+                                        {
+                                        job.eligible === false && !job.already_applied && job.eligibility_note &&
+
+                                        <p className="chat-job-card-sub" style={{color:"#b45309"}}>
+
+                                            {job.eligibility_note}
+
+                                        </p>
+                                        }
+
 
                                         <div className="chat-job-card-actions">
 
@@ -1032,6 +1042,22 @@ function Chatbot(){
                                             <span className="chat-job-card-applied-badge">
 
                                                 ✓ Already Applied
+
+                                            </span>
+
+                                            :
+
+                                            job.eligible === false ?
+
+                                            <span
+
+                                            className="chat-job-card-applied-badge"
+
+                                            style={{background:"#fff4e5", color:"#b45309"}}
+
+                                            >
+
+                                                Not eligible yet
 
                                             </span>
 
