@@ -1187,11 +1187,322 @@ def _eligibility_blocker(profile, job):
     return False, _failing_details(profile, result)
 
 
+# ---- department wording: "computerscience", "Computer Science" and "CSE" are
+# the same department. The eligibility rule compares text, so a profile that
+# says "computerscience" fails "Open to: CSE" even though the student IS a CSE
+# student. These helpers let the assistant SAY so (and tell them the one-line
+# fix) instead of listing it as a real blocker.
+
+_DEPARTMENT_ALIASES = {
+    "cse": ["cse", "cs", "compsci", "computerscience", "computersciencengineering",
+            "computerscienceengineering", "computerscienceandengineering",
+            "computerscienceengg", "computerscienceandengg"],
+    "it": ["it", "informationtechnology"],
+    "ece": ["ece", "electronicsandcommunication", "electronicscommunication",
+            "electronicsandcommunicationengineering", "electronicscommunicationengineering"],
+    "eee": ["eee", "electricalandelectronics", "electricalelectronics",
+            "electricalandelectronicsengineering"],
+    "mech": ["mech", "mechanical", "mechanicalengineering"],
+    "civil": ["civil", "civilengineering"],
+    "aids": ["aids", "aiandds", "artificialintelligenceanddatascience"],
+    "aiml": ["aiml", "aiandml", "artificialintelligenceandmachinelearning"],
+    "bca": ["bca", "bachelorofcomputerapplications"],
+    "mca": ["mca", "masterofcomputerapplications"],
+}
+
+_DEPARTMENT_LOOKUP = {
+    variant: canonical
+    for canonical, variants in _DEPARTMENT_ALIASES.items()
+    for variant in variants
+}
+
+
+def _canonical_department(text):
+    """'Computer Science', 'computerscience', 'B.Tech CSE', 'cse' -> 'cse'."""
+
+    key = re.sub(r"[^a-z0-9]", "", (text or "").lower())
+
+    if not key:
+
+        return ""
+
+    stripped = re.sub(r"^(btech|mtech|bsc|msc|be)", "", key)
+
+    for candidate in (key, stripped):
+
+        for form in (candidate, re.sub(r"(engineering|engg|department|dept)$", "", candidate)):
+
+            if form in _DEPARTMENT_LOOKUP:
+
+                return _DEPARTMENT_LOOKUP[form]
+
+    return key
+
+
+def _department_options(allowed_text):
+
+    return [
+        part.strip()
+        for part in re.split(r"[,;/|]|\bor\b", allowed_text or "", flags=re.IGNORECASE)
+        if part.strip()
+    ]
+
+
+def _matching_department_option(have, allowed_text):
+    """The allowed department the student's own one is the same as once
+    written the same way ('computerscience' -> 'CSE' out of 'CSE, IT'), or ''."""
+
+    mine = _canonical_department(have)
+
+    if not mine:
+
+        return ""
+
+    for option in _department_options(allowed_text):
+
+        if _canonical_department(option) == mine:
+
+            return option
+
+    return ""
+
+
+def _departments_match(have, allowed_text):
+    """True if the student's department is one of the allowed ones once
+    written the same way ('computerscience' vs 'CSE')."""
+
+    return bool(_matching_department_option(have, allowed_text))
+
+
+def _department_tip(profile, eligibility):
+    """One sentence when the ONLY reason a department rule failed is wording
+    ("computerscience" vs "CSE"); empty otherwise."""
+
+    have = (getattr(profile, "department", "") or "").strip()
+
+    if not have:
+
+        return ""
+
+    for condition in eligibility.get("conditions") or []:
+
+        detail = (condition.get("detail") or "") if isinstance(condition, dict) else ""
+
+        if (
+            isinstance(condition, dict)
+            and condition.get("status") == "fail"
+            and re.match(r"^open to:", detail, re.IGNORECASE)
+        ):
+
+            allowed = detail.split(":", 1)[1].strip()
+
+            target = _matching_department_option(have, allowed)
+
+            if target:
+
+                return (
+                    f'Your department ("{have}") looks like the same as {target} '
+                    f'but is written differently - set it to "{target}" on your '
+                    "profile and that requirement should pass."
+                )
+
+    return ""
+
+
+_RE_CGPA = re.compile(r"^Requires\s+([\d.]+)\+?\s*CGPA\s*-\s*you have\s+([\d.]+)\s*$", re.IGNORECASE)
+
+_RE_DEPT = re.compile(r"^Open to:\s*(.+?)\s*\(your department:\s*(.*?)\)\s*$", re.IGNORECASE)
+
+_RE_YEAR = re.compile(
+    r"^Open to graduation years?:\s*(.+?)\s*\(your graduation year:\s*(.*?)\)\s*$",
+    re.IGNORECASE,
+)
+
+_RE_AGE = re.compile(r"age restriction applies\s*-\s*add your age", re.IGNORECASE)
+
+
+def _names(titles, cap=4):
+    """'A, B, C, D and 2 more' - job names, each once."""
+
+    unique = list(dict.fromkeys(titles))
+
+    shown = ", ".join(unique[:cap])
+
+    extra = len(unique) - cap
+
+    return shown + (f" and {extra} more" if extra > 0 else "")
+
+
+def _summarise_blockers(blocked, cap=4):
+    """
+    blocked = [(job title, [failing requirement texts])].
+    Returns (lines, unlockable_titles, fix_labels): ONE line per requirement
+    (naming every job it blocks) instead of repeating the same reasons under
+    each job, plus which jobs are blocked ONLY by things the student can fix
+    on their own profile (an unset or differently-worded department, a missing
+    age or graduation year) and what those fixes are.
+    """
+
+    cgpa, dept, years, age, other, bare = {}, {}, {}, [], {}, []
+
+    year_have = ""
+
+    fix_kinds = {}          # job title -> {kinds fixable on the profile}
+
+    unfixable = set()       # job titles with at least one thing they can't fix
+
+    for title, reasons in blocked:
+
+        if not reasons:
+
+            bare.append(title)
+
+            continue
+
+        fix_kinds.setdefault(title, set())
+
+        for reason in reasons:
+
+            m = _RE_CGPA.match(reason)
+
+            if m:
+
+                cgpa.setdefault((m.group(1), m.group(2)), []).append(title)
+
+                unfixable.add(title)
+
+                continue
+
+            m = _RE_DEPT.match(reason)
+
+            if m:
+
+                allowed, have = m.group(1).strip(), m.group(2).strip()
+
+                dept.setdefault((allowed, have), []).append(title)
+
+                if have.lower() == "not set" or _departments_match(have, allowed):
+
+                    fix_kinds[title].add("department")
+
+                else:
+
+                    unfixable.add(title)
+
+                continue
+
+            m = _RE_YEAR.match(reason)
+
+            if m:
+
+                years.setdefault(m.group(1).strip(), []).append(title)
+
+                year_have = m.group(2).strip()
+
+                if year_have.lower() == "not set":
+
+                    fix_kinds[title].add("graduation year")
+
+                else:
+
+                    unfixable.add(title)
+
+                continue
+
+            if _RE_AGE.search(reason):
+
+                age.append(title)
+
+                fix_kinds[title].add("age")
+
+                continue
+
+            other.setdefault(reason, []).append(title)
+
+            unfixable.add(title)
+
+    lines = []
+
+    for (required, have), titles in cgpa.items():
+
+        line = f"CGPA: {required}+ needed, you have {have}"
+
+        try:
+
+            gap = float(required) - float(have)
+
+        except ValueError:
+
+            gap = None
+
+        if gap is not None and 0 < gap <= 0.5:
+
+            line += f" (just {gap:.2f} short)"
+
+        lines.append(f"{line} - for {_names(titles, cap)}")
+
+    for (allowed, have), titles in dept.items():
+
+        target = _matching_department_option(have, allowed)
+
+        if have.lower() == "not set":
+
+            what = f"Department: open to {allowed}, and your profile has none"
+
+        elif target:
+
+            what = (
+                f'Department: open to {allowed}, your profile says "{have}" - '
+                f'probably the same thing written differently, so set it to "{target}"'
+            )
+
+        else:
+
+            what = f'Department: open to {allowed}, your profile says "{have}"'
+
+        lines.append(f"{what} - for {_names(titles, cap)}")
+
+    if years:
+
+        mine = (
+            f"yours is {year_have}"
+            if year_have and year_have.lower() != "not set"
+            else "yours isn't set on your profile"
+        )
+
+        parts = [
+            f"{_names(titles, cap)} "
+            f"{'needs' if len(set(titles)) == 1 else 'need'} {allowed}"
+            for allowed, titles in years.items()
+        ]
+
+        lines.append(f"Graduation year: {mine} - " + "; ".join(parts))
+
+    if age:
+
+        lines.append(f"Age: add your age to your profile - for {_names(age, cap)}")
+
+    for reason, titles in other.items():
+
+        lines.append(f"{reason} - for {_names(titles, cap)}")
+
+    lines.extend(bare)
+
+    unlockable = [t for t, kinds in fix_kinds.items() if kinds and t not in unfixable]
+
+    order = ["department", "graduation year", "age"]
+
+    labels = [k for k in order if any(k in fix_kinds[t] for t in unlockable)]
+
+    return lines, unlockable, labels
+
+
 def _exclusion_note(applied_titles, blocked, cap=5):
     """
     Plain lines saying which open jobs were left out of a 'jobs for you'
     answer and why, so nothing is silently hidden. `blocked` is a list of
-    (title, [failing requirement texts]).
+    (title, [failing requirement texts]). Blockers are grouped by requirement
+    (see _summarise_blockers) so the same reason isn't repeated per job.
     """
 
     sections = []
@@ -1210,19 +1521,22 @@ def _exclusion_note(applied_titles, blocked, cap=5):
 
     if blocked:
 
-        lines = ["You don't meet the requirements yet:"]
+        lines, unlockable, labels = _summarise_blockers(blocked)
 
-        for title, reasons in blocked[:cap]:
+        section = ["You don't meet the requirements yet:"] + [f"- {l}" for l in lines]
 
-            lines.append(
-                f"- {title}: {'; '.join(reasons)}" if reasons else f"- {title}"
+        if unlockable:
+
+            joined = (
+                labels[0] if len(labels) == 1
+                else ", ".join(labels[:-1]) + " and " + labels[-1]
             )
 
-        if len(blocked) > cap:
+            section.append(
+                f"Updating your {joined} would open up: {_names(unlockable)}."
+            )
 
-            lines.append(f"- and {len(blocked) - cap} more")
-
-        sections.append("\n".join(lines))
+        sections.append("\n".join(section))
 
     return "\n\n".join(sections)
 
@@ -1799,10 +2113,13 @@ def _apply_blocker(profile, job):
 
         why = "; ".join(_failing_details(profile, eligibility))
 
+        tip = _department_tip(profile, eligibility)
+
         message = (
             f"You're not eligible to apply to {job.title} at "
             f"{company_name} based on your current profile."
             + (f" Specifically: {why.rstrip('. ')}." if why else "")
+            + (f" {tip}" if tip else "")
         )
 
         # A real next step, not just a dead-end explanation - some
