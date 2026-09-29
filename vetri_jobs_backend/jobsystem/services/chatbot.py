@@ -874,6 +874,20 @@ a general list of jobs instead - they asked about one job, so the answer
 must be about that job: the confirmation, or exactly why they can't apply,
 followed by the jobs they can apply to.
 
+ANSWER WITH THE REAL DETAIL, NOT A COUNT: when a tool returns a list of
+issues, suggestions, missing information, or similar findings, your reply
+must actually name them - a few sentences or a short list - never just
+"found 3 issues" with nothing else. A count alone forces the student to ask
+a follow-up you can't yet answer, since the real detail was never written
+down anywhere. Before calling an analysis tool (resume/ATS check, job
+eligibility, etc.) again, check whether you already gave the real detail
+earlier in this SAME conversation - if so, answer the follow-up directly
+from what you already said, instead of quietly re-running the whole
+analysis again (each run is a real cost, takes real time, and can return
+a slightly different result each time, which only confuses the student).
+Only re-run it if something genuinely changed (a new resume was uploaded,
+a different role was named) or the student explicitly asks you to re-check.
+
 THREE DIFFERENT JOB QUESTIONS - never mix them up:
 - "New / latest / recently posted jobs" = a plain list of what was recently
   uploaded (find_matching_jobs with recent_only true). Do not analyse their
@@ -3637,17 +3651,54 @@ def _tool_check_ats_friendliness(profile, user, args):
             "summary": f"Could not run the ATS check right now ({e}).",
         }
 
+    issues = result.get("issues", [])
+
+    suggestions = result.get("suggestions", [])
+
+    # The actual issue/suggestion TEXT goes into "summary" - not just their
+    # count. "summary" is what the model reads for its answer AND, once
+    # written into the model's reply, the one thing that gets saved to
+    # chat history - a bare count here meant a student asking a natural
+    # follow-up ("what are the issues?") gave the model nothing to answer
+    # from, so it silently re-ran the ENTIRE ATS check again (a real Groq
+    # call, wasting time and the account's rate-limit budget) just to
+    # re-discover the same information a second time. Listing the real
+    # text here means the first answer is already useful, and a follow-up
+    # can be answered from history with no extra tool call at all.
+
+    if issues:
+
+        lines = [f"- {issue}" for issue in issues[:8]]
+
+        if suggestions:
+
+            lines.append("")
+
+            lines.append("Suggested fixes:")
+
+            lines.extend(f"- {item}" for item in suggestions[:8])
+
+        summary = (
+            f"Official resume score (same as the Resume page): "
+            f"{resume.resume_score}/100. ATS check found "
+            f"{len(issues)} issue(s):\n\n" + "\n".join(lines)
+        )
+
+    else:
+
+        summary = (
+            f"Official resume score (same as the Resume page): "
+            f"{resume.resume_score}/100. No ATS issues found - "
+            "this resume should parse cleanly."
+        )
+
     return {
         "has_resume": True,
         "resume_score": resume.resume_score,
-        "issues": result.get("issues", []),
-        "suggestions": result.get("suggestions", []),
+        "issues": issues,
+        "suggestions": suggestions,
         "rewritten_bullets": result.get("rewritten_bullets", []),
-        "summary": (
-            f"Official resume score (same as the Resume page): "
-            f"{resume.resume_score}/100. ATS check found "
-            f"{len(result.get('issues', []))} issue(s) to fix."
-        ),
+        "summary": summary,
     }
 
 
@@ -4674,7 +4725,11 @@ TOOL_SCHEMAS = [
                 "suggestions, optionally against a specific target "
                 "job role. Returns the official resume score plus "
                 "ATS issues/suggestions - it does not produce a "
-                "separate score."
+                "separate score. Your answer MUST list the actual "
+                "issues and suggestions returned (not just how many "
+                "there are) - a bare count answers nothing and forces "
+                "a needless, costly re-check the moment the student "
+                "asks a natural follow-up like 'what are the issues?'."
             ),
             "parameters": {
                 "type": "object",
