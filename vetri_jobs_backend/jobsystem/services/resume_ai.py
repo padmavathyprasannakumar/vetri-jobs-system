@@ -100,7 +100,10 @@ GROQ_MODEL = "openai/gpt-oss-20b"
 GROQ_MODEL_FALLBACKS = [
     GROQ_MODEL,
     "openai/gpt-oss-120b",
-    "llama-3.3-70b-versatile",
+    # llama-3.3-70b-versatile removed: Groq has deprecated it (confirmed
+    # via Render logs - every call 404s instantly with "model_not_found"),
+    # the same dead entry as in chatbot.py's own fallback list. Add a real,
+    # currently-available third model here if wanted.
 ]
 
 
