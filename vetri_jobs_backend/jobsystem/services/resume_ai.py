@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import time
 import traceback
 import io
 import tempfile
@@ -8,9 +9,75 @@ import tempfile
 from groq import Groq
 
 
-client = Groq(
-    api_key=os.getenv("GROQ_API_KEY")
-)
+# =====================================================
+# TIMEOUT / RETRY DISCIPLINE
+# =====================================================
+# This file used to create its Groq client with no timeout and no
+# retry limit configured - which means every call here used the
+# SDK's own defaults: 60 seconds per attempt, PLUS 2 automatic
+# retries on top of that. That client is entirely separate from the
+# one in chatbot.py (which already had this fixed), so nothing there
+# protected this file - a single slow/rate-limited request here
+# could take minutes, with no visibility into why, while the
+# chatbot's own orchestrator call (which decided to run this tool in
+# the first place) had already spent part of its own, much shorter
+# time budget getting here.
+#
+# RESUME_AI_ATTEMPT_TIMEOUT is slightly more generous than the main
+# chatbot's per-attempt timeout (12s), since analysing a whole resume
+# genuinely takes a bit longer than a short chat reply - but it is
+# still short enough that a stuck attempt fails fast and moves on to
+# the next fallback model, instead of hanging.
+# =====================================================
+
+RESUME_AI_ATTEMPT_TIMEOUT = float(os.getenv("RESUME_AI_ATTEMPT_TIMEOUT", "20"))
+
+
+try:
+
+    client = Groq(
+        api_key=os.getenv("GROQ_API_KEY"),
+        timeout=RESUME_AI_ATTEMPT_TIMEOUT,
+        max_retries=0,
+    )
+
+except TypeError:
+
+    # An older SDK that doesn't accept these options - keep working
+    # with its defaults rather than failing at import time.
+
+    client = Groq(
+        api_key=os.getenv("GROQ_API_KEY")
+    )
+
+
+def _timed_completion(model_name, **kwargs):
+    """
+    Wraps client.chat.completions.create() with the same [prefix]
+    model/duration logging chatbot.py already uses, so a slow or
+    failing resume analysis is just as easy to diagnose from Render's
+    logs (search for "[resume_ai]") as a slow chat reply is (search
+    for "[chatbot]").
+    """
+
+    started = time.monotonic()
+
+    try:
+
+        response = client.chat.completions.create(model=model_name, **kwargs)
+
+        print(f"[resume_ai] {model_name} answered in {time.monotonic() - started:.1f}s")
+
+        return response
+
+    except Exception as e:
+
+        print(
+            f"[resume_ai] {model_name} failed after "
+            f"{time.monotonic() - started:.1f}s: {type(e).__name__}: {e}"
+        )
+
+        raise
 
 
 # =====================================================
@@ -304,9 +371,9 @@ Rules:
 
         try:
 
-            response = client.chat.completions.create(
+            response = _timed_completion(
 
-                model=model_name,
+                model_name,
 
                 messages=[
 
@@ -368,9 +435,9 @@ Rules:
 
             try:
 
-                response = client.chat.completions.create(
+                response = _timed_completion(
 
-                    model=model_name,
+                    model_name,
 
                     messages=[
 
@@ -573,9 +640,9 @@ Rules:
 
         try:
 
-            response = client.chat.completions.create(
+            response = _timed_completion(
 
-                model=model_name,
+                model_name,
 
                 messages=[
                     {"role": "user", "content": prompt}
