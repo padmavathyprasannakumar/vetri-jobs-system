@@ -26,6 +26,8 @@ and why - not just a single Yes/No.
 
 import re
 
+from datetime import date
+
 
 def _clean_list(text):
 
@@ -38,6 +40,112 @@ def _clean_list(text):
         for part in re.split(r"[,\n/]", text)
         if part.strip()
     ]
+
+
+# ---------------------------------------------------------------------------
+# DEPARTMENT MATCHING
+#
+# A department requirement used to be a plain, case-insensitive TEXT match:
+# "cse" only matched a profile that stored the exact text "cse". A student
+# whose profile said "Computer Science", "computerscience", or "B.Tech CSE"
+# was incorrectly marked ineligible for every CSE-only job, even though it is
+# obviously the same department. This alias table lets the same department
+# match however it happens to be written, on either side (the job's allowed
+# list, or the student's profile).
+# ---------------------------------------------------------------------------
+
+_DEPARTMENT_ALIASES = {
+    "cse": ["cse", "cs", "compsci", "computerscience", "computersciencengineering",
+            "computerscienceengineering", "computerscienceandengineering",
+            "computerscienceengg", "computerscienceandengg"],
+    "it": ["it", "informationtechnology"],
+    "ece": ["ece", "electronicsandcommunication", "electronicscommunication",
+            "electronicsandcommunicationengineering", "electronicscommunicationengineering"],
+    "eee": ["eee", "electricalandelectronics", "electricalelectronics",
+            "electricalandelectronicsengineering"],
+    "mech": ["mech", "mechanical", "mechanicalengineering"],
+    "civil": ["civil", "civilengineering"],
+    "aids": ["aids", "aiandds", "artificialintelligenceanddatascience"],
+    "aiml": ["aiml", "aiandml", "artificialintelligenceandmachinelearning"],
+    "bca": ["bca", "bachelorofcomputerapplications"],
+    "mca": ["mca", "masterofcomputerapplications"],
+}
+
+_DEPARTMENT_LOOKUP = {
+    variant: canonical
+    for canonical, variants in _DEPARTMENT_ALIASES.items()
+    for variant in variants
+}
+
+
+def _canonical_department(text):
+    """'Computer Science', 'computerscience', 'B.Tech CSE', 'cse' -> 'cse'.
+    An unrecognised department is returned as its own cleaned-up key, so two
+    profiles that both say the same unlisted department (e.g. "Textile
+    Technology") still match each other, and it's compared as itself
+    against the job's list rather than silently matching nothing."""
+
+    key = re.sub(r"[^a-z0-9]", "", (text or "").lower())
+
+    if not key:
+
+        return ""
+
+    stripped = re.sub(r"^(btech|mtech|bsc|msc|be)", "", key)
+
+    for candidate in (key, stripped):
+
+        for form in (candidate, re.sub(r"(engineering|engg|department|dept)$", "", candidate)):
+
+            if form in _DEPARTMENT_LOOKUP:
+
+                return _DEPARTMENT_LOOKUP[form]
+
+    return stripped or key
+
+
+def _department_matches(student_department, allowed_departments_text):
+    """True if the student's department is one of the job's allowed
+    departments, once both are written the same way."""
+
+    student_key = _canonical_department(student_department)
+
+    if not student_key:
+
+        return False
+
+    allowed = _clean_list(allowed_departments_text)
+
+    return any(_canonical_department(option) == student_key for option in allowed)
+
+
+# ---------------------------------------------------------------------------
+# AGE
+#
+# The Profile page only ever asks for a Date of Birth - there is no separate
+# "age" box for the student to fill in. So checking student.age directly
+# looked for a field the UI never populates, and always failed with "add
+# your age to your profile" even for a student who had entered their date of
+# birth correctly. Age is now always calculated from date_of_birth. A
+# legacy student.age value (if a profile happens to have one set directly,
+# from data entered before this fix, say) is still used as a fallback only
+# when date_of_birth isn't available, so no existing data is ignored.
+# ---------------------------------------------------------------------------
+
+def _student_age(student):
+
+    date_of_birth = getattr(student, "date_of_birth", None)
+
+    if date_of_birth:
+
+        today = date.today()
+
+        return (
+            today.year - date_of_birth.year
+            - ((today.month, today.day) < (date_of_birth.month, date_of_birth.day))
+        )
+
+    return getattr(student, "age", None)
 
 
 def check_eligibility(student, job):
@@ -134,11 +242,7 @@ def check_eligibility(student, job):
 
     if job.eligible_departments:
 
-        allowed = [d.lower() for d in _clean_list(job.eligible_departments)]
-
-        student_dept = (student.department or "").lower()
-
-        passed = student_dept in allowed
+        passed = _department_matches(student.department, job.eligible_departments)
 
         add(
             "Department",
@@ -187,17 +291,17 @@ def check_eligibility(student, job):
 
     if job.min_age or job.max_age:
 
-        if student.age:
+        student_age = _student_age(student)
+
+        if student_age:
 
             ok = True
 
-            detail_parts = []
-
-            if job.min_age and student.age < job.min_age:
+            if job.min_age and student_age < job.min_age:
 
                 ok = False
 
-            if job.max_age and student.age > job.max_age:
+            if job.max_age and student_age > job.max_age:
 
                 ok = False
 
@@ -209,9 +313,9 @@ def check_eligibility(student, job):
             add(
                 "Age",
                 ok,
-                f"Requires age {range_text} - you are {student.age}"
+                f"Requires age {range_text} - you are {student_age}"
                 if not ok else
-                f"Age requirement met ({student.age})"
+                f"Age requirement met ({student_age})"
             )
 
         else:
@@ -219,7 +323,7 @@ def check_eligibility(student, job):
             add(
                 "Age",
                 False,
-                "Age restriction applies - add your age to your profile"
+                "Age restriction applies - add your date of birth to your profile"
             )
 
 
