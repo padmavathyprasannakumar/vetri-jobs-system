@@ -2976,6 +2976,11 @@ class CompanyCandidateSearchView(APIView):
 # =====================================================
 
 
+# =====================================================
+# COMPANY CANDIDATES
+# =====================================================
+
+
 class CompanyCandidatesView(APIView):
 
     permission_classes=[
@@ -2989,6 +2994,16 @@ class CompanyCandidatesView(APIView):
         from django.utils import timezone
         from datetime import timedelta
         from jobsystem.services.job_matching import compute_job_match
+
+        # Reuses the same age calculation already fixed and tested in
+        # eligibility.py: student.age is a separate field the Profile
+        # page never fills in (it only has a Date of Birth box), so
+        # reading it directly always came back None here too - every
+        # candidate showed a blank age even when they'd correctly
+        # entered their date of birth. This computes it from
+        # date_of_birth instead, with the same legacy-age fallback.
+
+        from jobsystem.services.eligibility import _student_age
 
         company = request.user.company_profile
 
@@ -3054,7 +3069,7 @@ class CompanyCandidatesView(APIView):
 
                     "location": app.student.location,
 
-                    "age": app.student.age,
+                    "age": _student_age(app.student),
 
                     "gender": app.student.gender,
 
@@ -3175,7 +3190,6 @@ class CompanyCandidatesView(APIView):
             "candidates": candidates,
 
         })
-
 
 # =====================================================
 # REVIEW CANDIDATE
@@ -4502,6 +4516,11 @@ class PlacementStudentCreateView(APIView):
 # =====================================================
 
 
+# =====================================================
+# UPDATE STUDENT PROFILE (PLACEMENT ADMIN)
+# =====================================================
+
+
 class PlacementStudentUpdateView(APIView):
 
     permission_classes=[
@@ -4545,6 +4564,7 @@ class PlacementStudentUpdateView(APIView):
             "department",
             "graduation_year",
             "ug_cgpa",
+            "date_of_birth",
 
         ]
 
@@ -4552,7 +4572,32 @@ class PlacementStudentUpdateView(APIView):
 
             if field in data:
 
-                setattr(student, field, data.get(field))
+                value = data.get(field)
+
+                if field == "date_of_birth" and value:
+
+                    # "date_of_birth" is a real DateField, not free
+                    # text like the fields above it - parse it into
+                    # an actual date first so a placement admin
+                    # fixing this on a student's behalf produces the
+                    # same correct value the student's own Profile
+                    # page would (and so _student_age() in
+                    # eligibility.py can compute their age from it).
+                    # An invalid/unparseable value is skipped rather
+                    # than saved half-broken or crashing the whole
+                    # update.
+
+                    from datetime import date
+
+                    try:
+
+                        value = date.fromisoformat(str(value)[:10])
+
+                    except (ValueError, TypeError):
+
+                        continue
+
+                setattr(student, field, value)
 
         student.save()
 
