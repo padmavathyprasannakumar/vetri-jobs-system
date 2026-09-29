@@ -3595,17 +3595,47 @@ def _tool_get_resume_feedback(profile, user, args):
             "summary": "The student hasn't uploaded a resume yet.",
         }
 
+    missing_information = resume.missing_information or []
+
+    skills_detected = resume.skills or []
+
+    suggested_job_categories = resume.job_categories or []
+
+    # Same fix as check_ats_friendliness below: "summary" is what the
+    # model reads to write its answer AND, if that second pass ever
+    # falls back to the raw tool result (the model's own explanatory
+    # call failing, or the account's tight shared Groq quota - see the
+    # daily token ceiling), the one thing shown to the student. A bare
+    # score with no real content here meant "what's my score?" and
+    # "what do I need to improve?" produced the exact same unhelpful
+    # line, since neither question's real answer was ever written down.
+
+    if missing_information:
+
+        lines = [f"- {item}" for item in missing_information[:8]]
+
+        summary = (
+            f"Official resume score (same as the Resume page): "
+            f"{resume.resume_score}/100. To improve it:\n\n"
+            + "\n".join(lines)
+        )
+
+    else:
+
+        summary = (
+            f"Official resume score (same as the Resume page): "
+            f"{resume.resume_score}/100. No specific gaps were flagged - "
+            "this resume already covers the essentials."
+        )
+
     return {
         "has_resume": True,
         "resume_score": resume.resume_score,
-        "skills_detected": resume.skills,
-        "missing_information": resume.missing_information,
-        "suggested_job_categories": resume.job_categories,
+        "skills_detected": skills_detected,
+        "missing_information": missing_information,
+        "suggested_job_categories": suggested_job_categories,
         "navigate_to": "/student/resume",
-        "summary": (
-            f"Official resume score (same as the Resume page): "
-            f"{resume.resume_score}/100."
-        ),
+        "summary": summary,
     }
 
 
@@ -6771,6 +6801,13 @@ def _wants_all_jobs(normalized):
     return set(words) <= _ALL_JOBS_WORDS and bool(set(words) & _ALL_JOBS_CUES)
 
 
+_PLAIN_JOBS_RE = re.compile(
+    r"^(?:please )?(?:show|find|get|give|see|display)"
+    r"(?: me)?(?: the)?(?: available)? jobs?(?: for me)?(?: please)?$"
+    r"|^jobs(?: for me)?$"
+)
+
+
 _STUDENT_SHORTCUTS = {
     "find jobs for me": ("find_matching_jobs", {}),
     "show me new jobs": ("find_matching_jobs", {"recent_only": True}),
@@ -6807,6 +6844,22 @@ def _handle_student_shortcut(profile, user, message):
     if not entry and _wants_all_jobs(normalized):
 
         entry = ("list_open_jobs", {})
+
+    if not entry and _PLAIN_JOBS_RE.match(normalized):
+
+        # "show me jobs" / "show jobs" / "find jobs" / "get jobs" / bare
+        # "jobs" - checked LAST so anything more specific (new jobs, all
+        # jobs, jobs matching my profile) is still caught first by the
+        # checks above. This is an extremely common, plain way to ask,
+        # and it used to fall through to a full AI call for no reason -
+        # meaning it needed a live Groq call, and a live Groq call means
+        # it's exposed to the shared account's tight quota, for a
+        # question that has no reason to ever fail that way. Defaults to
+        # the same profile-matched search "find jobs for me" already
+        # gives - "show my jobs" is deliberately NOT included here,
+        # since that phrasing could just as easily mean "my applications".
+
+        entry = ("find_matching_jobs", {})
 
     if not entry:
 
