@@ -3655,6 +3655,29 @@ def _tool_check_ats_friendliness(profile, user, args):
 
     suggestions = result.get("suggestions", [])
 
+    # analyze_ats_friendliness() catches ITS OWN failures internally and
+    # returns a normal-shaped success dict even when every model attempt
+    # failed - its one "issue" in that case is the raw error text (a Groq
+    # rate-limit message, a timeout, etc.), not a real finding about the
+    # resume. Without this check, that raw error text got listed as if it
+    # were genuine ATS feedback - showing the student a fake "issue" that
+    # was actually just Groq's rate-limit message with an org ID and
+    # token counts in it. Detected and reported as what it actually is:
+    # the check couldn't run right now, try again shortly.
+
+    if len(issues) == 1 and issues[0].startswith("ATS analysis failed:"):
+
+        return {
+            "has_resume": True,
+            "resume_score": resume.resume_score,
+            "summary": (
+                "I couldn't run the ATS check just now - the AI service "
+                f"is temporarily busy. Your official resume score is "
+                f"still {resume.resume_score}/100 either way. Please "
+                "try the ATS check again in a minute."
+            ),
+        }
+
     # The actual issue/suggestion TEXT goes into "summary" - not just their
     # count. "summary" is what the model reads for its answer AND, once
     # written into the model's reply, the one thing that gets saved to
@@ -7438,7 +7461,19 @@ def _generate_reply_inner(user, message, history=None, page_context=None):
         {"role": "system", "content": system_prompt}
     ]
 
-    for turn in (history or [])[-12:]:
+    # A student's baseline request (system prompt + tool schemas alone) is
+    # already close to or over Groq's free-tier 8000-tokens-per-minute cap
+    # on the smallest fallback model - confirmed by real Render logs
+    # showing "Requested 8091, Limit 8000" on ordinary requests. History
+    # was widened from 6 to 12 turns for a more natural, remembers-more
+    # conversation, but every extra turn sent is real tokens added on top
+    # of that already-tight budget. Reverted back to 6 specifically
+    # because the account is staying on the free tier - this is the one
+    # safe, easy token saving available without touching the prompt or
+    # tool descriptions themselves, which encode specific, hard-won
+    # routing fixes that would be risky to trim carelessly.
+
+    for turn in (history or [])[-6:]:
 
         role_for_turn = "assistant" if turn.get("sender") == "bot" else "user"
 
