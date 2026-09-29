@@ -129,7 +129,11 @@ def _time_left():
 GROQ_MODEL_FALLBACKS = [
     "openai/gpt-oss-20b",
     "openai/gpt-oss-120b",
-    "llama-3.3-70b-versatile",
+    # llama-3.3-70b-versatile removed: Groq has deprecated it (confirmed
+    # via Render logs - every call 404s instantly with "model_not_found"),
+    # so it was silently wasting the last fallback attempt on a guaranteed
+    # failure. Add a real, currently-available third model here if wanted -
+    # check https://console.groq.com/docs/models for the current list.
 ]
 
 
@@ -4676,8 +4680,8 @@ TOOL_SCHEMAS = [
                 "type": "object",
                 "properties": {
                     "target_role": {
-                        "type": "string",
-                        "description": "The job role to check the resume against, if the student mentioned one.",
+                        "type": ["string", "null"],
+                        "description": "The job role to check the resume against, if the student mentioned one - omit or send null otherwise.",
                     }
                 },
                 "required": [],
