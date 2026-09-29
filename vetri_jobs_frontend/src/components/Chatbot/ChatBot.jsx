@@ -195,6 +195,28 @@ const LIST_KEYS = ["applications","interviews","drives","jobs","companies","stud
 
 
 
+// NAV-DECISION-START
+// The floating widget stays open on whatever page the student is
+// already on for most answers - job lists, interview info,
+// applications, notifications, saved jobs - so asking "show jobs" or
+// about an interview never yanks them away from where they are. Only
+// the profile and resume pages are worth actually opening, since
+// those are the two things a student edits, not just reads. Same
+// rule as the full AI Career Assistant page (AIAssistant.jsx), kept
+// in sync on purpose - see NAVIGATE_ONLY_TO there.
+
+const NAVIGATE_ONLY_TO = ["/student/profile", "/student/resume"];
+
+const shouldNavigateAfterReply = (data)=>{
+
+    if(!data || !data.navigate_to) return false;
+
+    return NAVIGATE_ONLY_TO.includes(data.navigate_to);
+
+};
+// NAV-DECISION-END
+
+
 function Chatbot(){
 
 
@@ -647,7 +669,11 @@ function Chatbot(){
 
 
 
-            if(data.navigate_to){
+            // Stays open on job lists, interviews, applications,
+            // notifications, saved jobs - only profile/resume open
+            // their page (see shouldNavigateAfterReply above).
+
+            if(shouldNavigateAfterReply(data)){
 
                 navigate(data.navigate_to);
 
