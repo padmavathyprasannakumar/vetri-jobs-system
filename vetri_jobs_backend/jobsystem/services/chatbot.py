@@ -4090,8 +4090,66 @@ def _tool_update_my_skills(profile, user, args):
         "success": True,
         "added_skills": added,
         "all_skills": profile.skills,
-        "navigate_to": "/student/profile",
         "summary": f"Added {', '.join(added)} to the student's skills.",
+    }
+
+
+def _tool_update_my_projects(profile, user, args):
+    """
+    A real write action - adds new projects directly to the student's
+    profile from chat, the same additive/non-destructive design as
+    update_my_skills above (never removes or overwrites existing
+    projects). Stored one per line (profile.projects is free-text,
+    unlike the comma-tagged skills field), so a project's own
+    description can safely contain commas. Only call when the student
+    clearly asks to add a project - see the guardrail in SYSTEM_TEMPLATE.
+    """
+
+    new_projects_raw = (args.get("projects") or "").strip()
+
+    if not new_projects_raw:
+
+        return {
+            "success": False,
+            "summary": "No project was given to add.",
+        }
+
+    existing_lines = [
+        p.strip() for p in (profile.projects or "").split("\n") if p.strip()
+    ]
+
+    existing_lower = set(p.lower() for p in existing_lines)
+
+    candidates = [
+        p.strip() for p in new_projects_raw.split("\n") if p.strip()
+    ] or [new_projects_raw]
+
+    added = []
+
+    for project in candidates:
+
+        if project.lower() not in existing_lower:
+
+            added.append(project)
+
+            existing_lower.add(project.lower())
+
+    if not added:
+
+        return {
+            "success": False,
+            "summary": "That project is already on the student's profile.",
+        }
+
+    profile.projects = "\n".join(existing_lines + added)
+
+    profile.save()
+
+    return {
+        "success": True,
+        "added_projects": added,
+        "all_projects": profile.projects,
+        "summary": f"Added \"{', '.join(added)}\" to the student's projects.",
     }
 
 
@@ -4947,6 +5005,31 @@ TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "update_my_projects",
+            "description": (
+                "Add one or more new projects directly to the "
+                "student's profile. Only use when the student "
+                "explicitly asks to add a project to their profile - "
+                "never as a side effect of a general conversation "
+                "about projects. Your answer stays in the chat - "
+                "never tell the student their profile page opened, "
+                "since it doesn't."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "projects": {
+                        "type": "string",
+                        "description": "The project name/description to add, exactly as the student described it. Multiple projects may be separated with newlines.",
+                    }
+                },
+                "required": ["projects"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "start_mock_interview",
             "description": (
                 "Start a live mock interview session for a specific "
@@ -5042,6 +5125,7 @@ TOOL_EXECUTORS = {
     "get_my_profile": _tool_get_my_profile,
     "get_career_plan": _tool_get_career_plan,
     "update_my_skills": _tool_update_my_skills,
+    "update_my_projects": _tool_update_my_projects,
     "start_mock_interview": _tool_start_mock_interview,
     "get_mock_interview_report": _tool_get_mock_interview_report,
     "get_saved_jobs": _tool_get_saved_jobs,
@@ -6375,7 +6459,7 @@ _FORWARDED_LIST_KEYS = (
 
 _WRITE_ACTION_TOOLS = {
     "apply_to_job", "request_interview_slot",
-    "raise_placement_query", "update_my_skills",
+    "raise_placement_query", "update_my_skills", "update_my_projects",
     "shortlist_candidate", "reject_candidate",
 }
 
@@ -6384,6 +6468,7 @@ _WRITE_ACTION_TOOLS = {
 
 _REFRESH_AFTER = {
     "update_my_skills": ["profile", "dashboard", "jobs"],
+    "update_my_projects": ["profile", "dashboard"],
     "request_interview_slot": ["interviews"],
     "raise_placement_query": ["queries"],
 }
@@ -6894,6 +6979,23 @@ _APPLICATION_STATUS_PHRASES = {
 }
 
 
+# Catches the natural GRAMMAR of "did I apply to jobs?" directly, instead
+# of needing every individual wording added to _APPLICATION_STATUS_PHRASES
+# by hand as each new variant gets reported - "what jobs i applied" (a
+# dropped "did"/"have"), "what jobs did i apply to", "i applied any jobs",
+# "have i applied to any jobs" and similar all match this one pattern.
+# Deliberately anchored end-to-end ($) so asking about ONE specific job
+# ("did i apply to software tester") or adding anything after the verb
+# phrase still correctly falls through to the AI instead of being
+# swallowed here.
+
+_MY_APPLICATIONS_RE = re.compile(
+    r"^(?:what|which)\s+(?:are\s+the\s+)?jobs?\s+(?:did\s+i\s+|have\s+i\s+|i\s+)?"
+    r"appl(?:y|ied)(?:\s+(?:to|for))?$"
+    r"|^(?:i\s+|did\s+i\s+|have\s+i\s+)(?:already\s+)?appl(?:y|ied)\s+(?:to\s+)?(?:any\s+)?jobs?$"
+)
+
+
 _PLAIN_JOBS_RE = re.compile(
     r"^(?:please )?(?:show|find|get|give|see|display)"
     r"(?: me)?(?: the)?(?: available)? jobs?(?: for me)?(?: please)?$"
@@ -6938,7 +7040,7 @@ def _handle_student_shortcut(profile, user, message):
 
         entry = ("list_open_jobs", {})
 
-    if not entry and normalized in _APPLICATION_STATUS_PHRASES:
+    if not entry and (normalized in _APPLICATION_STATUS_PHRASES or _MY_APPLICATIONS_RE.match(normalized)):
 
         entry = ("get_application_status", {})
 
@@ -7276,6 +7378,12 @@ _SKILL_INTENT_RE = re.compile(
     r"\b(skills?|add|learn(t|ed)?|know|include|put|have)\b", re.IGNORECASE
 )
 
+
+_PROJECT_INTENT_RE = re.compile(
+    r"\b(projects?|add|built|build|made|make|created?|working on|worked on)\b",
+    re.IGNORECASE,
+)
+
 _INTENT_MISSING_REPLIES = {
     "raise_placement_query": (
         "I haven't sent anything to the placement team, because I wasn't sure "
@@ -7289,6 +7397,11 @@ _INTENT_MISSING_REPLIES = {
     "update_my_skills": (
         "I haven't changed your skills. To add some, tell me which ones - for "
         "example: \"Add Selenium and API Testing to my skills\"."
+    ),
+    "update_my_projects": (
+        "I haven't added anything to your projects. To add one, tell me "
+        "about it - for example: \"Add a project called Travel Booking "
+        "Website\"."
     ),
 }
 
@@ -7325,6 +7438,10 @@ def _write_intent_missing(name, message, history):
     elif name == "update_my_skills":
 
         ok = bool(_SKILL_INTENT_RE.search(text)) or _last_bot_asked_for_skills(history)
+
+    elif name == "update_my_projects":
+
+        ok = bool(_PROJECT_INTENT_RE.search(text))
 
     else:
 
