@@ -6983,16 +6983,21 @@ _APPLICATION_STATUS_PHRASES = {
 # of needing every individual wording added to _APPLICATION_STATUS_PHRASES
 # by hand as each new variant gets reported - "what jobs i applied" (a
 # dropped "did"/"have"), "what jobs did i apply to", "i applied any jobs",
-# "have i applied to any jobs" and similar all match this one pattern.
-# Deliberately anchored end-to-end ($) so asking about ONE specific job
-# ("did i apply to software tester") or adding anything after the verb
-# phrase still correctly falls through to the AI instead of being
-# swallowed here.
+# "have i applied to any jobs", "any jobs i applied recently" and similar
+# all match one of these three sentence shapes (question-word led,
+# "I"-led, and "any"-led), each also tolerating a trailing "recently" /
+# "lately" / "so far". Deliberately anchored end-to-end ($) so asking
+# about ONE specific job ("did i apply to software tester") or adding
+# anything else after the verb phrase still correctly falls through to
+# the AI instead of being swallowed here.
 
 _MY_APPLICATIONS_RE = re.compile(
     r"^(?:what|which)\s+(?:are\s+the\s+)?jobs?\s+(?:did\s+i\s+|have\s+i\s+|i\s+)?"
-    r"appl(?:y|ied)(?:\s+(?:to|for))?$"
-    r"|^(?:i\s+|did\s+i\s+|have\s+i\s+)(?:already\s+)?appl(?:y|ied)\s+(?:to\s+)?(?:any\s+)?jobs?$"
+    r"appl(?:y|ied)(?:\s+(?:to|for))?(?:\s+(?:recently|lately|so\s+far))?$"
+    r"|^(?:i\s+|did\s+i\s+|have\s+i\s+)(?:already\s+)?appl(?:y|ied)\s+(?:to\s+)?(?:any\s+)?jobs?"
+    r"(?:\s+(?:recently|lately|so\s+far))?$"
+    r"|^any\s+jobs?\s+(?:did\s+i\s+|have\s+i\s+|i\s+)appl(?:y|ied)(?:\s+(?:to|for))?"
+    r"(?:\s+(?:recently|lately|so\s+far))?$"
 )
 
 
