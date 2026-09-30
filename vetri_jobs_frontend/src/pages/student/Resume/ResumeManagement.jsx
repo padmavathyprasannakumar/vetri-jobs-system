@@ -37,6 +37,13 @@ import {
 } from "../../../api/studentApi";
 
 
+import {
+
+    useChatbotRefresh
+
+} from "../../../api/chatbotHelpers";
+
+
 import "./Resume.css";
 
 
@@ -241,6 +248,37 @@ console.log("Version Load Error", error);
 }
 
 };
+
+
+
+// Uploading, deleting, or changing a resume through the AI Career
+// Assistant or the floating chatbot happens entirely outside this
+// page - so without this, the resume card, version history, and score
+// shown here all stayed stuck on whatever was true when the page last
+// loaded, even after the chatbot had genuinely changed things. The
+// backend already sends "resume" as part of its refresh signal
+// (["resume", "dashboard"]) after a resume-related change - this makes
+// the page actually listen for it and reload both pieces together
+// (the current resume AND the version list, since either could have
+// changed), and clears any AI analysis on screen the same way
+// handleUpload already does for an in-page upload - an old score and
+// skills list left showing for a resume that's since changed would be
+// actively misleading, not just stale.
+
+const reloadResumeData = ()=>{
+
+loadResume();
+
+loadVersions();
+
+setAnalysis(null);
+
+setResumeScore(0);
+
+};
+
+
+useChatbotRefresh("resume", reloadResumeData);
 
 
 
