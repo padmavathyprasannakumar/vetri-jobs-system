@@ -6880,6 +6880,17 @@ _APPLICATION_STATUS_PHRASES = {
     "what is my application status", "show my application status",
     "what jobs have i applied for", "which jobs did i apply to",
     "show applications", "list my applications", "list applications",
+    # First-person "did I actually apply?" phrasings - a very natural way
+    # to ask the exact same thing, especially for a non-native English
+    # speaker, but grammatically different enough that none of the
+    # "what/which jobs...to" phrasings above already covered them - so
+    # these fell through to a live AI call for no reason, same as
+    # "show me jobs" did before it got the same treatment.
+    "i applied any jobs", "i applied jobs", "i applied to jobs",
+    "i already applied jobs", "i already applied to jobs",
+    "did i apply any jobs", "did i apply to any jobs", "did i apply jobs",
+    "have i applied any jobs", "have i applied to any jobs",
+    "have i applied jobs", "have i applied to jobs",
 }
 
 
