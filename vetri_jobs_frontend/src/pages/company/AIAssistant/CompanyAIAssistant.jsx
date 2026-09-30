@@ -72,8 +72,6 @@ const CHECKLIST = [
 
     "Schedule interviews",
 
-    "Send WhatsApp notifications",
-
     "Get hiring insights",
 
 ];
