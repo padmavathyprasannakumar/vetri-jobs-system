@@ -38,6 +38,13 @@ import {
 
 import {
 
+    useChatbotRefresh
+
+} from "../../../api/chatbotHelpers";
+
+
+import {
+
     getSiteBranding
 
 } from "../../../api/brandingApi";
@@ -173,6 +180,24 @@ setLoading(false);
 
 
 };
+
+
+
+// Applying to a job, uploading a resume, or anything else done through
+// the AI Career Assistant or the floating chatbot happens entirely
+// outside this page - so without this, every stat card here (Total
+// Applied, Resume Score, Recent Applications...) stayed stuck at its
+// old numbers until the student manually refreshed, even though the
+// chatbot had already changed the real data. The backend already sends
+// "dashboard" as part of its refresh signal after both a successful
+// apply (["applications", "dashboard", "jobs"]) and a resume upload
+// (["resume", "dashboard"]) - this just makes this page actually listen
+// for that signal and reload. Placed AFTER loadDashboard is defined
+// above, since this runs during render (unlike the useEffect above it,
+// which only calls loadDashboard once React has already finished
+// rendering and loadDashboard is safely defined).
+
+useChatbotRefresh("dashboard", loadDashboard);
 
 
 
