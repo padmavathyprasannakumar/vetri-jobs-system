@@ -29,6 +29,13 @@ import {
 
 import {
 
+    useChatbotRefresh
+
+} from "../../../api/chatbotHelpers";
+
+
+import {
+
     FaSearch,
 
     FaUserGraduate,
@@ -212,6 +219,23 @@ setLoading(false);
 
 
 };
+
+
+
+// Shortlisting or rejecting a candidate through the AI chatbot (the
+// same floating widget used across the whole platform, including the
+// company portal) happens entirely outside this page - so without
+// this, a status change made from the chat stayed invisible here until
+// a manual refresh, even though the WhatsApp notification had already
+// gone out to the candidate. The backend already sends "candidates" as
+// its refresh signal after a chatbot-driven shortlist/reject - this
+// makes the page actually listen for that signal and reload. Placed
+// AFTER loadCandidates is defined above, since this runs during render
+// (unlike the useEffect above it, which only calls loadCandidates once
+// React has already finished rendering and loadCandidates is safely
+// defined).
+
+useChatbotRefresh("candidates", loadCandidates);
 
 
 
