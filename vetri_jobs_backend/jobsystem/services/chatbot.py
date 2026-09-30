@@ -5249,10 +5249,27 @@ def _tool_search_candidates(profile, user, args):
         for s in candidates_qs
     ]
 
+    if results:
+
+        lines = [
+            f"- {c['name']} ({c['course'] or 'course not set'}, "
+            f"CGPA {c['cgpa'] if c['cgpa'] is not None else 'N/A'})"
+            for c in results[:8]
+        ]
+
+        summary = (
+            f"Found {len(results)} matching student profile(s):\n\n"
+            + "\n".join(lines)
+        )
+
+    else:
+
+        summary = "No matching student profiles found."
+
     return {
         "candidates": results,
         "navigate_to": "/company/candidates",
-        "summary": f"Found {len(results)} matching student profiles.",
+        "summary": summary,
     }
 
 
@@ -5306,11 +5323,26 @@ def _tool_get_top_candidates_for_job(profile, user, args):
 
     scored.sort(key=lambda c: c["match_score"], reverse=True)
 
+    if scored:
+
+        lines = [
+            f"- {c['name']} ({c['match_score']}% match): {c['status']}"
+            for c in scored[:8]
+        ]
+
+        summary = (
+            f"Top applicants for {job.title}:\n\n" + "\n".join(lines)
+        )
+
+    else:
+
+        summary = f"No applicants yet for {job.title}."
+
     return {
         "candidates": scored[:10],
         "job_title": job.title,
         "navigate_to": "/company/candidates",
-        "summary": f"Top applicants for {job.title}.",
+        "summary": summary,
     }
 
 
@@ -5331,14 +5363,25 @@ def _tool_get_company_applications(profile, user, args):
         for app in apps
     ]
 
+    if data:
+
+        lines = [
+            f"- {a['candidate']} ({a['job_title']}): {a['status']}"
+            for a in data[:8]
+        ]
+
+        summary = (
+            f"{len(data)} recent application(s):\n\n" + "\n".join(lines)
+        )
+
+    else:
+
+        summary = "No applications received yet."
+
     return {
         "applications": data,
         "navigate_to": "/company/candidates",
-        "summary": (
-            f"{len(data)} recent application(s)."
-            if data else
-            "No applications received yet."
-        ),
+        "summary": summary,
     }
 
 
@@ -5366,14 +5409,26 @@ def _tool_get_company_interviews(profile, user, args):
         for iv in interviews
     ]
 
+    if data:
+
+        lines = [
+            f"- {iv['candidate']} ({iv['job_title']}): "
+            f"{iv['date']} at {iv['time']}"
+            for iv in data[:8]
+        ]
+
+        summary = (
+            f"{len(data)} upcoming interview(s):\n\n" + "\n".join(lines)
+        )
+
+    else:
+
+        summary = "No upcoming interviews scheduled."
+
     return {
         "interviews": data,
         "navigate_to": "/company/interviews",
-        "summary": (
-            f"{len(data)} upcoming interview(s)."
-            if data else
-            "No upcoming interviews scheduled."
-        ),
+        "summary": summary,
     }
 
 
@@ -5393,14 +5448,25 @@ def _tool_get_active_job_postings(profile, user, args):
         for j in jobs
     ]
 
+    if data:
+
+        lines = [
+            f"- {j['title']}: {j['applications']} application(s)"
+            for j in data[:8]
+        ]
+
+        summary = (
+            f"{len(data)} active job posting(s):\n\n" + "\n".join(lines)
+        )
+
+    else:
+
+        summary = "No active job postings right now."
+
     return {
         "jobs": data,
         "navigate_to": "/company/jobs",
-        "summary": (
-            f"{len(data)} active job posting(s)."
-            if data else
-            "No active job postings right now."
-        ),
+        "summary": summary,
     }
 
 
@@ -5428,13 +5494,25 @@ def _tool_list_all_job_postings(profile, user, args):
         for j in jobs
     ]
 
+    if data:
+
+        lines = [
+            f"- {j['title']} ({j['status']}): {j['applications']} application(s)"
+            for j in data[:8]
+        ]
+
+        summary = (
+            f"{len(data)} job posting(s) total:\n\n" + "\n".join(lines)
+        )
+
+    else:
+
+        summary = "No jobs posted yet."
+
     return {
         "jobs": data,
         "navigate_to": "/company/jobs",
-        "summary": (
-            f"{len(data)} job posting(s) total."
-            if data else "No jobs posted yet."
-        ),
+        "summary": summary,
     }
 
 
@@ -5450,18 +5528,29 @@ def _tool_get_company_analytics_summary(profile, user, args):
         application__job__company=profile
     )
 
+    total_jobs_posted = jobs_qs.count()
+
+    active_jobs = jobs_qs.filter(status="active").count()
+
+    total_applications = applications_qs.count()
+
+    interviews_scheduled = interviews_qs.filter(status="scheduled").count()
+
+    hired_candidates = applications_qs.filter(status="selected").count()
+
     return {
-        "total_jobs_posted": jobs_qs.count(),
-        "active_jobs": jobs_qs.filter(status="active").count(),
-        "total_applications": applications_qs.count(),
-        "interviews_scheduled": interviews_qs.filter(
-            status="scheduled"
-        ).count(),
-        "hired_candidates": applications_qs.filter(
-            status="selected"
-        ).count(),
+        "total_jobs_posted": total_jobs_posted,
+        "active_jobs": active_jobs,
+        "total_applications": total_applications,
+        "interviews_scheduled": interviews_scheduled,
+        "hired_candidates": hired_candidates,
         "navigate_to": "/company/analytics",
-        "summary": "Company analytics summary.",
+        "summary": (
+            f"{total_jobs_posted} job(s) posted ({active_jobs} active), "
+            f"{total_applications} total application(s), "
+            f"{interviews_scheduled} interview(s) scheduled, "
+            f"{hired_candidates} candidate(s) hired."
+        ),
     }
 
 
@@ -5723,7 +5812,12 @@ def _tool_get_company_profile_info(profile, user, args):
         "verified": profile.verified,
         "approval_status": profile.approval_status,
         "navigate_to": "/company/profile",
-        "summary": f"{profile.company_name}'s profile information.",
+        "summary": (
+            f"{profile.company_name} - "
+            f"{profile.industry or 'industry not set'}. "
+            f"{'Verified' if profile.verified else 'Not yet verified'}, "
+            f"approval status: {profile.approval_status}."
+        ),
     }
 
 
@@ -7183,6 +7277,104 @@ def _handle_student_shortcut(profile, user, message):
     )
 
 
+# The company portal had NO equivalent of the student shortcuts above -
+# every company question, however simple ("who are the candidates?", "show
+# my interviews"), needed a full live AI call with no fast path at all,
+# unlike the student side. Mirrors _STUDENT_SHORTCUTS/_handle_student_shortcut
+# exactly: common, plain company questions answered instantly, zero AI calls,
+# so they can never fail from the shared account's tight quota.
+
+_COMPANY_SHORTCUTS = {
+    "who are the candidates": ("get_company_applications", {}),
+    "who are my candidates": ("get_company_applications", {}),
+    "show me candidates": ("get_company_applications", {}),
+    "show candidates": ("get_company_applications", {}),
+    "show me the candidates": ("get_company_applications", {}),
+    "show my candidates": ("get_company_applications", {}),
+    "show applications": ("get_company_applications", {}),
+    "show my applications": ("get_company_applications", {}),
+    "show me applications": ("get_company_applications", {}),
+    "who applied": ("get_company_applications", {}),
+    "recent applications": ("get_company_applications", {}),
+    "show recent applications": ("get_company_applications", {}),
+
+    "show interviews": ("get_company_interviews", {}),
+    "show my interviews": ("get_company_interviews", {}),
+    "show me interviews": ("get_company_interviews", {}),
+    "upcoming interviews": ("get_company_interviews", {}),
+    "show upcoming interviews": ("get_company_interviews", {}),
+    "show my upcoming interviews": ("get_company_interviews", {}),
+
+    "show my jobs": ("get_active_job_postings", {}),
+    "show active jobs": ("get_active_job_postings", {}),
+    "show my active jobs": ("get_active_job_postings", {}),
+    "my job postings": ("get_active_job_postings", {}),
+    "show job postings": ("get_active_job_postings", {}),
+    "show my job postings": ("get_active_job_postings", {}),
+
+    "show all my jobs": ("list_all_job_postings", {}),
+    "show all jobs": ("list_all_job_postings", {}),
+    "show all job postings": ("list_all_job_postings", {}),
+    "all my jobs": ("list_all_job_postings", {}),
+    "list my jobs": ("list_all_job_postings", {}),
+    "list all my jobs": ("list_all_job_postings", {}),
+
+    "show analytics": ("get_company_analytics_summary", {}),
+    "show my analytics": ("get_company_analytics_summary", {}),
+    "show me analytics": ("get_company_analytics_summary", {}),
+    "show my stats": ("get_company_analytics_summary", {}),
+    "show company stats": ("get_company_analytics_summary", {}),
+    "how many applications": ("get_company_analytics_summary", {}),
+
+    "show my profile": ("get_company_profile_info", {}),
+    "show company profile": ("get_company_profile_info", {}),
+    "my company profile": ("get_company_profile_info", {}),
+    "show my company profile": ("get_company_profile_info", {}),
+}
+
+
+def _handle_company_shortcut(profile, user, message):
+    """Same idea as _handle_student_shortcut: runs a common company
+    question's tool directly, zero AI calls. Returns a reply dict, or
+    None to carry on with the normal AI flow (not a recognised
+    shortcut, or the tool raised)."""
+
+    normalized = _normalize_shortcut(message)
+
+    entry = _COMPANY_SHORTCUTS.get(normalized)
+
+    if not entry:
+
+        return None
+
+    tool_name, args = entry
+
+    executor = COMPANY_TOOL_EXECUTORS.get(tool_name)
+
+    if not executor:
+
+        return None
+
+    started = time.monotonic()
+
+    try:
+
+        result = executor(profile, user, dict(args))
+
+    except Exception as e:
+
+        print("Chatbot company shortcut error:", tool_name, e)
+
+        return None
+
+    print(f"[chatbot] company shortcut {tool_name} took {time.monotonic() - started:.2f}s")
+
+    return _build_tool_payload(
+        _user_facing(result.get("summary", "Here's what I found.")),
+        [(None, tool_name, result)],
+    )
+
+
 def _build_tool_payload(final_text, executed):
     """
     Merges the structured data from every executed tool into one response
@@ -7680,6 +7872,21 @@ def _generate_reply_inner(user, message, history=None, page_context=None):
     # ---------------- APPLY CONFIRMATION (Yes / No buttons) ----------------
     # Handled without the AI: "Yes, apply to X at Y" creates the
     # application, "No, cancel" drops it. The AI itself can never apply.
+
+    if role == "company" and actor_profile:
+
+        # Same idea as the student shortcuts below: a plain, common
+        # company question ("who are the candidates?", "show my
+        # interviews") answered directly, no AI call - the company
+        # portal never had this fast path before.
+
+        company_shortcut_reply = _handle_company_shortcut(
+            actor_profile, user, message
+        )
+
+        if company_shortcut_reply is not None:
+
+            return company_shortcut_reply
 
     if role == "student" and actor_profile:
 
