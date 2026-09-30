@@ -3701,6 +3701,30 @@ def _tool_get_resume_feedback(profile, user, args):
     }
 
 
+# check_ats_friendliness is the one student tool that genuinely needs a
+# fresh Groq call every time it runs - unlike "what's my score" (a plain
+# database read), it's real AI analysis, so it can never be made a
+# zero-AI-call shortcut the way plain lookups were. What it CAN be is
+# cheap to ask again: this caches the last SUCCESSFUL result per
+# (resume, target_role) for a few minutes, so a student asking "is my
+# resume ATS friendly" twice in a row - or the student and a classmate
+# both asking about a resume moments apart - gets the same real answer
+# instantly the second time, instead of spending another slice of the
+# account's tight shared quota re-computing something already known.
+# Deliberately in-memory, not persisted to the database or a migration -
+# it only needs to survive a few minutes on the same running process,
+# and a fresh resume upload naturally gets a new resume.id, so it can
+# never serve a stale result for a resume that's since changed.
+#
+# Failures are NEVER cached - a busy/rate-limited attempt should always
+# get a genuine fresh try next time, not be locked into repeating the
+# same failure for the cache's whole lifetime.
+
+_ATS_CHECK_CACHE = {}   # (resume_id, target_role) -> (cached_at, result dict)
+
+ATS_CHECK_CACHE_TTL = float(os.getenv("ATS_CHECK_CACHE_TTL", "300"))
+
+
 def _tool_check_ats_friendliness(profile, user, args):
     """
     Uses AI to find ATS problems and suggestions, but NEVER returns
@@ -3724,6 +3748,14 @@ def _tool_check_ats_friendliness(profile, user, args):
         }
 
     target_role = args.get("target_role") or None
+
+    cache_key = (resume.id, target_role)
+
+    cached = _ATS_CHECK_CACHE.get(cache_key)
+
+    if cached and (time.monotonic() - cached[0]) < ATS_CHECK_CACHE_TTL:
+
+        return cached[1]
 
     try:
 
@@ -3807,7 +3839,7 @@ def _tool_check_ats_friendliness(profile, user, args):
             "this resume should parse cleanly."
         )
 
-    return {
+    payload = {
         "has_resume": True,
         "resume_score": resume.resume_score,
         "issues": issues,
@@ -3815,6 +3847,13 @@ def _tool_check_ats_friendliness(profile, user, args):
         "rewritten_bullets": result.get("rewritten_bullets", []),
         "summary": summary,
     }
+
+    # Only a genuine success is cached - see the note above
+    # _ATS_CHECK_CACHE for why a failure never is.
+
+    _ATS_CHECK_CACHE[cache_key] = (time.monotonic(), payload)
+
+    return payload
 
 
 def _tool_get_upcoming_drives(profile, user, args):
@@ -4886,8 +4925,15 @@ TOOL_SCHEMAS = [
             "description": (
                 "Get the student's official resume score (the same "
                 "score shown on the Resume page) and suggestions for "
-                "improving it. Use for any question about the resume "
-                "score."
+                "improving it - reads from what was already saved at "
+                "upload time, so this is instant and free. Use for ANY "
+                "general question about the resume score or how to "
+                "improve/raise/build it - this is the DEFAULT choice "
+                "for that. Prefer this over check_ats_friendliness "
+                "unless the student specifically says ATS / Applicant "
+                "Tracking System / parsing - check_ats_friendliness "
+                "needs a fresh, costly AI call every single time, "
+                "while this one never does."
             ),
             "parameters": {"type": "object", "properties": {}, "required": []},
         },
@@ -4897,11 +4943,18 @@ TOOL_SCHEMAS = [
         "function": {
             "name": "check_ats_friendliness",
             "description": (
-                "Check the student's resume for ATS (Applicant "
-                "Tracking System) problems and get concrete fix "
-                "suggestions, optionally against a specific target "
-                "job role. Returns the official resume score plus "
-                "ATS issues/suggestions - it does not produce a "
+                "Check the student's resume SPECIFICALLY for ATS "
+                "(Applicant Tracking System) parsing problems - only "
+                "use when the student explicitly mentions ATS, "
+                "Applicant Tracking Systems, or resume parsing. For a "
+                "general 'how do I improve my resume' or 'raise my "
+                "score' question with no ATS mention, use "
+                "get_resume_feedback instead - it answers instantly "
+                "from already-saved data, while this tool requires a "
+                "fresh, costly AI call every time it runs. Optionally "
+                "checked against a specific target job role. Returns "
+                "the official resume score plus ATS issues/suggestions "
+                "- it does not produce a "
                 "separate score. Your answer MUST list the actual "
                 "issues and suggestions returned (not just how many "
                 "there are) - a bare count answers nothing and forces "
@@ -7001,6 +7054,27 @@ _MY_APPLICATIONS_RE = re.compile(
 )
 
 
+# "how do I improve my resume" / "I want my resume score more than 90" and
+# similar - answered from the ALREADY-STORED resume_score/missing_info
+# (get_resume_feedback), instantly, with zero AI calls. This matters more
+# than it looks: without it, a generic "improve my resume" question was
+# genuinely ambiguous between this free tool and check_ats_friendliness
+# (which needs a live, costly Groq call every time) - and the model
+# sometimes picked the costly one for a question the free one could
+# already answer just as well. Deliberately does NOT match anything that
+# mentions ATS/applicant tracking - those still correctly go to the real
+# ATS check.
+
+_IMPROVE_RESUME_RE = re.compile(
+    r"^(?:i\s+want\s+to\s+|how\s+(?:to|do\s+i|can\s+i)\s+|please\s+)?"
+    r"(?:buil\w*|improve\w*|increase\w*|raise\w*|boost\w*|get)\s+"
+    r"(?:my\s+)?resume(?:s)?\s*"
+    r"(?:score)?\s*"
+    r"(?:is\s+|to\s+be\s+|to\s+|be\s+)?"
+    r"(?:more\s+than|above|over|higher(?:\s+than)?|better(?:\s+than)?)?\s*\d*%?$"
+)
+
+
 _PLAIN_JOBS_RE = re.compile(
     r"^(?:please )?(?:show|find|get|give|see|display)"
     r"(?: me)?(?: the)?(?: available)? jobs?(?: for me)?(?: please)?$"
@@ -7048,6 +7122,10 @@ def _handle_student_shortcut(profile, user, message):
     if not entry and (normalized in _APPLICATION_STATUS_PHRASES or _MY_APPLICATIONS_RE.match(normalized)):
 
         entry = ("get_application_status", {})
+
+    if not entry and _IMPROVE_RESUME_RE.match(normalized):
+
+        entry = ("get_resume_feedback", {})
 
     if not entry and _PLAIN_JOBS_RE.match(normalized):
 
