@@ -6940,12 +6940,20 @@ def _handle_student_shortcut(profile, user, message):
         # and it used to fall through to a full AI call for no reason -
         # meaning it needed a live Groq call, and a live Groq call means
         # it's exposed to the shared account's tight quota, for a
-        # question that has no reason to ever fail that way. Defaults to
-        # the same profile-matched search "find jobs for me" already
-        # gives - "show my jobs" is deliberately NOT included here,
-        # since that phrasing could just as easily mean "my applications".
+        # question that has no reason to ever fail that way.
+        #
+        # Defaults to EVERY open job (same as list_open_jobs / "show all
+        # jobs"), matching what the Jobs tab itself shows - a plain
+        # "show jobs" reads as "show me the jobs" in general, not
+        # specifically "find jobs that match my profile". That more
+        # personalised search is still one explicit phrase away: "find
+        # jobs for me" (the exact shortcut above) and "jobs that match
+        # my profile" (_PROFILE_MATCH_RE) both still give the filtered,
+        # profile-matched answer, unchanged. "show my jobs" is
+        # deliberately NOT included here, since that phrasing could
+        # just as easily mean "my applications".
 
-        entry = ("find_matching_jobs", {})
+        entry = ("list_open_jobs", {})
 
     if not entry:
 
