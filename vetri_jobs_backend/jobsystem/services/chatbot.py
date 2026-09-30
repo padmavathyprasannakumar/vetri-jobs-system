@@ -3523,9 +3523,17 @@ def _tool_get_interview_prep(profile, user, args):
     grounding: the actual scheduled interview's job title, company,
     and required skills, so the model's prep suggestions are
     genuinely specific rather than generic advice.
+
+    If nothing is scheduled yet, falls back to a real application the
+    student already made for that role instead of refusing outright -
+    a student waiting to hear back, or simply studying ahead for a job
+    they applied to, is a completely normal thing to want prep help
+    for, and the same real data (skills required, job description,
+    company) already exists on the application regardless of whether
+    an interview has been booked.
     """
 
-    from jobsystem.models import Interview
+    from jobsystem.models import Interview, Application
 
     job_title = (args.get("job_title") or "").strip()
 
@@ -3542,35 +3550,71 @@ def _tool_get_interview_prep(profile, user, args):
 
     interview = qs.first()
 
-    if not interview:
+    if interview:
+
+        job = interview.application.job
+
+        skills_required = [
+            s.strip() for s in (job.skills_required or "").split(",")
+            if s.strip()
+        ]
+
+        company_name = job.company.company_name if job.company else "Company"
 
         return {
+            "job_title": job.title,
+            "company": company_name,
+            "interview_date": interview.interview_date.strftime("%b %d, %Y"),
+            "interview_time": interview.interview_date.strftime("%I:%M %p"),
+            "mode": interview.get_interview_mode_display(),
+            "skills_required": skills_required,
+            "job_description": getattr(job, "description", "") or "",
             "summary": (
-                "No upcoming interview found to prepare for."
-                + (f" (looked for \"{job_title}\")" if job_title else "")
+                f"Interview for {job.title} at {company_name} on "
+                f"{interview.interview_date.strftime('%b %d, %Y')}."
             ),
         }
 
-    job = interview.application.job
+    apps_qs = Application.objects.filter(
+        student=profile
+    ).select_related("job", "job__company").order_by("-applied_date")
 
-    skills_required = [
-        s.strip() for s in (job.skills_required or "").split(",")
-        if s.strip()
-    ]
+    if job_title:
 
-    company_name = job.company.company_name if job.company else "Company"
+        apps_qs = apps_qs.filter(job__title__icontains=job_title)
+
+    application = apps_qs.first()
+
+    if application:
+
+        job = application.job
+
+        skills_required = [
+            s.strip() for s in (job.skills_required or "").split(",")
+            if s.strip()
+        ]
+
+        company_name = job.company.company_name if job.company else "Company"
+
+        return {
+            "job_title": job.title,
+            "company": company_name,
+            "interview_scheduled": False,
+            "application_status": application.get_status_display(),
+            "skills_required": skills_required,
+            "job_description": getattr(job, "description", "") or "",
+            "summary": (
+                f"No interview is scheduled yet for {job.title} at "
+                f"{company_name} (application status: "
+                f"{application.get_status_display()}), but here's what "
+                "to prepare based on the role's real requirements."
+            ),
+        }
 
     return {
-        "job_title": job.title,
-        "company": company_name,
-        "interview_date": interview.interview_date.strftime("%b %d, %Y"),
-        "interview_time": interview.interview_date.strftime("%I:%M %p"),
-        "mode": interview.get_interview_mode_display(),
-        "skills_required": skills_required,
-        "job_description": getattr(job, "description", "") or "",
         "summary": (
-            f"Interview for {job.title} at {company_name} on "
-            f"{interview.interview_date.strftime('%b %d, %Y')}."
+            "No upcoming interview found to prepare for."
+            + (f" (looked for \"{job_title}\")" if job_title else "")
         ),
     }
 
@@ -4738,10 +4782,14 @@ TOOL_SCHEMAS = [
             "name": "get_interview_prep",
             "description": (
                 "Get real, job-specific data (company, role, required "
-                "skills, description) for an upcoming interview, to "
-                "generate genuinely tailored preparation suggestions "
-                "or practice questions - not generic advice. Use when "
-                "the student asks how to prepare for an interview."
+                "skills, description) to generate genuinely tailored "
+                "preparation suggestions or practice questions - not "
+                "generic advice. Use when the student asks how to "
+                "prepare for an interview OR to prepare for/study for "
+                "a job they've applied to, even with no interview "
+                "scheduled yet - it falls back to the real application "
+                "in that case, so never refuse this just because "
+                "nothing is booked yet."
             ),
             "parameters": {
                 "type": "object",
