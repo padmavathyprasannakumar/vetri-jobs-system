@@ -11,6 +11,13 @@ import {
 } from "../../../api/studentApi";
 
 
+import {
+
+    useChatbotRefresh
+
+} from "../../../api/chatbotHelpers";
+
+
 
 import {
 
@@ -151,6 +158,22 @@ setLoading(false);
 };
 
 
+
+// Applying to a job (or writing a cover letter, or anything else that
+// changes an application) through the AI Career Assistant or the
+// floating chatbot happens entirely outside this page - so without
+// this, a newly-applied job never showed up here, and a status change
+// (shortlisted, interview, selected...) stayed stuck at its old value
+// until the student manually refreshed. The backend already sends
+// "applications" as part of its refresh signal after a successful
+// apply (["applications", "dashboard", "jobs"]) - this makes the page
+// actually listen for that signal and reload. Placed AFTER
+// loadApplications is defined above, since this runs during render
+// (unlike the useEffect above it, which only calls loadApplications
+// once React has already finished rendering and loadApplications is
+// safely defined).
+
+useChatbotRefresh("applications", loadApplications);
 
 
 
