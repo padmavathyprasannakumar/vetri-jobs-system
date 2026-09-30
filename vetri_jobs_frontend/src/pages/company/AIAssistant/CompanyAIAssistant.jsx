@@ -120,7 +120,67 @@ text:`Hi ${recruiterName}! 👋 I'm Vetri AI, your recruitment assistant. I can 
 };
 
 
-const [messages,setMessages] = useState([initialGreeting]);
+// Without this, the conversation was held ONLY in React state, with
+// nothing saving it anywhere - the instant this page unmounted (which
+// happens the moment the recruiter clicks any other tab), React threw
+// the whole thing away, and coming back started a brand new chat from
+// the greeting every time. sessionStorage survives navigating away and
+// back, but still clears on an actual browser/tab close, matching how
+// the student-side AI Career Assistant page already behaves.
+//
+// Keyed by the recruiter's own id (not just the display name used for
+// the greeting above) so two different company accounts used in the
+// same browser tab/session - one recruiter logging out, another
+// logging in without closing the tab - never see each other's chat.
+
+const getStoredUserId = ()=>{
+
+try{
+
+const stored = JSON.parse(localStorage.getItem("user") || "null");
+
+return stored?.id || stored?.username || "guest";
+
+}
+catch(e){
+
+return "guest";
+
+}
+
+};
+
+
+const STORAGE_KEY = `vetri_company_ai_chat_${getStoredUserId()}`;
+
+
+const loadStoredMessages = ()=>{
+
+try{
+
+const raw = sessionStorage.getItem(STORAGE_KEY);
+
+if(raw){
+
+const parsed = JSON.parse(raw);
+
+if(Array.isArray(parsed) && parsed.length > 0) return parsed;
+
+}
+
+}
+catch(e){
+
+// corrupted/unavailable storage - fall through to a fresh greeting
+
+}
+
+return [initialGreeting];
+
+};
+
+
+const [messages,setMessages] = useState(loadStoredMessages);
 
 
 const [message,setMessage] = useState("");
@@ -154,6 +214,26 @@ bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
 }
 
 },[messages,loading]);
+
+
+useEffect(()=>{
+
+try{
+
+sessionStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
+
+}
+catch(e){
+
+// storage full/unavailable (private browsing, etc.) - the chat
+// still works for this page view, it just won't survive a tab
+// switch this one time.
+
+}
+
+// eslint-disable-next-line react-hooks/exhaustive-deps
+
+},[messages]);
 
 
 
