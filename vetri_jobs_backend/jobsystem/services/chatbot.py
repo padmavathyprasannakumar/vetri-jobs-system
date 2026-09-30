@@ -5346,6 +5346,194 @@ def _tool_get_top_candidates_for_job(profile, user, args):
     }
 
 
+def _tool_get_duplicate_candidate_names(profile, user, args):
+    """
+    Groups the company's recent applications by candidate name and
+    surfaces any name that appears more than once. This is purely a
+    grouping/counting operation on already-fetched data - detecting a
+    repeated name never needed live AI reasoning to begin with, it's
+    a Python-level computation, same as counting applications or
+    listing job titles.
+
+    Crucially distinguishes the two very different things a repeated
+    name can mean: the SAME student applying to several jobs (normal,
+    not a real "duplicate") versus two DIFFERENT students who simply
+    share a name (a genuine thing a recruiter needs to know, since
+    treating them as one person risks shortlisting/rejecting the
+    wrong applicant). Compared by student_id, not just the name text.
+    """
+
+    from jobsystem.models import Application
+    from collections import defaultdict
+
+    apps = Application.objects.filter(
+        job__company=profile
+    ).select_related("student", "job").order_by("-applied_date")[:50]
+
+    by_name = defaultdict(list)
+
+    for app in apps:
+
+        by_name[app.student.full_name].append(app)
+
+    duplicate_groups = {
+        name: entries
+        for name, entries in by_name.items()
+        if len(entries) > 1
+    }
+
+    if not duplicate_groups:
+
+        return {
+            "duplicate_candidates": [],
+            "summary": "No two applicants currently share the same name.",
+        }
+
+    lines = []
+
+    payload_groups = []
+
+    for name, entries in duplicate_groups.items():
+
+        distinct_student_ids = set(e.student_id for e in entries)
+
+        same_person = len(distinct_student_ids) == 1
+
+        note = (
+            "same applicant, multiple jobs"
+            if same_person else
+            "DIFFERENT applicants - same name only"
+        )
+
+        job_list = ", ".join(
+            f"{e.job.title} ({e.get_status_display()})" for e in entries
+        )
+
+        lines.append(f"- {name} ({note}): {job_list}")
+
+        payload_groups.append({
+            "name": name,
+            "same_person": same_person,
+            "applications": [
+                {"job_title": e.job.title, "status": e.get_status_display()}
+                for e in entries
+            ],
+        })
+
+    summary = (
+        f"{len(duplicate_groups)} name(s) appear more than once:\n\n"
+        + "\n".join(lines[:8])
+    )
+
+    return {
+        "duplicate_candidates": payload_groups,
+        "navigate_to": "/company/candidates",
+        "summary": summary,
+    }
+
+
+def _tool_get_job_description(profile, user, args):
+    """
+    Full detail for one (or a few) of the company's OWN job
+    postings - description, requirements, skills, qualification,
+    experience, salary, location - not just a title+application-count
+    row the way get_active_job_postings/list_all_job_postings give.
+    Use whenever the recruiter asks to see/describe/review what a
+    job posting actually SAYS, not just which postings exist or how
+    many applied to them.
+
+    Matched by keyword, not an exact title match: a recruiter's own
+    phrasing of a role ("the software developer jobs") very often
+    doesn't literally appear in the real posting title ("Junior
+    Python Full Stack Developer", "Senior Frontend Developer") -
+    splitting the query into significant words and matching ANY of
+    them against the title catches this, where an exact substring
+    match would silently return nothing.
+    """
+
+    from django.db.models import Q
+    from jobsystem.models import Job
+
+    query = (args.get("job_title") or "").strip()
+
+    jobs_qs = Job.objects.filter(company=profile)
+
+    if query:
+
+        stopwords = {
+            "the", "a", "an", "job", "jobs", "posting", "postings",
+            "role", "roles", "position", "positions", "for", "of",
+        }
+
+        words = [
+            w for w in re.split(r"\s+", query.lower())
+            if len(w) > 2 and w not in stopwords
+        ]
+
+        if words:
+
+            word_filter = Q()
+
+            for w in words:
+
+                word_filter |= Q(title__icontains=w)
+
+            jobs_qs = jobs_qs.filter(word_filter)
+
+    jobs = list(jobs_qs.order_by("-created_at")[:5])
+
+    if not jobs:
+
+        return {
+            "jobs": [],
+            "summary": (
+                f"No job posting found matching \"{query}\"."
+                if query else
+                "No job postings found."
+            ),
+        }
+
+    data = []
+
+    blocks = []
+
+    for job in jobs:
+
+        status_label = (
+            job.get_status_display()
+            if hasattr(job, "get_status_display") else job.status
+        )
+
+        skills = job.skills_required or "Not specified"
+
+        data.append({
+            "title": job.title,
+            "status": status_label,
+            "description": job.description or "",
+            "requirements": job.requirements or "",
+            "skills_required": skills,
+            "qualification_required": job.qualification_required or "",
+            "experience_required": job.experience_required or "",
+            "salary": job.salary or "",
+            "location": job.location or "",
+        })
+
+        blocks.append(
+            f"**{job.title}** ({status_label})\n"
+            f"Location: {job.location or 'Not specified'} | "
+            f"Salary: {job.salary or 'Not disclosed'} | "
+            f"Experience: {job.experience_required or 'Not specified'}\n"
+            f"Skills: {skills}\n"
+            f"Description: {job.description or 'No description given'}"
+        )
+
+    return {
+        "jobs": data,
+        "navigate_to": "/company/jobs",
+        "summary": "\n\n".join(blocks),
+    }
+
+
 def _tool_get_company_applications(profile, user, args):
 
     from jobsystem.models import Application
@@ -5878,6 +6066,47 @@ COMPANY_TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "get_duplicate_candidate_names",
+            "description": (
+                "Find candidates whose name appears more than once "
+                "among recent applicants, and clarify whether it's "
+                "the SAME student applying to several jobs, or "
+                "DIFFERENT students who happen to share a name. Use "
+                "when the recruiter asks about duplicate/same-name "
+                "candidates."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_job_description",
+            "description": (
+                "Get the FULL content of one of the company's own "
+                "job postings - description, requirements, skills, "
+                "qualification, experience, salary, location. Use "
+                "when the recruiter asks to describe/see/review what "
+                "a job posting actually says - get_active_job_postings "
+                "and list_all_job_postings only give a title and "
+                "application count, never the actual content, so "
+                "prefer THIS tool whenever the real text is wanted."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "job_title": {
+                        "type": "string",
+                        "description": "The job title or role the recruiter named, exactly as they said it - matched by keyword, not an exact title.",
+                    }
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_company_applications",
             "description": "Get the company's recent job applications and their statuses.",
             "parameters": {"type": "object", "properties": {}, "required": []},
@@ -5895,7 +6124,13 @@ COMPANY_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "get_active_job_postings",
-            "description": "Get the company's currently active job postings and how many applications each has.",
+            "description": (
+                "Lists titles and application counts only - NOT the "
+                "posting's actual description/requirements/skills. "
+                "For that, use get_job_description instead. Get the "
+                "company's currently active job postings and how "
+                "many applications each has."
+            ),
             "parameters": {"type": "object", "properties": {}, "required": []},
         },
     },
@@ -5904,6 +6139,9 @@ COMPANY_TOOL_SCHEMAS = [
         "function": {
             "name": "list_all_job_postings",
             "description": (
+                "Lists titles, status and application counts only - "
+                "NOT the posting's actual description/requirements/ "
+                "skills. For that, use get_job_description instead. "
                 "Get every job posting the company has made, in any "
                 "status (active, closed, draft), not just active "
                 "ones. Use for 'show all my job postings' style "
@@ -5994,6 +6232,8 @@ COMPANY_TOOL_SCHEMAS = [
 
 
 COMPANY_TOOL_EXECUTORS = {
+    "get_duplicate_candidate_names": _tool_get_duplicate_candidate_names,
+    "get_job_description": _tool_get_job_description,
     "search_candidates": _tool_search_candidates,
     "get_top_candidates_for_job": _tool_get_top_candidates_for_job,
     "get_company_applications": _tool_get_company_applications,
@@ -7330,6 +7570,16 @@ _COMPANY_SHORTCUTS = {
     "show company profile": ("get_company_profile_info", {}),
     "my company profile": ("get_company_profile_info", {}),
     "show my company profile": ("get_company_profile_info", {}),
+
+    "same name candidates applied jobs": ("get_duplicate_candidate_names", {}),
+    "same name candidates": ("get_duplicate_candidate_names", {}),
+    "candidates with same name": ("get_duplicate_candidate_names", {}),
+    "candidates with the same name": ("get_duplicate_candidate_names", {}),
+    "duplicate candidates": ("get_duplicate_candidate_names", {}),
+    "duplicate candidate names": ("get_duplicate_candidate_names", {}),
+    "same name applicants": ("get_duplicate_candidate_names", {}),
+    "any duplicate candidates": ("get_duplicate_candidate_names", {}),
+    "show duplicate candidates": ("get_duplicate_candidate_names", {}),
 }
 
 
