@@ -19,6 +19,13 @@ import {
 } from "../../../api/studentApi";
 
 
+import {
+
+    useChatbotRefresh
+
+} from "../../../api/chatbotHelpers";
+
+
 
 import {
 
@@ -220,6 +227,23 @@ setLoading(false);
 
 
 };
+
+
+
+// Applying to a job through the AI Career Assistant or the floating
+// chatbot happens entirely outside this page - so without this, the
+// "Apply Now" button here stayed stuck showing "Apply Now" until the
+// student manually refreshed, even though the application had already
+// gone through. The chatbot's own reply already tells the frontend
+// "jobs" needs to reload after a successful apply (or cover letter, or
+// AI-written cover letter) - this just makes THIS page actually listen
+// for that signal and reload, the same way it already updates itself
+// instantly when you apply from right here on this page. Placed AFTER
+// loadJobs is defined above, since this runs during render (unlike the
+// useEffect above it, which only calls loadJobs once React has already
+// finished rendering and loadJobs is safely defined).
+
+useChatbotRefresh("jobs", loadJobs);
 
 
 
