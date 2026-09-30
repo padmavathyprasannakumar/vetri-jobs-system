@@ -3471,15 +3471,33 @@ def _tool_get_application_status(profile, user, args):
 
         applications.append(entry)
 
+    # Same fix already applied to the ATS check and resume feedback tools:
+    # "summary" is what the model reads for its answer AND, if the second
+    # pass ever falls back to the raw tool result (the account's tight
+    # shared Groq quota making that call fail), the one thing shown to the
+    # student. A bare count meant "what jobs did I apply to?" could only
+    # ever be answered with "3 applications found." and nothing else.
+
+    if applications:
+
+        lines = [
+            f"- {a['job_title']} at {a['company']}: {a['status']}"
+            for a in applications[:8]
+        ]
+
+        summary = (
+            f"{len(applications)} application(s):\n\n" + "\n".join(lines)
+        )
+
+    else:
+
+        summary = "The student hasn't applied to any jobs yet."
+
     return {
         "applications": applications,
         "has_interview_scheduled": has_interview_scheduled,
         "navigate_to": "/student/applications",
-        "summary": (
-            f"{len(applications)} applications found."
-            if applications else
-            "The student hasn't applied to any jobs yet."
-        ),
+        "summary": summary,
     }
 
 
@@ -6849,6 +6867,22 @@ def _wants_all_jobs(normalized):
     return set(words) <= _ALL_JOBS_WORDS and bool(set(words) & _ALL_JOBS_CUES)
 
 
+# "what jobs did I apply to" and the many ways to ask it - answered
+# instantly for the exact same reason "show me jobs" was: this is a
+# completely plain, common question that has no reason to ever depend on
+# the shared account's tight Groq quota.
+
+_APPLICATION_STATUS_PHRASES = {
+    "what jobs did i apply to", "what jobs have i applied to",
+    "what are the jobs i applied", "what jobs did i apply for",
+    "show my applications", "show me my applications", "my applications",
+    "what is my application status", "whats my application status",
+    "what is my application status", "show my application status",
+    "what jobs have i applied for", "which jobs did i apply to",
+    "show applications", "list my applications", "list applications",
+}
+
+
 _PLAIN_JOBS_RE = re.compile(
     r"^(?:please )?(?:show|find|get|give|see|display)"
     r"(?: me)?(?: the)?(?: available)? jobs?(?: for me)?(?: please)?$"
@@ -6892,6 +6926,10 @@ def _handle_student_shortcut(profile, user, message):
     if not entry and _wants_all_jobs(normalized):
 
         entry = ("list_open_jobs", {})
+
+    if not entry and normalized in _APPLICATION_STATUS_PHRASES:
+
+        entry = ("get_application_status", {})
 
     if not entry and _PLAIN_JOBS_RE.match(normalized):
 
