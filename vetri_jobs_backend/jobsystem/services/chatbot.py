@@ -7583,7 +7583,29 @@ _COMPANY_SHORTCUTS = {
 }
 
 
-def _handle_company_shortcut(profile, user, message):
+def _last_bot_asked_which_job_for_candidates(history):
+    """True if the bot's own last message was asking the recruiter
+    which role to show top candidates for - so a bare reply naming a
+    job ("Senior Frontend Developer") is the ANSWER to that question,
+    not a new, separate request that needs its own live AI call to
+    interpret. Loose keyword match (not an exact phrase), since the
+    model writes this question in its own words each time - same
+    approach as _last_bot_asked_for_skills."""
+
+    text = _last_bot_text(history)
+
+    return "candidates" in text and ("role" in text or "job" in text) and "?" in text
+
+
+def _looks_like_a_job_reply(message):
+    """'Senior Frontend Developer' / 'Software Tester' - a bare job
+    name, not a new sentence/question. Same shape check as
+    _looks_like_skill_list, just applied to a job-name reply."""
+
+    return _looks_like_skill_list(message)
+
+
+def _handle_company_shortcut(profile, user, message, history=None):
     """Same idea as _handle_student_shortcut: runs a common company
     question's tool directly, zero AI calls. Returns a reply dict, or
     None to carry on with the normal AI flow (not a recognised
@@ -7592,6 +7614,15 @@ def _handle_company_shortcut(profile, user, message):
     normalized = _normalize_shortcut(message)
 
     entry = _COMPANY_SHORTCUTS.get(normalized)
+
+    if not entry and _last_bot_asked_which_job_for_candidates(history) and _looks_like_a_job_reply(message):
+
+        # The bot just asked "which role?" - this bare reply IS the
+        # job name, answered directly with zero AI calls instead of
+        # needing another live call just to notice what its own
+        # previous question was asking for.
+
+        entry = ("get_top_candidates_for_job", {"job_title": message.strip()})
 
     if not entry:
 
@@ -8131,7 +8162,7 @@ def _generate_reply_inner(user, message, history=None, page_context=None):
         # portal never had this fast path before.
 
         company_shortcut_reply = _handle_company_shortcut(
-            actor_profile, user, message
+            actor_profile, user, message, history
         )
 
         if company_shortcut_reply is not None:
