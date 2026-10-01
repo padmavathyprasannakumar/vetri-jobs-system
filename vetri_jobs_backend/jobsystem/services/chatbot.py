@@ -1863,9 +1863,24 @@ def _tool_list_open_jobs(profile, user, args):
     from jobsystem.models import Job, Application
     from jobsystem.services.job_matching import rank_jobs_for_student
 
+    company_name = (args.get("company_name") or "").strip()
+
     jobs = Job.objects.filter(
         status="active", is_active=True
-    ).select_related("company").order_by("-created_at")[:40]
+    ).select_related("company").order_by("-created_at")
+
+    if company_name:
+
+        # Same keyword matching used for job titles elsewhere in this
+        # file - a student's own phrasing of a company name doesn't
+        # always exactly match the stored name either.
+        company_q = _job_title_keyword_q("company__company_name", company_name)
+
+        if company_q is not None:
+
+            jobs = jobs.filter(company_q)
+
+    jobs = jobs[:40]
 
     ranked_all = rank_jobs_for_student(profile, jobs)
 
@@ -1875,7 +1890,10 @@ def _tool_list_open_jobs(profile, user, args):
             "kind": "all_jobs",
             "matched_jobs": [],
             "total_open": 0,
-            "summary": "There are no open jobs right now.",
+            "summary": (
+                f"No open jobs found for \"{company_name}\"." if company_name
+                else "There are no open jobs right now."
+            ),
         }
 
     applied_job_ids = set(
@@ -1938,9 +1956,12 @@ def _tool_list_open_jobs(profile, user, args):
         "blocked_count": blocked_count,
         "navigate_to": "/student/jobs",
         "summary": (
-            f"{total} open job{'s' if total != 1 else ''}: you can apply to "
-            f"{can_apply}, you've already applied to {applied_count}, and "
-            f"{blocked_count} need something your profile doesn't have yet"
+            (f"{total} open job{'s' if total != 1 else ''} at \"{company_name}\": "
+             if company_name else
+             f"{total} open job{'s' if total != 1 else ''}: ")
+            + f"you can apply to {can_apply}, you've already applied to "
+            f"{applied_count}, and {blocked_count} need something your "
+            "profile doesn't have yet"
             + (f" (showing the {len(shown)} best matches)." if len(shown) < total else ".")
         ),
     }
@@ -2021,20 +2042,53 @@ def _tool_get_job_details(profile, user, args):
 
     company_name = job.company.company_name if job.company else "Company"
 
+    description = job_data.get("description", "") or ""
+
+    eligibility_criteria = job_data.get("eligibility_criteria", "") or ""
+
+    # Same fix as every other tool in this file: "summary" is what the
+    # model reads to answer, and what's shown if its own write-up pass
+    # is ever skipped or fails - a bare "Requirements for X at Y." with
+    # nothing else meant the student got no actual requirements in
+    # that case, despite the real description/skills/eligibility
+    # criteria already being found right here.
+
+    detail_lines = [f"Requirements for {job.title} at {company_name}:"]
+
+    if skills_required:
+
+        detail_lines.append(
+            "\nSkills required: " + ", ".join(skills_required[:10])
+        )
+
+    if eligibility_criteria:
+
+        detail_lines.append(f"\nEligibility: {eligibility_criteria[:400]}")
+
+    if description:
+
+        detail_lines.append(f"\nDescription: {description[:400]}")
+
+    if missing_skills:
+
+        detail_lines.append(
+            "\nSkills you don't have yet: " + ", ".join(missing_skills[:8])
+        )
+
     return {
         "job_title": job.title,
         "company": company_name,
         "location": job_data.get("location", ""),
         "job_type": job_data.get("job_type", ""),
-        "description": job_data.get("description", ""),
-        "eligibility_criteria": job_data.get("eligibility_criteria", ""),
+        "description": description,
+        "eligibility_criteria": eligibility_criteria,
         "skills_required": skills_required,
         "missing_skills": missing_skills,
         "match_score": score,
         "apply_url": f"/student/jobs/{job.id}/apply",
         "details_url": f"/student/jobs/{job.id}",
         "navigate_to": f"/student/jobs/{job.id}",
-        "summary": f"Requirements for {job.title} at {company_name}.",
+        "summary": "\n".join(detail_lines),
     }
 
 
@@ -2083,6 +2137,53 @@ def _tool_get_skill_suggestions(profile, user, args):
         ) if top_missing else (
             "The student's current skills already cover most open "
             "job requirements on the platform."
+        ),
+    }
+
+
+def _tool_get_company_info(profile, user, args):
+    """
+    General "tell me about this company" info for a student - industry,
+    description, size, how many jobs they have open right now. Every
+    other role (company, placement admin) already had a way to look up
+    a company's profile; students never did, even though "company
+    information" is explicitly one of the Information Retrieval items
+    in the project spec. Only exposes genuinely public-facing fields -
+    never registration/GST documents or anything internal.
+    """
+
+    from jobsystem.models import CompanyProfile, Job
+
+    name = (args.get("company_name") or "").strip()
+
+    if not name:
+
+        return {"summary": "Which company would you like to know about?"}
+
+    company = CompanyProfile.objects.filter(
+        company_name__icontains=name
+    ).first()
+
+    if not company:
+
+        return {"summary": f"No company found matching \"{name}\"."}
+
+    open_jobs = Job.objects.filter(
+        company=company, status="active", is_active=True
+    ).count()
+
+    return {
+        "company_name": company.company_name,
+        "industry": company.industry,
+        "description": company.description,
+        "company_size": company.company_size,
+        "open_jobs": open_jobs,
+        "navigate_to": "/student/jobs",
+        "summary": (
+            f"{company.company_name} - {company.industry or 'industry not set'}"
+            f"{f', {company.company_size} employees' if company.company_size else ''}. "
+            f"{open_jobs} open job{'s' if open_jobs != 1 else ''} right now."
+            + (f" {company.description[:300]}" if company.description else "")
         ),
     }
 
@@ -3538,13 +3639,36 @@ def _tool_get_upcoming_interviews(profile, user, args):
 
     interviews = [_serialize_interview(iv) for iv in qs]
 
+    # Matches the project spec's own worked example almost exactly:
+    # "You have 2 interviews this week: ABC Technologies - Aug 28,
+    # 10:00 AM; XYZ Solutions - Aug 30, 2:00 PM." Same fix as every
+    # other tool here - the real interview data was already being
+    # fetched, it just never made it into the actual answer.
+
+    if interviews:
+
+        lines = [
+            f"- {iv['company']} ({iv['job_title']}): {iv['date']} at {iv['time']} ({iv['mode']})"
+            for iv in interviews[:8]
+        ]
+
+        summary = (
+            f"You have {len(interviews)} upcoming interview(s)"
+            + (" this week" if week_only else "")
+            + ":\n\n" + "\n".join(lines)
+        )
+
+    else:
+
+        summary = (
+            "You don't have any interviews scheduled"
+            + (" this week." if week_only else " right now.")
+        )
+
     return {
         "interviews": interviews,
         "navigate_to": "/student/interviews",
-        "summary": (
-            f"{len(interviews)} upcoming interview(s)"
-            + (" this week." if week_only else ".")
-        ),
+        "summary": summary,
     }
 
 
@@ -4836,8 +4960,19 @@ TOOL_SCHEMAS = [
                 "Not for 'jobs for me / that match my profile' "
                 "(find_matching_jobs) or 'new jobs' (find_matching_jobs with "
                 "recent_only)."
+                "Also supports filtering to one named company (e.g. "
+                "\"show me TechNova's posted jobs\") via company_name."
             ),
-            "parameters": {"type": "object", "properties": {}, "required": []},
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "company_name": {
+                        "type": "string",
+                        "description": "Filter to jobs from this company, if the student named one (e.g. 'TechNova').",
+                    }
+                },
+                "required": [],
+            },
         },
     },
     {
@@ -4891,6 +5026,30 @@ TOOL_SCHEMAS = [
                 "asks what skills to improve or learn."
             ),
             "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_company_info",
+            "description": (
+                "General information about a company - industry, "
+                "description, size, how many jobs they have open "
+                "right now. Use for 'tell me about <company>'/'what "
+                "does <company> do' style questions. For skills "
+                "needed at that company's jobs specifically, use "
+                "get_company_skill_gap instead."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "company_name": {
+                        "type": "string",
+                        "description": "The company name the student asked about.",
+                    }
+                },
+                "required": ["company_name"],
+            },
         },
     },
     {
@@ -5277,6 +5436,7 @@ TOOL_EXECUTORS = {
     "check_job_eligibility": _tool_check_job_eligibility,
     "get_job_details": _tool_get_job_details,
     "get_skill_suggestions": _tool_get_skill_suggestions,
+    "get_company_info": _tool_get_company_info,
     "get_company_skill_gap": _tool_get_company_skill_gap,
     "apply_to_job": _tool_apply_to_job,
     "get_application_status": _tool_get_application_status,
