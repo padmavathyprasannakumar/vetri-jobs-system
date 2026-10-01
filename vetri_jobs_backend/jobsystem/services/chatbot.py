@@ -7968,6 +7968,51 @@ _MY_APPLICATIONS_RE = re.compile(
 # mentions ATS/applicant tracking - those still correctly go to the real
 # ATS check.
 
+# "What skills should I improve?" (and close variants) - a literal example
+# question from the project spec, with zero shortcut coverage before this.
+# get_skill_suggestions already computes real, detailed data (the top
+# in-demand skills the student doesn't have yet) - this just makes the
+# common phrasings of this exact question answer instantly.
+
+# "Any interview scheduled?" / "job interview scheduled" / "when is my
+# interview" - a very common plain question with ZERO shortcut coverage
+# before this (confirmed by testing: even the phrasing the student said
+# "worked" was actually just a lucky successful AI call, not a shortcut -
+# every variant of this question was going through a live call every time).
+
+_INTERVIEW_CHECK_RE = re.compile(
+    r"^(?:any\s+)?(?:job\s+)?interviews?\s+scheduled\??$"
+    r"|^do\s+i\s+have\s+(?:any\s+)?(?:job\s+)?interviews?\??$"
+    r"|^when\s+is\s+my\s+(?:next\s+)?interview\??$"
+    r"|^(?:do\s+i\s+have\s+)?(?:an\s+|any\s+)?upcoming\s+interviews?\??$"
+    r"|^my\s+interviews?$"
+)
+
+
+# "check my resume score" (and close variants) - the student-reported
+# phrasing that still fell through even after "what is my resume score"
+# was added. Broader than the exact-match entries in _STUDENT_SHORTCUTS,
+# since "I want check my resume score" / "can you check my resume score"
+# are natural but weren't literally covered by those exact strings.
+
+_RESUME_SCORE_RE = re.compile(
+    r"^(?:i\s+want\s+(?:to\s+)?|can\s+you\s+|please\s+|pls\s+)*"
+    r"check\s+my\s+resume\s*(?:score)?\??$"
+    r"|^(?:what\s+is|whats|show)\s+my\s+resume\s+score\??$"
+    r"|^my\s+resume\s+score\??$"
+)
+
+
+_SKILL_SUGGESTION_RE = re.compile(
+    r"^(?:what|which)\s+skills?\s+(?:should|do|must|can)\s+i\s+"
+    r"(?:improve|learn|develop|need|add|gain|build|focus\s+on|work\s+on)"
+    r"(?:\s+to\s+(?:improve|learn|develop))?\??$"
+    r"|^(?:how\s+(?:to|do\s+i|can\s+i)\s+)?improve\s+(?:my\s+)?skills?$"
+    r"|^(?:what|which)\s+skills?\s+(?:do\s+i\s+)?(?:need|am\s+i\s+missing|do\s+i\s+lack|lack)\??$"
+    r"|^(?:help\s+me\s+)?(?:improve|develop)\s+my\s+skills?$"
+)
+
+
 _IMPROVE_RESUME_RE = re.compile(
     r"^(?:i\s+want\s+to\s+|how\s+(?:to|do\s+i|can\s+i)\s+|please\s+)?"
     r"(?:buil\w*|improve\w*|increase\w*|raise\w*|boost\w*|get)\s+"
@@ -8051,6 +8096,18 @@ def _handle_student_shortcut(profile, user, message):
     if not entry and (normalized in _APPLICATION_STATUS_PHRASES or _MY_APPLICATIONS_RE.match(normalized)):
 
         entry = ("get_application_status", {})
+
+    if not entry and _INTERVIEW_CHECK_RE.match(normalized):
+
+        entry = ("get_upcoming_interviews", {})
+
+    if not entry and _RESUME_SCORE_RE.match(normalized):
+
+        entry = ("get_resume_feedback", {})
+
+    if not entry and _SKILL_SUGGESTION_RE.match(normalized):
+
+        entry = ("get_skill_suggestions", {})
 
     if not entry and _IMPROVE_RESUME_RE.match(normalized):
 
