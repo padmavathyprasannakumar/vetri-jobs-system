@@ -6317,15 +6317,26 @@ def _tool_get_pending_company_approvals(profile, user, args):
         for c in pending
     ]
 
+    if data:
+
+        lines = [
+            f"- {c['company_name']} ({c['industry'] or 'industry not set'})"
+            for c in data[:8]
+        ]
+
+        summary = (
+            f"{len(data)} compan{'y' if len(data) == 1 else 'ies'} "
+            "awaiting approval:\n\n" + "\n".join(lines)
+        )
+
+    else:
+
+        summary = "No companies are awaiting approval right now."
+
     return {
         "companies": data,
         "navigate_to": "/placement/companies",
-        "summary": (
-            f"{len(data)} compan{'y' if len(data) == 1 else 'ies'} "
-            "awaiting approval."
-            if data else
-            "No companies are awaiting approval right now."
-        ),
+        "summary": summary,
     }
 
 
@@ -6342,14 +6353,25 @@ def _tool_get_unverified_students(profile, user, args):
         for s in unverified
     ]
 
+    if data:
+
+        lines = [
+            f"- {st['full_name']} ({st['department'] or 'department not set'})"
+            for st in data[:8]
+        ]
+
+        summary = (
+            f"{len(data)} student(s) not yet verified:\n\n" + "\n".join(lines)
+        )
+
+    else:
+
+        summary = "All students are verified."
+
     return {
         "students": data,
         "navigate_to": "/placement/students",
-        "summary": (
-            f"{len(data)} student(s) not yet verified."
-            if data else
-            "All students are verified."
-        ),
+        "summary": summary,
     }
 
 
@@ -6382,14 +6404,26 @@ def _tool_get_placement_drives(profile, user, args):
         for d in drives
     ]
 
+    if data:
+
+        lines = [
+            f"- {d['title']} ({d['company'] or 'company not set'}): {d['date']}"
+            for d in data[:8]
+        ]
+
+        summary = (
+            f"{len(data)} {status_filter} placement drive(s):\n\n"
+            + "\n".join(lines)
+        )
+
+    else:
+
+        summary = f"No {status_filter} placement drives."
+
     return {
         "drives": data,
         "navigate_to": "/placement/drives",
-        "summary": (
-            f"{len(data)} {status_filter} placement drive(s)."
-            if data else
-            f"No {status_filter} placement drives."
-        ),
+        "summary": summary,
     }
 
 
@@ -6457,6 +6491,90 @@ def _tool_get_placement_report(profile, user, args):
     }
 
 
+def _tool_find_jobs_platform_wide(profile, user, args):
+    """
+    Lists job postings ACROSS THE WHOLE PLATFORM (every company, not
+    one company's own) - the "Find Jobs" capability advertised on the
+    Placement Admin AI Chatbot page had nothing behind it at all
+    before this; there was no tool a placement admin could reach for
+    jobs/companies/status, so every "find jobs"/"jobs at X" question
+    fell through to the AI with no real data to answer from.
+
+    Supports an optional company_name keyword ("jobs at Google") and
+    an optional status filter - both matched flexibly, same approach
+    as get_job_description on the company side.
+    """
+
+    from django.db.models import Q
+    from jobsystem.models import Job
+
+    company_name = (args.get("company_name") or "").strip()
+
+    status_filter = (args.get("status") or "").strip().lower()
+
+    jobs_qs = Job.objects.select_related("company")
+
+    if company_name:
+
+        jobs_qs = jobs_qs.filter(
+            company__company_name__icontains=company_name
+        )
+
+    if status_filter in {"active", "pending", "closed", "rejected"}:
+
+        jobs_qs = jobs_qs.filter(status=status_filter)
+
+    jobs = list(jobs_qs.order_by("-created_at")[:15])
+
+    if not jobs:
+
+        if company_name:
+
+            summary = f"No job postings found for \"{company_name}\"."
+
+        else:
+
+            summary = "No job postings found."
+
+        return {"jobs": [], "summary": summary}
+
+    data = []
+
+    lines = []
+
+    for job in jobs:
+
+        company = job.company.company_name if job.company else "Unknown company"
+
+        status_label = (
+            job.get_status_display()
+            if hasattr(job, "get_status_display") else job.status
+        )
+
+        data.append({
+            "title": job.title,
+            "company": company,
+            "status": status_label,
+            "location": job.location or "",
+            "salary": job.salary or "",
+            "skills_required": job.skills_required or "",
+        })
+
+        lines.append(
+            f"- {job.title} at {company} ({status_label}) - "
+            f"{job.location or 'location not set'}, "
+            f"{job.salary or 'salary not disclosed'}"
+        )
+
+    summary = f"{len(data)} job posting(s):\n\n" + "\n".join(lines[:8])
+
+    return {
+        "jobs": data,
+        "navigate_to": "/placement/jobs",
+        "summary": summary,
+    }
+
+
 def _tool_get_candidate_pipeline(profile, user, args):
 
     from jobsystem.models import Application
@@ -6482,19 +6600,54 @@ def _tool_get_candidate_pipeline(profile, user, args):
         "final_selected": Application.objects.filter(status="selected").count(),
     }
 
+    recent_lines = [
+        f"- {c['name']} ({c['job_title']} at {c['company'] or 'company not set'}): {c['status']}"
+        for c in candidates[:5]
+    ]
+
+    summary = (
+        f"{stats['total_applicants']} total applicant(s), "
+        f"{stats['shortlisted']} shortlisted, "
+        f"{stats['interviews_scheduled']} in interview stage, "
+        f"{stats['final_selected']} selected.\n\nMost recent:\n"
+        + "\n".join(recent_lines)
+    )
+
     return {
         "candidates": candidates,
         "navigate_to": "/placement/candidates/pipeline",
-        "summary": (
-            f"{stats['total_applicants']} total applicant(s), "
-            f"{stats['shortlisted']} shortlisted, "
-            f"{stats['interviews_scheduled']} in interview stage, "
-            f"{stats['final_selected']} selected."
-        ),
+        "summary": summary,
     }
 
 
 PLACEMENT_TOOL_SCHEMAS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "find_jobs_platform_wide",
+            "description": (
+                "Find job postings ACROSS THE WHOLE PLATFORM (every "
+                "company, not one). Use for 'find jobs'/'jobs at "
+                "<company>'/'show me jobs' style questions from the "
+                "placement admin - this is the 'Find Jobs' capability "
+                "advertised on this page."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "company_name": {
+                        "type": "string",
+                        "description": "A company name to filter by, if the admin named one.",
+                    },
+                    "status": {
+                        "type": "string",
+                        "description": "active/pending/closed/rejected, if the admin asked for a specific status.",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
     {
         "type": "function",
         "function": {
@@ -6609,6 +6762,7 @@ PLACEMENT_TOOL_SCHEMAS = [
 
 
 PLACEMENT_TOOL_EXECUTORS = {
+    "find_jobs_platform_wide": _tool_find_jobs_platform_wide,
     "get_placement_overview": _tool_get_placement_overview,
     "get_pending_company_approvals": _tool_get_pending_company_approvals,
     "get_unverified_students": _tool_get_unverified_students,
@@ -7656,6 +7810,95 @@ def _handle_company_shortcut(profile, user, message, history=None):
     )
 
 
+# Same idea as _COMPANY_SHORTCUTS/_handle_company_shortcut: the placement
+# admin portal had NO fast path at all either - every question, however
+# simple ("show all drives", "pending company approvals"), needed a full
+# live AI call. These answer instantly, zero AI calls, so they can never
+# fail from the shared account's tight quota.
+
+_PLACEMENT_SHORTCUTS = {
+    "show all drives": ("get_placement_drives", {}),
+    "show drives": ("get_placement_drives", {}),
+    "show upcoming drives": ("get_placement_drives", {}),
+    "show placement drives": ("get_placement_drives", {}),
+    "upcoming drives": ("get_placement_drives", {}),
+    "show all upcoming placement drives": ("get_placement_drives", {}),
+
+    "show pending company approvals": ("get_pending_company_approvals", {}),
+    "pending company approvals": ("get_pending_company_approvals", {}),
+    "show pending approvals": ("get_pending_company_approvals", {}),
+    "which companies need approval": ("get_pending_company_approvals", {}),
+    "companies awaiting approval": ("get_pending_company_approvals", {}),
+
+    "show unverified students": ("get_unverified_students", {}),
+    "unverified students": ("get_unverified_students", {}),
+    "which students need verification": ("get_unverified_students", {}),
+    "show students not verified": ("get_unverified_students", {}),
+
+    "show placement overview": ("get_placement_overview", {}),
+    "placement overview": ("get_placement_overview", {}),
+    "how are we doing": ("get_placement_overview", {}),
+    "whats our placement rate": ("get_placement_overview", {}),
+    "what is our placement rate": ("get_placement_overview", {}),
+    "show placement stats": ("get_placement_overview", {}),
+
+    "show placement report": ("get_placement_report", {}),
+    "placement report": ("get_placement_report", {}),
+
+    "show candidate pipeline": ("get_candidate_pipeline", {}),
+    "candidate pipeline": ("get_candidate_pipeline", {}),
+    "show the pipeline": ("get_candidate_pipeline", {}),
+
+    "find jobs": ("find_jobs_platform_wide", {}),
+    "show jobs": ("find_jobs_platform_wide", {}),
+    "show me jobs": ("find_jobs_platform_wide", {}),
+    "show all jobs": ("find_jobs_platform_wide", {}),
+    "find jobs for me": ("find_jobs_platform_wide", {}),
+}
+
+
+def _handle_placement_shortcut(profile, user, message):
+    """Same idea as _handle_student_shortcut/_handle_company_shortcut:
+    runs a common placement-admin question's tool directly, zero AI
+    calls. Returns a reply dict, or None to carry on with the normal
+    AI flow (not a recognised shortcut, or the tool raised)."""
+
+    normalized = _normalize_shortcut(message)
+
+    entry = _PLACEMENT_SHORTCUTS.get(normalized)
+
+    if not entry:
+
+        return None
+
+    tool_name, args = entry
+
+    executor = PLACEMENT_TOOL_EXECUTORS.get(tool_name)
+
+    if not executor:
+
+        return None
+
+    started = time.monotonic()
+
+    try:
+
+        result = executor(profile, user, dict(args))
+
+    except Exception as e:
+
+        print("Chatbot placement shortcut error:", tool_name, e)
+
+        return None
+
+    print(f"[chatbot] placement shortcut {tool_name} took {time.monotonic() - started:.2f}s")
+
+    return _build_tool_payload(
+        _user_facing(result.get("summary", "Here's what I found.")),
+        [(None, tool_name, result)],
+    )
+
+
 def _build_tool_payload(final_text, executed):
     """
     Merges the structured data from every executed tool into one response
@@ -8168,6 +8411,21 @@ def _generate_reply_inner(user, message, history=None, page_context=None):
         if company_shortcut_reply is not None:
 
             return company_shortcut_reply
+
+    if role == "placement_admin" and actor_profile:
+
+        # Same idea again: a plain, common placement-admin question
+        # ("show all drives", "pending company approvals") answered
+        # directly, no AI call - this portal never had this fast
+        # path either.
+
+        placement_shortcut_reply = _handle_placement_shortcut(
+            actor_profile, user, message
+        )
+
+        if placement_shortcut_reply is not None:
+
+            return placement_shortcut_reply
 
     if role == "student" and actor_profile:
 
