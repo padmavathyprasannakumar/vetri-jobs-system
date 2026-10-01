@@ -6340,6 +6340,50 @@ def _tool_get_pending_company_approvals(profile, user, args):
     }
 
 
+def _tool_list_students(profile, user, args):
+    """
+    A general, ALL-students roster - not scoped to only unverified
+    ones the way get_unverified_students is. "give me students
+    name"/"show me students" had nothing to call before this, so the
+    model could only give a vague refusal instead of real names, even
+    though the exact same data already backs the real Students page
+    and Candidate Pipeline.
+    """
+
+    from jobsystem.models import StudentProfile
+
+    students = StudentProfile.objects.all().order_by("-id")[:15]
+
+    data = [
+        {
+            "full_name": s.full_name,
+            "department": s.department,
+            "verified": s.verified,
+            "placement_status": s.placement_status,
+        }
+        for s in students
+    ]
+
+    if not data:
+
+        return {"students": [], "summary": "No students registered yet."}
+
+    lines = [
+        f"- {s['full_name']} ({s['department'] or 'department not set'}): "
+        f"{s['placement_status']}"
+        + ("" if s["verified"] else " - not verified")
+        for s in data[:8]
+    ]
+
+    summary = f"{len(data)} student(s):\n\n" + "\n".join(lines)
+
+    return {
+        "students": data,
+        "navigate_to": "/placement/students",
+        "summary": summary,
+    }
+
+
 def _tool_get_unverified_students(profile, user, args):
 
     from jobsystem.models import StudentProfile
@@ -6759,10 +6803,27 @@ PLACEMENT_TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "list_students",
+            "description": (
+                "A general, ALL-students roster with real names, "
+                "department and placement status - NOT scoped to "
+                "only unverified ones. Use for 'give me students "
+                "name'/'show me students'/'list students' with no "
+                "further filter. For ONLY unverified students, use "
+                "get_unverified_students instead."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_unverified_students",
             "description": (
-                "Get students who haven't been verified yet. Use "
-                "when asked which students still need verification."
+                "Get ONLY students who haven't been verified yet - "
+                "for a general all-students list, use list_students "
+                "instead. Use when asked which students still need "
+                "verification."
             ),
             "parameters": {"type": "object", "properties": {}, "required": []},
         },
@@ -6844,6 +6905,7 @@ PLACEMENT_TOOL_SCHEMAS = [
 
 
 PLACEMENT_TOOL_EXECUTORS = {
+    "list_students": _tool_list_students,
     "get_company_insights": _tool_get_company_insights,
     "find_jobs_platform_wide": _tool_find_jobs_platform_wide,
     "get_placement_overview": _tool_get_placement_overview,
@@ -7955,6 +8017,15 @@ _PLACEMENT_SHORTCUTS = {
     "show company insights": ("get_company_insights", {}),
     "tell me about our companies": ("get_company_insights", {}),
     "show all companies": ("get_company_insights", {}),
+
+    "give me students name": ("list_students", {}),
+    "give me student names": ("list_students", {}),
+    "show me students": ("list_students", {}),
+    "show students": ("list_students", {}),
+    "list students": ("list_students", {}),
+    "show all students": ("list_students", {}),
+    "students name": ("list_students", {}),
+    "student names": ("list_students", {}),
 }
 
 
