@@ -4019,15 +4019,38 @@ def _tool_check_ats_friendliness(profile, user, args):
 
     if len(issues) == 1 and issues[0].startswith("ATS analysis failed:"):
 
+        # The ATS-SPECIFIC check genuinely needs a live AI call and just
+        # failed (shared quota busy) - but the ORIGINAL resume analysis,
+        # done once at upload time, already found real, concrete gaps
+        # (missing_information) and saved them. Reading that back here
+        # costs nothing - zero AI calls - so "the AI is busy" no longer
+        # means the student gets nothing actionable, just not the
+        # ATS-specific formatting/parsing checks (headers, columns,
+        # fonts) that genuinely require a fresh analysis.
+
+        fallback_lines = [
+            "I couldn't run the ATS check just now - the AI service is "
+            f"temporarily busy. Your official resume score is still "
+            f"{resume.resume_score}/100 either way."
+        ]
+
+        if resume.missing_information:
+
+            fallback_lines.append(
+                "\nWhat's already known to improve it:\n"
+                + "\n".join(f"- {item}" for item in resume.missing_information[:8])
+            )
+
+        fallback_lines.append(
+            "\nFor the ATS-specific formatting checks (headers, columns, "
+            "parsing), please try again in a minute."
+        )
+
         return {
             "has_resume": True,
             "resume_score": resume.resume_score,
-            "summary": (
-                "I couldn't run the ATS check just now - the AI service "
-                f"is temporarily busy. Your official resume score is "
-                f"still {resume.resume_score}/100 either way. Please "
-                "try the ATS check again in a minute."
-            ),
+            "missing_information": resume.missing_information,
+            "summary": "\n".join(fallback_lines),
         }
 
     # The actual issue/suggestion TEXT goes into "summary" - not just their
