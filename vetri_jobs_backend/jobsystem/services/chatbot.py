@@ -874,6 +874,19 @@ a general list of jobs instead - they asked about one job, so the answer
 must be about that job: the confirmation, or exactly why they can't apply,
 followed by the jobs they can apply to.
 
+BE A REAL CAREER ASSISTANT, NOT JUST A DATA LOOKUP: when a student asks for
+interview or career prep on a role they have never applied to or interviewed
+for (get_interview_prep finds nothing), that is not a dead end - give
+genuinely useful general preparation advice for that role type from your own
+knowledge: common interview questions, key skills to highlight, what
+interviewers typically look for. The same applies more broadly - a student
+can reasonably ask about any job role, not just the ones on this platform,
+and you should answer helpfully either way, the same way a real career
+advisor (or ChatGPT) would, rather than refusing because nothing matched a
+database lookup. Only decline things genuinely outside scope (see TOPIC
+SCOPE above), never a legitimate career question just because it isn't
+backed by platform data.
+
 ANSWER WITH THE REAL DETAIL, NOT A COUNT: when a tool returns a list of
 issues, suggestions, missing information, or similar findings, your reply
 must actually name them - a few sentences or a short list - never just
@@ -3625,6 +3638,33 @@ def _tool_get_interview_prep(profile, user, args):
 
         company_name = job.company.company_name if job.company else "Company"
 
+        job_description = getattr(job, "description", "") or ""
+
+        # Same fix as every other tool in this file: "summary" is what
+        # gets shown if the model's own write-up pass is ever skipped
+        # or fails (a busy time/token budget, a Groq hiccup) - a bare
+        # one-liner here meant the student got NOTHING useful in that
+        # case, despite the real skills/description already being
+        # found. Listing them directly means there is always a real,
+        # useful fallback answer, not just a dead end.
+
+        prep_lines = [
+            f"Interview for {job.title} at {company_name} on "
+            f"{interview.interview_date.strftime('%b %d, %Y')} at "
+            f"{interview.interview_date.strftime('%I:%M %p')} "
+            f"({interview.get_interview_mode_display()})."
+        ]
+
+        if skills_required:
+
+            prep_lines.append(
+                "\nKey skills to prepare: " + ", ".join(skills_required[:10])
+            )
+
+        if job_description:
+
+            prep_lines.append(f"\nRole: {job_description[:400]}")
+
         return {
             "job_title": job.title,
             "company": company_name,
@@ -3632,11 +3672,8 @@ def _tool_get_interview_prep(profile, user, args):
             "interview_time": interview.interview_date.strftime("%I:%M %p"),
             "mode": interview.get_interview_mode_display(),
             "skills_required": skills_required,
-            "job_description": getattr(job, "description", "") or "",
-            "summary": (
-                f"Interview for {job.title} at {company_name} on "
-                f"{interview.interview_date.strftime('%b %d, %Y')}."
-            ),
+            "job_description": job_description,
+            "summary": "\n".join(prep_lines),
         }
 
     apps_qs = Application.objects.filter(
@@ -3662,7 +3699,26 @@ def _tool_get_interview_prep(profile, user, args):
             if s.strip()
         ]
 
+        job_description = getattr(job, "description", "") or ""
+
         company_name = job.company.company_name if job.company else "Company"
+
+        prep_lines = [
+            f"No interview is scheduled yet for {job.title} at "
+            f"{company_name} (application status: "
+            f"{application.get_status_display()}), but here's what "
+            "to prepare based on the role's real requirements."
+        ]
+
+        if skills_required:
+
+            prep_lines.append(
+                "\nKey skills to prepare: " + ", ".join(skills_required[:10])
+            )
+
+        if job_description:
+
+            prep_lines.append(f"\nRole: {job_description[:400]}")
 
         return {
             "job_title": job.title,
@@ -3670,13 +3726,8 @@ def _tool_get_interview_prep(profile, user, args):
             "interview_scheduled": False,
             "application_status": application.get_status_display(),
             "skills_required": skills_required,
-            "job_description": getattr(job, "description", "") or "",
-            "summary": (
-                f"No interview is scheduled yet for {job.title} at "
-                f"{company_name} (application status: "
-                f"{application.get_status_display()}), but here's what "
-                "to prepare based on the role's real requirements."
-            ),
+            "job_description": job_description,
+            "summary": "\n".join(prep_lines),
         }
 
     return {
@@ -4954,7 +5005,16 @@ TOOL_SCHEMAS = [
                 "a job they've applied to, even with no interview "
                 "scheduled yet - it falls back to the real application "
                 "in that case, so never refuse this just because "
-                "nothing is booked yet."
+                "nothing is booked yet. If it finds NOTHING (the "
+                "student is asking about a role type they've never "
+                "applied to or interviewed for - e.g. 'Data Analyst' "
+                "when they've only ever applied to Software Tester "
+                "roles), that is NOT a dead end: still give genuinely "
+                "useful general preparation advice for that role type "
+                "from your own knowledge - common interview questions, "
+                "key skills to highlight, what interviewers typically "
+                "look for. Never just report that nothing was found "
+                "and stop there."
             ),
             "parameters": {
                 "type": "object",
