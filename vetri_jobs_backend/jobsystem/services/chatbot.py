@@ -7721,6 +7721,20 @@ _STUDENT_SHORTCUTS = {
     "show my notifications": ("get_notifications", {}),
     "update my profile": ("get_my_profile", {}),
     "show my profile": ("get_my_profile", {}),
+
+    # "what is my resume score" and close variants - a very common,
+    # basic question that slipped through: _IMPROVE_RESUME_RE only
+    # matches phrases led by a verb (build/improve/raise...), and this
+    # one is a plain "what is" question with no such verb, so it fell
+    # through to a full AI call for no reason, same class of gap as
+    # every other shortcut in this file.
+    "what is my resume score": ("get_resume_feedback", {}),
+    "whats my resume score": ("get_resume_feedback", {}),
+    "what's my resume score": ("get_resume_feedback", {}),
+    "my resume score": ("get_resume_feedback", {}),
+    "show my resume score": ("get_resume_feedback", {}),
+    "show me my resume score": ("get_resume_feedback", {}),
+    "what is my resume score out of 100": ("get_resume_feedback", {}),
 }
 
 
