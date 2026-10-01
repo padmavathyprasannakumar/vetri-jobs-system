@@ -3535,6 +3535,48 @@ def _tool_get_upcoming_interviews(profile, user, args):
     }
 
 
+_JOB_TITLE_KEYWORD_STOPWORDS = {
+    "the", "a", "an", "job", "jobs", "role", "roles", "position",
+    "positions", "for", "of", "related", "interview", "interviews",
+    "prepare", "preparing", "prep", "want", "to", "i", "need", "my",
+}
+
+
+def _job_title_keyword_q(field_prefix, job_title):
+    """
+    Builds a Q matching ANY significant word in job_title against
+    <field_prefix>__icontains, instead of requiring the WHOLE phrase
+    as one literal substring - "software developer job related
+    interview" should still find a real posting like "Junior Python
+    Full Stack Developer" via the shared word "developer", even
+    though the real title never contains "software developer" (or
+    the student's full sentence) as one continuous substring. Same
+    approach as get_job_description on the company side - a
+    recruiter's or student's own phrasing of a role very often
+    doesn't literally appear in the real posting title. Returns None
+    if nothing usable is left after stripping filler words.
+    """
+
+    from django.db.models import Q
+
+    words = [
+        w for w in re.split(r"\s+", (job_title or "").lower())
+        if len(w) > 2 and w not in _JOB_TITLE_KEYWORD_STOPWORDS
+    ]
+
+    if not words:
+
+        return None
+
+    q = Q()
+
+    for w in words:
+
+        q |= Q(**{f"{field_prefix}__icontains": w})
+
+    return q
+
+
 def _tool_get_interview_prep(profile, user, args):
     """
     Covers "How can I prepare for this interview?" with real
@@ -3564,7 +3606,11 @@ def _tool_get_interview_prep(profile, user, args):
 
     if job_title:
 
-        qs = qs.filter(application__job__title__icontains=job_title)
+        title_q = _job_title_keyword_q("application__job__title", job_title)
+
+        if title_q is not None:
+
+            qs = qs.filter(title_q)
 
     interview = qs.first()
 
@@ -3599,7 +3645,11 @@ def _tool_get_interview_prep(profile, user, args):
 
     if job_title:
 
-        apps_qs = apps_qs.filter(job__title__icontains=job_title)
+        title_q = _job_title_keyword_q("job__title", job_title)
+
+        if title_q is not None:
+
+            apps_qs = apps_qs.filter(title_q)
 
     application = apps_qs.first()
 
@@ -7735,6 +7785,18 @@ _STUDENT_SHORTCUTS = {
     "show my resume score": ("get_resume_feedback", {}),
     "show me my resume score": ("get_resume_feedback", {}),
     "what is my resume score out of 100": ("get_resume_feedback", {}),
+
+    # "any jobs i saved" and close variants - a very common, plain
+    # question about bookmarked jobs that had zero shortcut coverage,
+    # even though get_saved_jobs is an existing, working, instant tool.
+    "any jobs i saved": ("get_saved_jobs", {}),
+    "show my saved jobs": ("get_saved_jobs", {}),
+    "show saved jobs": ("get_saved_jobs", {}),
+    "my saved jobs": ("get_saved_jobs", {}),
+    "saved jobs": ("get_saved_jobs", {}),
+    "show me my saved jobs": ("get_saved_jobs", {}),
+    "what jobs have i saved": ("get_saved_jobs", {}),
+    "which jobs did i save": ("get_saved_jobs", {}),
 }
 
 
