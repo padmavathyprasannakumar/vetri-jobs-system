@@ -88,13 +88,73 @@ const bodyRef = useRef(null);
 const fileInputRef = useRef(null);
 
 
-const [messages,setMessages] = useState([{
+const initialGreeting = {
 
 sender:"bot",
 
 text:"Hi! I'm Vetri AI 👋\n\nI can help you with job opportunities, placement drives, student information, company details and more. How can I assist you today?"
 
-}]);
+};
+
+
+// Without this, the conversation lived ONLY in React state - the
+// instant this page unmounted (which happens the moment the admin
+// clicks any other tab), the whole thing was thrown away, and coming
+// back always started fresh from the greeting. sessionStorage
+// survives navigating away and back, matching how the student and
+// company AI assistant pages already behave - still clears on an
+// actual browser/tab close. Keyed by the admin's own id so two
+// different accounts used in the same browser tab/session never see
+// each other's chat.
+
+const getStoredUserId = ()=>{
+
+try{
+
+const stored = JSON.parse(localStorage.getItem("user") || "null");
+
+return stored?.id || stored?.username || "guest";
+
+}
+catch(e){
+
+return "guest";
+
+}
+
+};
+
+
+const STORAGE_KEY = `vetri_placement_ai_chat_${getStoredUserId()}`;
+
+
+const loadStoredMessages = ()=>{
+
+try{
+
+const raw = sessionStorage.getItem(STORAGE_KEY);
+
+if(raw){
+
+const parsed = JSON.parse(raw);
+
+if(Array.isArray(parsed) && parsed.length > 0) return parsed;
+
+}
+
+}
+catch(e){
+
+// corrupted/unavailable storage - fall through to a fresh greeting
+
+}
+
+return [initialGreeting];
+
+};
+
+
+const [messages,setMessages] = useState(loadStoredMessages);
 
 
 const [message,setMessage] = useState("");
@@ -128,6 +188,26 @@ bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
 }
 
 },[messages,loading]);
+
+
+useEffect(()=>{
+
+try{
+
+sessionStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
+
+}
+catch(e){
+
+// storage full/unavailable (private browsing, etc.) - the chat
+// still works for this page view, it just won't survive a tab
+// switch this one time.
+
+}
+
+// eslint-disable-next-line react-hooks/exhaustive-deps
+
+},[messages]);
 
 
 
