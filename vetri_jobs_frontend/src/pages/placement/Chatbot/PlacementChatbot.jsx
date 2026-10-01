@@ -44,15 +44,21 @@ import "./PlacementChatbot.css";
 
 
 
+// Each capability now actually DOES something when clicked - matching
+// the real backend shortcuts/tools (find jobs, placement drives, company
+// insights all answer instantly; application help is a general knowledge
+// question the AI answers from the platform's own process, same as the
+// existing Suggested Questions already do).
+
 const CAPABILITIES = [
 
-    { icon:<FaSearch/>, label:"Find Jobs", desc:"Search relevant opportunities" },
+    { icon:<FaSearch/>, label:"Find Jobs", desc:"Search relevant opportunities", trigger:"find jobs" },
 
-    { icon:<FaCalendarAlt/>, label:"Drive Information", desc:"Get details about placement drives" },
+    { icon:<FaCalendarAlt/>, label:"Drive Information", desc:"Get details about placement drives", trigger:"show all drives" },
 
-    { icon:<FaBuilding/>, label:"Company Insights", desc:"Learn about hiring companies" },
+    { icon:<FaBuilding/>, label:"Company Insights", desc:"Learn about hiring companies", trigger:"company insights" },
 
-    { icon:<FaFileAlt/>, label:"Application Help", desc:"Guidance on applications" },
+    { icon:<FaFileAlt/>, label:"Application Help", desc:"Guidance on applications", trigger:"How do students apply for jobs and placement drives?" },
 
 ];
 
@@ -339,7 +345,17 @@ placeholder="Type your message here..."
 {
 CAPABILITIES.map((cap,index)=>(
 
-<div className="pc-capability-card" key={index}>
+<div
+
+className="pc-capability-card"
+
+key={index}
+
+onClick={()=>handleSend(cap.trigger)}
+
+style={{cursor:"pointer"}}
+
+>
 
 <span className="pc-capability-icon">{cap.icon}</span>
 
