@@ -7524,6 +7524,18 @@ def _execute_tool_calls(tool_calls, tool_executors, actor_profile, user):
 _FAST_REPLY_TOOLS = {
     "find_matching_jobs", "check_job_eligibility", "list_open_jobs",
     "get_saved_jobs", "get_notifications",
+
+    # Added once these three tools' own summaries were fixed to include
+    # real detail (skills, description, eligibility) rather than a bare
+    # one-liner - the AI's second "write-up" pass was only ever
+    # re-wording something already good, so skipping it for a simple
+    # request halves the AI-call cost (and the quota exposure) for any
+    # question that successfully routes to one of these, not just a
+    # specific hand-picked phrase. get_career_plan and
+    # get_company_skill_gap are deliberately NOT included - their real
+    # value is the AI actively cross-referencing/prioritizing the raw
+    # data into a plan, which a skipped write-up pass would lose.
+    "get_job_details", "get_interview_prep", "get_skill_suggestions",
 }
 
 
