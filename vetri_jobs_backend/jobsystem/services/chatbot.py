@@ -7989,6 +7989,41 @@ _INTERVIEW_CHECK_RE = re.compile(
 )
 
 
+# A trailing "this week" / "in this week" / "within this week" clause on
+# any of the interview-check phrases above - "any interview scheduled in
+# this week" and "interview scheduled this week" need the SAME shortcut,
+# but also need this_week=True actually passed through to the tool, not
+# just the phrase recognised. Stripped off before matching, so the core
+# _INTERVIEW_CHECK_RE above stays simple and this extra case can't
+# silently drift out of sync with it.
+
+_THIS_WEEK_SUFFIX_RE = re.compile(r"\s+(?:in\s+|within\s+)?this\s+week$")
+
+
+def _interview_check_args(normalized):
+    """None if not an interview-check phrase; otherwise the args to pass
+    to get_upcoming_interviews (this_week=True if a trailing "this week"
+    clause was present, {} otherwise)."""
+
+    text = normalized
+
+    this_week = False
+
+    match = _THIS_WEEK_SUFFIX_RE.search(text)
+
+    if match:
+
+        text = text[:match.start()]
+
+        this_week = True
+
+    if _INTERVIEW_CHECK_RE.match(text):
+
+        return {"this_week": True} if this_week else {}
+
+    return None
+
+
 # "check my resume score" (and close variants) - the student-reported
 # phrasing that still fell through even after "what is my resume score"
 # was added. Broader than the exact-match entries in _STUDENT_SHORTCUTS,
@@ -8020,6 +8055,20 @@ _IMPROVE_RESUME_RE = re.compile(
     r"(?:score)?\s*"
     r"(?:is\s+|to\s+be\s+|to\s+|be\s+)?"
     r"(?:more\s+than|above|over|higher(?:\s+than)?|better(?:\s+than)?)?\s*\d*%?$"
+)
+
+
+# "i saved any jobs" (and other word-order variants of the exact phrases
+# already in _STUDENT_SHORTCUTS) - a natural way to ask the same question
+# that the exact-match dict alone didn't cover, same class of gap as
+# _MY_APPLICATIONS_RE catching application-status grammar.
+
+_SAVED_JOBS_RE = re.compile(
+    r"^(?:any\s+)?jobs?\s+i\s+saved\??$"
+    r"|^i\s+saved\s+(?:any\s+)?jobs?\??$"
+    r"|^(?:what|which)\s+jobs?\s+(?:have\s+|did\s+)?i\s+save[d]?\??$"
+    r"|^(?:any|my|show(?:\s+me)?)\s+saved\s+jobs?\??$"
+    r"|^saved\s+jobs?\??$"
 )
 
 
@@ -8097,9 +8146,13 @@ def _handle_student_shortcut(profile, user, message):
 
         entry = ("get_application_status", {})
 
-    if not entry and _INTERVIEW_CHECK_RE.match(normalized):
+    if not entry:
 
-        entry = ("get_upcoming_interviews", {})
+        interview_args = _interview_check_args(normalized)
+
+        if interview_args is not None:
+
+            entry = ("get_upcoming_interviews", interview_args)
 
     if not entry and _RESUME_SCORE_RE.match(normalized):
 
@@ -8108,6 +8161,10 @@ def _handle_student_shortcut(profile, user, message):
     if not entry and _SKILL_SUGGESTION_RE.match(normalized):
 
         entry = ("get_skill_suggestions", {})
+
+    if not entry and _SAVED_JOBS_RE.match(normalized):
+
+        entry = ("get_saved_jobs", {})
 
     if not entry and _IMPROVE_RESUME_RE.match(normalized):
 
