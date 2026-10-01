@@ -6427,6 +6427,73 @@ def _tool_get_placement_drives(profile, user, args):
     }
 
 
+def _tool_get_company_insights(profile, user, args):
+    """
+    An ACROSS-ALL-COMPANIES overview - unlike get_company_history
+    (which needs one specific company named), this is for "Company
+    Insights" clicked with no particular company in mind: which
+    companies are posting the most, hiring the most, still pending
+    approval. The "Company Insights" capability advertised on this
+    page had no tool behind it for the general case before this -
+    only the single-company lookup existed.
+    """
+
+    from jobsystem.models import CompanyProfile, Job, Application
+
+    companies = CompanyProfile.objects.all()
+
+    rows = []
+
+    for c in companies:
+
+        jobs_count = Job.objects.filter(company=c).count()
+
+        apps = Application.objects.filter(job__company=c)
+
+        hired = apps.filter(status="selected").count()
+
+        rows.append({
+            "company_name": c.company_name,
+            "industry": c.industry,
+            "approval_status": c.approval_status,
+            "jobs_posted": jobs_count,
+            "applications": apps.count(),
+            "hired": hired,
+        })
+
+    if not rows:
+
+        return {
+            "companies": [],
+            "summary": "No companies registered yet.",
+        }
+
+    rows.sort(key=lambda r: (r["jobs_posted"], r["applications"]), reverse=True)
+
+    top = rows[:8]
+
+    lines = [
+        f"- {r['company_name']} ({r['industry'] or 'industry not set'}, "
+        f"{r['approval_status']}): {r['jobs_posted']} job(s) posted, "
+        f"{r['applications']} application(s), {r['hired']} hired"
+        for r in top
+    ]
+
+    pending_count = sum(1 for r in rows if r["approval_status"] == "pending")
+
+    summary = (
+        f"{len(rows)} compan{'y' if len(rows) == 1 else 'ies'} registered "
+        f"({pending_count} awaiting approval). Top by activity:\n\n"
+        + "\n".join(lines)
+    )
+
+    return {
+        "companies": rows,
+        "navigate_to": "/placement/companies",
+        "summary": summary,
+    }
+
+
 def _tool_get_company_history(profile, user, args):
 
     from jobsystem.models import CompanyProfile, Job, Application
@@ -6651,6 +6718,21 @@ PLACEMENT_TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "get_company_insights",
+            "description": (
+                "ACROSS-ALL-COMPANIES overview - which companies are "
+                "posting the most jobs, hiring the most, pending "
+                "approval. Use for 'company insights'/'tell me about "
+                "our companies' with no specific company named. For "
+                "ONE named company's own history, use "
+                "get_company_history instead."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_placement_overview",
             "description": (
                 "Get overall placement stats: total students, "
@@ -6762,6 +6844,7 @@ PLACEMENT_TOOL_SCHEMAS = [
 
 
 PLACEMENT_TOOL_EXECUTORS = {
+    "get_company_insights": _tool_get_company_insights,
     "find_jobs_platform_wide": _tool_find_jobs_platform_wide,
     "get_placement_overview": _tool_get_placement_overview,
     "get_pending_company_approvals": _tool_get_pending_company_approvals,
@@ -7854,6 +7937,11 @@ _PLACEMENT_SHORTCUTS = {
     "show me jobs": ("find_jobs_platform_wide", {}),
     "show all jobs": ("find_jobs_platform_wide", {}),
     "find jobs for me": ("find_jobs_platform_wide", {}),
+
+    "company insights": ("get_company_insights", {}),
+    "show company insights": ("get_company_insights", {}),
+    "tell me about our companies": ("get_company_insights", {}),
+    "show all companies": ("get_company_insights", {}),
 }
 
 
