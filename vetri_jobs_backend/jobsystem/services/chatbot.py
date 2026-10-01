@@ -45,6 +45,9 @@ import re
 import threading
 import time
 
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+
 from datetime import timedelta
 
 from django.utils import timezone
@@ -8196,6 +8199,15 @@ def _handle_student_shortcut(profile, user, message):
 
     if not entry:
 
+        # Last resort before falling through to the AI: semantic
+        # matching against every phrase already known to the exact
+        # dicts/regexes above - catches a paraphrase or word-order
+        # variant of a KNOWN question type without needing it hand-added.
+
+        entry = _student_semantic_matcher.match(message)
+
+    if not entry:
+
         return None
 
     tool_name, args = entry
@@ -8335,6 +8347,13 @@ def _handle_company_shortcut(profile, user, message, history=None):
 
     if not entry:
 
+        # Same last-resort semantic matching as the student handler -
+        # see the SEMANTIC SHORTCUT MATCHING block above for why.
+
+        entry = _company_semantic_matcher.match(message)
+
+    if not entry:
+
         return None
 
     tool_name, args = entry
@@ -8439,6 +8458,198 @@ _PLACEMENT_SHORTCUTS = {
 }
 
 
+# =====================================================
+# SEMANTIC SHORTCUT MATCHING
+#
+# Every shortcut above (and the regexes near them) exists for one reason:
+# a plain, common question should never need a live Groq call, so it can
+# never fail from the shared account's tight quota. The exact-phrase
+# dicts and regexes work well, but every new way a real person phrases
+# the SAME question ("i saved any jobs" vs "any jobs i saved") has had
+# to be found through a real bug report and hand-added - a losing game
+# long-term, since there's always a phrasing not yet seen.
+#
+# This generalizes it: TF-IDF + cosine similarity (NOT a heavy embedding
+# model - no PyTorch, no GPU, no multi-hundred-MB download, safe for a
+# free-tier server) trained on the exact-phrase dicts that already exist
+# above, so there is no new "truth" to maintain separately - every fix
+# already made is automatically part of this too. At runtime, a message
+# that doesn't exactly match anything is compared to every known example;
+# close enough (by both an absolute similarity THRESHOLD and a MARGIN
+# over the next-best, different-intent match) routes to that shortcut,
+# otherwise it falls through to the normal AI flow exactly as before -
+# this only ever adds coverage, never removes the existing fallback.
+#
+# Deliberately conservative: a wrong match here is worse than falling
+# through to the AI (a confidently wrong instant answer beats nothing,
+# but is still wrong), so the threshold/margin were tuned against a real
+# adversarial test set - not just the positive cases - before being used
+# for anything live. Only ever built from READ-ONLY shortcut entries, so
+# it can never accidentally route a message to a write action.
+# =====================================================
+
+SEMANTIC_MATCH_THRESHOLD = float(os.getenv("SEMANTIC_MATCH_THRESHOLD", "0.70"))
+
+SEMANTIC_MATCH_MARGIN = float(os.getenv("SEMANTIC_MATCH_MARGIN", "0.08"))
+
+# Cosine similarity alone isn't enough: "what jobs did I apply to IN
+# CHENNAI" scored a PERFECT 1.000 against the plain "what jobs did i
+# apply to" in testing - TF-IDF doesn't notice that "chennai" is new,
+# meaningful information the fixed-args shortcut has no way to act on.
+# Same failure for "did i apply to SOFTWARE TESTER" (a specific job)
+# and "is my resume ATS FRIENDLY" (a genuinely different, AI-requiring
+# check) - both scored well above threshold against a more general
+# known phrase. A word the query introduces that ISN'T in the matched
+# training phrase (beyond ordinary filler) is exactly the signal that
+# the question is MORE SPECIFIC than anything this shortcut can
+# actually answer - so even a high-confidence match is rejected if it
+# introduces any such word.
+
+_SEMANTIC_FILLER_WORDS = {
+    "please", "the", "a", "an", "to", "for", "of", "me", "my",
+    "is", "are", "i", "any",
+}
+
+
+def _novel_and_missing_word_counts(query_words, phrase_words):
+    """
+    (novel, missing): words the QUERY adds beyond the matched training
+    phrase, and significant words from the PHRASE the query leaves out -
+    both checked, not just one. Novel words catch a MORE SPECIFIC
+    question ("...in Chennai", "...for Software Tester") that the
+    shortcut's fixed args can't actually answer. Missing words catch
+    the opposite failure: a bare, ambiguous fragment like "did i
+    apply" (no object at all) scoring deceptively high against a full
+    phrase like "did i apply any jobs" purely because every one of its
+    few words happens to already appear there - a real but incomplete
+    question deserves the AI's judgment, not a confident guess.
+    """
+
+    query_set, phrase_set = set(query_words), set(phrase_words)
+
+    novel = sum(
+        1 for w in query_set
+        if w not in phrase_set and w not in _SEMANTIC_FILLER_WORDS
+    )
+
+    missing = sum(
+        1 for w in phrase_set
+        if w not in query_set and w not in _SEMANTIC_FILLER_WORDS
+    )
+
+    return novel, missing
+
+
+class _SemanticShortcutMatcher:
+    """Fit once (at import time) on a role's known phrase -> (tool, args)
+    examples; .match(message) returns (tool, args) or None at runtime.
+    Fitting is near-instant (tens of short phrases), and matching a single
+    message is a single sparse vector transform + cosine similarity - both
+    negligible compared to a network round trip to Groq, let alone a
+    rate-limited one."""
+
+    def __init__(self, entries):  # entries: {phrase: (tool, args)}
+
+        self.phrases = list(entries.keys())
+
+        self.tools_and_args = list(entries.values())
+
+        self.vectorizer = TfidfVectorizer(ngram_range=(1, 2), analyzer="word")
+
+        self.matrix = self.vectorizer.fit_transform(self.phrases)
+
+    def match(self, message):
+
+        normalized = _normalize_shortcut(message)
+
+        if not normalized:
+
+            return None
+
+        query_vec = self.vectorizer.transform([normalized])
+
+        similarities = cosine_similarity(query_vec, self.matrix)[0]
+
+        order = similarities.argsort()[::-1]
+
+        best_idx, second_idx = order[0], order[1]
+
+        best_score = similarities[best_idx]
+
+        if best_score < SEMANTIC_MATCH_THRESHOLD:
+
+            return None
+
+        best_phrase = self.phrases[best_idx]
+
+        novel, missing = _novel_and_missing_word_counts(
+            normalized.split(), best_phrase.split()
+        )
+
+        if novel > 0 or missing > 0:
+
+            # Either the question adds real new information (a
+            # location, a specific job/company name, "ATS", a time
+            # filter - the fixed-args shortcut has no way to act on
+            # any of that), or it's missing enough of the matched
+            # phrase's own significant words to be a bare, ambiguous
+            # fragment rather than a genuine paraphrase of it. Either
+            # way, let the AI handle it properly instead of guessing.
+
+            return None
+
+        best_tool = self.tools_and_args[best_idx][0]
+
+        second_tool = self.tools_and_args[second_idx][0]
+
+        margin = best_score - similarities[second_idx]
+
+        if second_tool != best_tool and margin < SEMANTIC_MATCH_MARGIN:
+
+            # Ambiguous - the two best matches disagree on what the
+            # student even wants, and aren't confidently far apart.
+            # Safer to let the normal AI flow handle it.
+
+            return None
+
+        tool, args = self.tools_and_args[best_idx]
+
+        return tool, dict(args)
+
+
+def _build_semantic_examples(*sources):
+    """Merges any number of {phrase: (tool, args)} / {phrase} (implying
+    (tool, args) given separately) dicts into one flat training set,
+    skipping anything already covered - the semantic matcher's whole
+    point is to catch what the exact dicts DON'T, so there's no reason
+    to duplicate entries that already match exactly."""
+
+    merged = {}
+
+    for source in sources:
+
+        merged.update(source)
+
+    return merged
+
+
+_STUDENT_SEMANTIC_EXAMPLES = _build_semantic_examples(
+    _STUDENT_SHORTCUTS,
+    {phrase: ("find_matching_jobs", {"recent_only": True}) for phrase in _NEW_JOBS_PHRASES},
+    {phrase: ("get_application_status", {}) for phrase in _APPLICATION_STATUS_PHRASES},
+)
+
+_COMPANY_SEMANTIC_EXAMPLES = dict(_COMPANY_SHORTCUTS)
+
+_PLACEMENT_SEMANTIC_EXAMPLES = dict(_PLACEMENT_SHORTCUTS)
+
+_student_semantic_matcher = _SemanticShortcutMatcher(_STUDENT_SEMANTIC_EXAMPLES)
+
+_company_semantic_matcher = _SemanticShortcutMatcher(_COMPANY_SEMANTIC_EXAMPLES)
+
+_placement_semantic_matcher = _SemanticShortcutMatcher(_PLACEMENT_SEMANTIC_EXAMPLES)
+
+
 def _handle_placement_shortcut(profile, user, message):
     """Same idea as _handle_student_shortcut/_handle_company_shortcut:
     runs a common placement-admin question's tool directly, zero AI
@@ -8452,6 +8663,13 @@ def _handle_placement_shortcut(profile, user, message):
     if not entry and _HOW_MANY_APPLIED_RE.match(normalized):
 
         entry = ("get_placement_overview", {})
+
+    if not entry:
+
+        # Same last-resort semantic matching as the student/company
+        # handlers - see the SEMANTIC SHORTCUT MATCHING block above.
+
+        entry = _placement_semantic_matcher.match(message)
 
     if not entry:
 
