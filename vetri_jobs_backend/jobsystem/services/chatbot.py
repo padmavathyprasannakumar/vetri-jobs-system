@@ -7587,6 +7587,24 @@ def _can_skip_text_pass(executed):
 
             return False
 
+        if name in ("get_interview_prep", "get_job_details") and "job_title" not in result:
+
+            # The "nothing found" case for these two tools is a BARE
+            # one-liner by design ("No upcoming interview found...") -
+            # real content only exists once a real job/interview/
+            # application was actually found (the "job_title" key is
+            # only ever set then). Skipping the AI here would silently
+            # bypass the "give genuinely useful general advice instead
+            # of a dead end" instruction built specifically for this
+            # exact case (see BE A REAL CAREER ASSISTANT in the system
+            # prompt) - the bug this fixes was discovered from a real
+            # report: "no upcoming interview found" was being shown
+            # verbatim for a role the student had never applied to,
+            # instead of the general prep advice that instruction
+            # exists to provide.
+
+            return False
+
         if name == "find_matching_jobs":
 
             # "which job is best?" (limit=1) needs the AI to explain WHY.
