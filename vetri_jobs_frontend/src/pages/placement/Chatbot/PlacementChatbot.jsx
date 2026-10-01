@@ -34,11 +34,7 @@ import {
 
     FaBuilding,
 
-    FaFileAlt,
-
-    FaPen,
-
-    FaGraduationCap
+    FaFileAlt
 
 } from "react-icons/fa";
 
@@ -57,10 +53,6 @@ const CAPABILITIES = [
     { icon:<FaBuilding/>, label:"Company Insights", desc:"Learn about hiring companies" },
 
     { icon:<FaFileAlt/>, label:"Application Help", desc:"Guidance on applications" },
-
-    { icon:<FaPen/>, label:"Resume Tips", desc:"Improve your resume with AI" },
-
-    { icon:<FaGraduationCap/>, label:"Career Advice", desc:"Get personalized guidance" },
 
 ];
 
