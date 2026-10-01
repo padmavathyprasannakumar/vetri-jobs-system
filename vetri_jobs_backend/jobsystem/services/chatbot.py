@@ -4187,6 +4187,88 @@ def _tool_raise_placement_query(profile, user, args):
     }
 
 
+def _tool_rewrite_resume(profile, user, args):
+    """
+    Generates an improved, rewritten version of the resume's CONTENT as
+    text in chat - grounded in what the original analysis already found
+    (missing_information, the real extracted text) - without touching
+    the student's actual stored file. Deliberately does NOT auto-replace
+    the uploaded resume: turning AI-written text into a new, properly
+    formatted PDF/DOCX and silently swapping it in for the official
+    record is a much bigger, riskier undertaking than reading it back
+    safely in chat first. This always shows the proposed version for
+    the student to review and copy into their own resume, never a
+    silent replacement - the same "prepare, don't just do it" caution
+    already used for applying to jobs and shortlisting candidates.
+    """
+
+    from jobsystem.models import Resume
+
+    resume = Resume.objects.filter(
+        student=user, is_active=True
+    ).first()
+
+    if not resume or not resume.extracted_text:
+
+        return {
+            "has_resume": False,
+            "summary": (
+                "I don't have readable text from a resume to rewrite yet - "
+                "please upload one first (or re-upload if it was a scanned "
+                "image), then ask me to rewrite it."
+            ),
+        }
+
+    missing = resume.missing_information or []
+
+    prompt = f"""You are an expert resume writer. Below is a student's actual
+resume text, and a list of real gaps already identified in it. Rewrite the
+resume to address those gaps - add a professional summary if missing, make
+bullet points achievement-focused and quantified wherever the original
+text gives you real numbers/outcomes to work with, improve structure and
+keyword relevance - but NEVER invent experience, companies, metrics, or
+outcomes that aren't genuinely implied by the original text. If the
+original doesn't support a specific number, phrase the bullet point
+strongly without fabricating one.
+
+Known gaps to address:
+{chr(10).join(f"- {item}" for item in missing) if missing else "(none specifically flagged - improve clarity and impact generally)"}
+
+Original resume text:
+---
+{resume.extracted_text[:6000]}
+---
+
+Output ONLY the rewritten resume text, plain text, no markdown, no
+commentary before or after it."""
+
+    try:
+
+        rewritten = _clean_reply(_call_groq_plain([{"role": "user", "content": prompt}]))
+
+    except Exception as e:
+
+        return {
+            "has_resume": True,
+            "summary": (
+                "I couldn't generate a rewrite just now - the AI service is "
+                f"temporarily busy ({e}). Please try again in a moment."
+            ),
+        }
+
+    return {
+        "has_resume": True,
+        "rewritten_resume": rewritten,
+        "summary": (
+            "Here's a proposed rewrite based on your resume and the gaps "
+            "already identified. Nothing has changed yet - this is only a "
+            "suggestion for you to review:\n\n" + rewritten +
+            "\n\nIf you'd like, copy what you want into your resume and "
+            "re-upload it so your official score updates too."
+        ),
+    }
+
+
 def _tool_get_resume_download_link(profile, user, args):
     """
     Returns the resume's own id, NOT a raw URL - the frontend uses
@@ -4521,6 +4603,32 @@ def _is_interview_exit(message):
     return any(re.search(p, text) for p in _INTERVIEW_EXIT_PATTERNS)
 
 
+# "know move to next question" / "skip this one" / "next question please" -
+# a request to move PAST the current question, not an attempt at a real
+# answer. Without this, a garbled or unsure skip attempt gets recorded and
+# scored as the candidate's actual answer - exactly what happened in a real
+# report: "know move to next question" (almost certainly a typo for "ok,
+# move to next question") was scored as a near-zero technical/communication
+# answer, when the candidate never actually tried to answer the question
+# at all.
+
+_INTERVIEW_SKIP_PATTERNS = [
+    r"\bskip\b", r"\bpass\b.*question", r"\bnext\s+question\b",
+    r"\bmove\s+(?:on\s+)?to\s+(?:the\s+)?next\b",
+    r"\bi\s+don'?t\s+(?:want|wanna)\s+to\s+answer\b",
+    r"\bcan'?t\s+answer\s+this\b",
+]
+
+MIN_MOCK_INTERVIEW_QUESTIONS = int(os.getenv("MIN_MOCK_INTERVIEW_QUESTIONS", "4"))
+
+
+def _is_interview_skip(message):
+
+    text = (message or "").lower()
+
+    return any(re.search(p, text) for p in _INTERVIEW_SKIP_PATTERNS)
+
+
 # A genuine platform request (checking applications, jobs, resume, etc.)
 # made mid-interview is NOT the same as idle off-topic chat (weather,
 # trivia) - the interviewer prompt is told to refuse and redirect for
@@ -4663,9 +4771,14 @@ def _handle_mock_interview_turn(session, user, message):
 
     turns = session.turns or []
 
+    skipped = _is_interview_skip(message)
+
     if turns and turns[-1].get("answer") is None:
 
-        turns[-1]["answer"] = message
+        turns[-1]["answer"] = (
+            "(the candidate chose to skip this question without answering)"
+            if skipped else message
+        )
 
     company_clause = ""
 
@@ -4707,6 +4820,55 @@ def _handle_mock_interview_turn(session, user, message):
     tool_calls = getattr(choice_message, "tool_calls", None)
 
     if tool_calls and tool_calls[0].function.name == "end_interview":
+
+        answered_count = sum(1 for t in turns if t.get("answer") is not None)
+
+        if answered_count < MIN_MOCK_INTERVIEW_QUESTIONS:
+
+            # The prompt already tells the model not to end this early,
+            # but a prompt is a strong nudge, not a guarantee - this is
+            # the real bug a live report caught: the model ended the
+            # whole interview after a single skipped question, scoring
+            # it 10/100 off almost nothing. Enforced in CODE here as a
+            # hard backstop: ask it again, this time with no
+            # end_interview tool even offered, so ending early is not
+            # an option it can choose regardless of its own judgment.
+
+            print(
+                f"[chatbot] mock interview tried to end after only "
+                f"{answered_count} answered question(s) - enforcing the "
+                f"{MIN_MOCK_INTERVIEW_QUESTIONS}-question minimum in code"
+            )
+
+            try:
+
+                next_question = _call_groq_plain(
+                    messages + [{
+                        "role": "user",
+                        "content": (
+                            "Continue the interview - ask the next "
+                            "question now. Do not end the interview yet."
+                        ),
+                    }]
+                ).strip()
+
+            except Exception as e:
+
+                print("Mock interview forced-continue error:", e)
+
+                return _finish_mock_interview(session, turns)
+
+            if not next_question:
+
+                return _finish_mock_interview(session, turns)
+
+            turns.append({"question": next_question, "answer": None})
+
+            session.turns = turns
+
+            session.save()
+
+            return {"reply": next_question}
 
         return _finish_mock_interview(session, turns)
 
@@ -8178,6 +8340,26 @@ _STUDENT_SHORTCUTS = {
     "show me my saved jobs": ("get_saved_jobs", {}),
     "what jobs have i saved": ("get_saved_jobs", {}),
     "which jobs did i save": ("get_saved_jobs", {}),
+
+    # "is my resume ATS friendly" had ZERO shortcut coverage, meaning it
+    # needed TWO separate live Groq calls just to get started: the
+    # orchestrator's own "what tool should I call" decision, THEN the
+    # ATS tool's real analysis call - two separate chances to hit the
+    # shared quota, for one of the most common questions in the whole
+    # app. Routed directly now, skipping the orchestrator call entirely -
+    # down to exactly one real AI call (the genuine analysis itself,
+    # which can never be avoided), with the existing busy-fallback and
+    # 5-minute cache still fully in effect either way. This also feeds
+    # the semantic matcher (built FROM this dict), so close variants in
+    # different word orders are covered too without needing a separate
+    # hand-written regex.
+    "is my resume ats friendly": ("check_ats_friendliness", {}),
+    "is the resume ats friendly": ("check_ats_friendliness", {}),
+    "is the uploaded resume ats friendly": ("check_ats_friendliness", {}),
+    "is my resume ats friendly or not": ("check_ats_friendliness", {}),
+    "check my resume ats friendliness": ("check_ats_friendliness", {}),
+    "check if my resume is ats friendly": ("check_ats_friendliness", {}),
+    "is my resume ats friendly or not need to improve something": ("check_ats_friendliness", {}),
 }
 
 
