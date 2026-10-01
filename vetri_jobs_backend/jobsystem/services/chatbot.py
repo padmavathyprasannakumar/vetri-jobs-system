@@ -7899,6 +7899,19 @@ def _handle_company_shortcut(profile, user, message, history=None):
 # live AI call. These answer instantly, zero AI calls, so they can never
 # fail from the shared account's tight quota.
 
+# "how many students are applied for a job" (and similar grammar
+# variants) - a generic application-count question, no specific job
+# named, answered from get_placement_overview's total_applications,
+# the same approach as _MY_APPLICATIONS_RE on the student side:
+# catching the natural GRAMMAR rather than needing every individual
+# wording added by hand as each new variant gets reported.
+
+_HOW_MANY_APPLIED_RE = re.compile(
+    r"^how\s+many\s+(students?|applicants?|people)\s+(are\s+|have\s+)?applied"
+    r"(\s+(for|to))?(\s+(a\s+job|the\s+job|jobs?))?\??$"
+)
+
+
 _PLACEMENT_SHORTCUTS = {
     "show all drives": ("get_placement_drives", {}),
     "show drives": ("get_placement_drives", {}),
@@ -7954,6 +7967,10 @@ def _handle_placement_shortcut(profile, user, message):
     normalized = _normalize_shortcut(message)
 
     entry = _PLACEMENT_SHORTCUTS.get(normalized)
+
+    if not entry and _HOW_MANY_APPLIED_RE.match(normalized):
+
+        entry = ("get_placement_overview", {})
 
     if not entry:
 
