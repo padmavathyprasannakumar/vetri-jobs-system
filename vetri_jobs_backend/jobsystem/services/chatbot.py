@@ -3834,7 +3834,17 @@ def _tool_get_interview_prep(profile, user, args):
 
     if job_title:
 
-        title_q = _job_title_keyword_q("application__job__title", job_title)
+        # Strict (AND, every word must match) rather than the loose
+        # OR-matching _job_title_keyword_q uses elsewhere - a real
+        # report found "prepare for Senior Frontend Developer"
+        # incorrectly returning the student's actual "Senior Software
+        # Tester" application/interview, purely because both titles
+        # happen to share the single word "Senior". Loose matching is
+        # right when finding ANY plausible job is good enough; it is
+        # wrong here, where confidently naming the WRONG role's real
+        # data is worse than correctly finding nothing.
+
+        title_q = _job_role_strict_match_q("application__job__title", job_title)
 
         if title_q is not None:
 
@@ -3897,7 +3907,12 @@ def _tool_get_interview_prep(profile, user, args):
 
     if job_title:
 
-        title_q = _job_title_keyword_q("job__title", job_title)
+        # Same precision fix as the interview search above, and for
+        # the same reason - the application fallback must not claim a
+        # different real application just because it shares one word
+        # with the role actually asked about.
+
+        title_q = _job_role_strict_match_q("job__title", job_title)
 
         if title_q is not None:
 
