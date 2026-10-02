@@ -14,9 +14,6 @@ import Navbar from "../../components/Navbar/Navbar";
 import Footer from "../../components/Footer/Footer";
 
 
-import Chatbot from "../../components/Chatbot/ChatBot";
-
-
 import "./MainLayout.css";
 
 
@@ -107,19 +104,6 @@ return (
 
 
 
-
-
-
-
-
-
-{/* ==========================
-        AI CHATBOT
-========================== */}
-
-
-
-<Chatbot />
 
 
 
