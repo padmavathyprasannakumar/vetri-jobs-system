@@ -37,4 +37,4 @@ django-cloudinary-storage==0.3.0
 
 PyPDF2==3.0.1
 sendgrid==6.11.0
-scikit-learn==1.8.0
+scikit-learn==1.5.2
