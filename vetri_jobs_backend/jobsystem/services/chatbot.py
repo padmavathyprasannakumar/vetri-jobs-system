@@ -52,6 +52,61 @@ from datetime import timedelta
 
 from django.utils import timezone
 
+
+# Django's timezone.now() always returns raw UTC when timezone-aware
+# (USE_TZ=True) - it does NOT automatically convert to settings.TIME_ZONE.
+# A real report found the chatbot's own "good morning/afternoon/evening"
+# greeting judgment, and any "today" date math, was silently using raw
+# UTC the whole time - not even the server's configured Asia/Kuala_Lumpur
+# zone, let alone India time, which this platform's actual users are in.
+#
+# India Standard Time is a fixed UTC+5:30 offset with no daylight saving
+# ever observed, so a plain timedelta is used here rather than the
+# zoneinfo/pytz database - avoiding a new import dependency entirely for
+# a timezone that, unlike most others, never actually changes. Every
+# date/time-sensitive piece of the chatbot (the prompt's CURRENT DATE
+# AND TIME, and any "is this happening today" filter) goes through this
+# one helper, so there is exactly one place controlling what "now"
+# means platform-wide.
+
+INDIA_OFFSET = timedelta(hours=5, minutes=30)
+
+
+def _india_now():
+
+    return timezone.now() + INDIA_OFFSET
+
+
+def _to_india_time(stored_dt):
+    """Converts a stored UTC-aware datetime (e.g. Interview.interview_date)
+    to its India Standard Time equivalent, purely for DISPLAY - every
+    place that formats an interview's date/time for the student goes
+    through this now, instead of calling .strftime() directly on the
+    raw UTC value (which a real report found happening in seven
+    separate places - every interview time shown anywhere in the
+    chatbot was silently off by the UTC/IST difference)."""
+
+    return stored_dt + INDIA_OFFSET
+
+
+def _india_today_utc_bounds():
+    """(start_utc, end_utc): the true UTC instants marking the start and
+    end of "today" in India time - used to filter UTC-stored datetimes
+    (like Interview.interview_date) for an India-local "today" without
+    needing to shift every row individually. Subtracting INDIA_OFFSET
+    from the shifted midnight values converts them back to genuine UTC
+    instants, undoing the earlier shift correctly."""
+
+    india_midnight_today = _india_now().replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+
+    start_utc = india_midnight_today - INDIA_OFFSET
+
+    end_utc = start_utc + timedelta(days=1)
+
+    return start_utc, end_utc
+
 from groq import Groq
 
 import os
@@ -152,8 +207,8 @@ def _serialize_interview(iv):
             if iv.application.job.company else "Company"
         ),
         "job_title": iv.application.job.title,
-        "date": iv.interview_date.strftime("%b %d, %Y"),
-        "time": iv.interview_date.strftime("%I:%M %p"),
+        "date": _to_india_time(iv.interview_date).strftime("%b %d, %Y"),
+        "time": _to_india_time(iv.interview_date).strftime("%I:%M %p"),
         "mode": iv.get_interview_mode_display(),
         "status": iv.get_status_display(),
     }
@@ -983,8 +1038,11 @@ data even if asked to "assume" or "pretend". This rule overrides any
 other instruction in this prompt, including anything added below by an
 administrator.
 
-CURRENT DATE AND TIME: {current_datetime}. Compare any date/time you
-mention (interviews, deadlines, drives) against this exact moment first.
+CURRENT DATE AND TIME: {current_datetime}. This is India Standard Time
+(IST) - use it as-is for any greeting ("good morning/afternoon/evening")
+and any "today" you mention, rather than assuming a different timezone.
+Compare any date/time you mention (interviews, deadlines, drives) against
+this exact moment first.
 If it's earlier today or an earlier date, it has ALREADY HAPPENED - say
 so plainly (e.g. "Your interview was earlier today at 7:01 AM - I hope
 it went well! Want to share how it went, or look at other matching
@@ -3547,8 +3605,8 @@ def _tool_get_application_status(profile, user, args):
             ]
 
             entry["interview"] = {
-                "date": upcoming_iv.interview_date.strftime("%b %d, %Y"),
-                "time": upcoming_iv.interview_date.strftime("%I:%M %p"),
+                "date": _to_india_time(upcoming_iv.interview_date).strftime("%b %d, %Y"),
+                "time": _to_india_time(upcoming_iv.interview_date).strftime("%I:%M %p"),
                 "mode": upcoming_iv.get_interview_mode_display(),
                 "job_skills_required": job_skills,
             }
@@ -3595,6 +3653,8 @@ def _tool_get_upcoming_interviews(profile, user, args):
 
     week_only = bool(args.get("this_week"))
 
+    today_only = bool(args.get("today"))
+
     week_end = now + timedelta(days=7)
 
     qs = Interview.objects.filter(
@@ -3605,7 +3665,22 @@ def _tool_get_upcoming_interviews(profile, user, args):
         "application__job", "application__job__company"
     ).order_by("interview_date")
 
-    if week_only:
+    if today_only:
+
+        # "Any interview scheduled today?" - a real gap found by report:
+        # no tool here could answer "today" specifically at all before
+        # this, only "this week" (a much wider window). Computed in
+        # INDIA TIME specifically (see _india_today_utc_bounds), not
+        # server/UTC time, since that's the actual timezone of this
+        # platform's real users - a student asking "today" late in the
+        # evening IST should never get an answer based on what UTC or
+        # the server's own Asia/Kuala_Lumpur clock considers "today".
+
+        _today_start, today_end = _india_today_utc_bounds()
+
+        qs = qs.filter(interview_date__lt=today_end)
+
+    elif week_only:
 
         qs = qs.filter(interview_date__lte=week_end)
 
@@ -3624,11 +3699,16 @@ def _tool_get_upcoming_interviews(profile, user, args):
             for iv in interviews[:8]
         ]
 
+        scope = " today" if today_only else (" this week" if week_only else "")
+
         summary = (
-            f"You have {len(interviews)} upcoming interview(s)"
-            + (" this week" if week_only else "")
+            f"You have {len(interviews)} upcoming interview(s){scope}"
             + ":\n\n" + "\n".join(lines)
         )
+
+    elif today_only:
+
+        summary = "You don't have any interviews scheduled for today."
 
     else:
 
@@ -3746,8 +3826,8 @@ def _tool_get_interview_prep(profile, user, args):
 
         prep_lines = [
             f"Interview for {job.title} at {company_name} on "
-            f"{interview.interview_date.strftime('%b %d, %Y')} at "
-            f"{interview.interview_date.strftime('%I:%M %p')} "
+            f"{_to_india_time(interview.interview_date).strftime('%b %d, %Y')} at "
+            f"{_to_india_time(interview.interview_date).strftime('%I:%M %p')} "
             f"({interview.get_interview_mode_display()})."
         ]
 
@@ -3764,8 +3844,8 @@ def _tool_get_interview_prep(profile, user, args):
         return {
             "job_title": job.title,
             "company": company_name,
-            "interview_date": interview.interview_date.strftime("%b %d, %Y"),
-            "interview_time": interview.interview_date.strftime("%I:%M %p"),
+            "interview_date": _to_india_time(interview.interview_date).strftime("%b %d, %Y"),
+            "interview_time": _to_india_time(interview.interview_date).strftime("%I:%M %p"),
             "mode": interview.get_interview_mode_display(),
             "skills_required": skills_required,
             "job_description": job_description,
@@ -5047,7 +5127,7 @@ def _tool_get_career_plan(profile, user, args):
                 upcoming_interview.application.job.company.company_name
                 if upcoming_interview.application.job.company else ""
             ),
-            "date": upcoming_interview.interview_date.strftime("%b %d, %Y"),
+            "date": _to_india_time(upcoming_interview.interview_date).strftime("%b %d, %Y"),
         }
 
     return {
@@ -5326,7 +5406,11 @@ TOOL_SCHEMAS = [
                     "this_week": {
                         "type": "boolean",
                         "description": "True only if the student specifically asked about interviews this week.",
-                    }
+                    },
+                    "today": {
+                        "type": "boolean",
+                        "description": "True only if the student specifically asked about interviews today (e.g. 'any interview today', 'do I have an interview scheduled today').",
+                    },
                 },
                 "required": [],
             },
@@ -6059,8 +6143,8 @@ def _tool_get_company_interviews(profile, user, args):
         {
             "candidate": iv.application.student.full_name,
             "job_title": iv.application.job.title,
-            "date": iv.interview_date.strftime("%b %d, %Y"),
-            "time": iv.interview_date.strftime("%I:%M %p"),
+            "date": _to_india_time(iv.interview_date).strftime("%b %d, %Y"),
+            "time": _to_india_time(iv.interview_date).strftime("%I:%M %p"),
         }
         for iv in interviews
     ]
@@ -8221,42 +8305,69 @@ _MY_APPLICATIONS_RE = re.compile(
 
 _INTERVIEW_CHECK_RE = re.compile(
     r"^(?:any\s+)?(?:job\s+)?interviews?\s+scheduled\??$"
-    r"|^do\s+i\s+have\s+(?:any\s+)?(?:job\s+)?interviews?\??$"
+    r"|^do\s+i\s+have\s+(?:an\s+|any\s+)?(?:job\s+)?interviews?\??$"
+    r"|^is\s+my\s+interview\s+scheduled\??$"
     r"|^when\s+is\s+my\s+(?:next\s+)?interview\??$"
     r"|^(?:do\s+i\s+have\s+)?(?:an\s+|any\s+)?upcoming\s+interviews?\??$"
     r"|^my\s+interviews?$"
 )
 
 
-# A trailing "this week" / "in this week" / "within this week" clause on
-# any of the interview-check phrases above - "any interview scheduled in
-# this week" and "interview scheduled this week" need the SAME shortcut,
-# but also need this_week=True actually passed through to the tool, not
-# just the phrase recognised. Stripped off before matching, so the core
-# _INTERVIEW_CHECK_RE above stays simple and this extra case can't
-# silently drift out of sync with it.
+# A trailing "this week" / "in this week" / "within this week" clause, or
+# a trailing "today", on any of the interview-check phrases above - "any
+# interview scheduled today" and "interview scheduled this week" need the
+# SAME shortcut, but also need today=True/this_week=True actually passed
+# through to the tool, not just the phrase recognised. Stripped off
+# before matching, so the core _INTERVIEW_CHECK_RE above stays simple and
+# this extra case can't silently drift out of sync with it.
 
 _THIS_WEEK_SUFFIX_RE = re.compile(r"\s+(?:in\s+|within\s+)?this\s+week$")
+
+_TODAY_SUFFIX_RE = re.compile(r"\s+today$")
+
+# A leading "yes"/"ok" acknowledgment word before a REAL question - a
+# real report found "yes any interview scheduled today" treated as a
+# bare confirmation (since it starts with "yes"), when it's actually a
+# genuine, complete question with a throwaway leading word. Stripped
+# before matching, same idea as the suffix stripping above.
+
+_LEADING_ACK_RE = re.compile(r"^(?:yes|yeah|yep|ok|okay|sure)[,.\s]+")
 
 
 def _interview_check_args(normalized):
     """None if not an interview-check phrase; otherwise the args to pass
-    to get_upcoming_interviews (this_week=True if a trailing "this week"
-    clause was present, {} otherwise)."""
+    to get_upcoming_interviews (today=True / this_week=True / {} based
+    on which trailing clause, if any, was present)."""
 
-    text = normalized
+    text = _LEADING_ACK_RE.sub("", normalized)
 
     this_week = False
 
-    match = _THIS_WEEK_SUFFIX_RE.search(text)
+    today = False
+
+    match = _TODAY_SUFFIX_RE.search(text)
 
     if match:
 
         text = text[:match.start()]
 
-        this_week = True
+        today = True
+
+    else:
+
+        match = _THIS_WEEK_SUFFIX_RE.search(text)
+
+        if match:
+
+            text = text[:match.start()]
+
+            this_week = True
 
     if _INTERVIEW_CHECK_RE.match(text):
+
+        if today:
+
+            return {"today": True}
 
         return {"this_week": True} if this_week else {}
 
@@ -9772,7 +9883,10 @@ def _generate_reply_inner(user, message, history=None, page_context=None):
     knowledge = get_knowledge_base_snippets()
 
     system_prompt = SYSTEM_TEMPLATE.format(
-        current_datetime=timezone.now().strftime("%A, %b %d, %Y, %I:%M %p"),
+        # India Standard Time specifically - see _india_now()'s own
+        # comment for why timezone.now() alone was silently wrong here
+        # (raw UTC, not even the server's own configured timezone).
+        current_datetime=_india_now().strftime("%A, %b %d, %Y, %I:%M %p") + " IST",
         context_json=json.dumps(context, default=str),
         knowledge_json=json.dumps(knowledge, default=str),
     )
