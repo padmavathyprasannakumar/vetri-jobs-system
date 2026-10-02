@@ -8193,6 +8193,7 @@ _NEW_JOBS_PHRASES = {
     "latest jobs", "show me latest jobs", "show me the latest jobs",
     "recent jobs", "show me recent jobs", "newly posted jobs",
     "show me newly posted jobs", "what are the new jobs",
+    "what are the new jobs posted", "what are the jobs posted",
 }
 
 # "find jobs that match my profile", "find jobs match at my profile",
@@ -8222,7 +8223,7 @@ _ALL_JOBS_WORDS = {
 
 _ALL_JOBS_CUES = {
     "all", "list", "tab", "page", "eligible", "ineligible", "available",
-    "every", "whole", "complete", "full",
+    "every", "whole", "complete", "full", "posted",
 }
 
 
@@ -8261,6 +8262,14 @@ _APPLICATION_STATUS_PHRASES = {
     "did i apply any jobs", "did i apply to any jobs", "did i apply jobs",
     "have i applied any jobs", "have i applied to any jobs",
     "have i applied jobs", "have i applied to jobs",
+
+    # "applied jobs" as a NOUN PHRASE ("jobs that are applied") - a
+    # different grammatical shape from the VERB-phrase forms above
+    # ("jobs I applied"), reported as a real gap: "show me applied
+    # jobs" fell through to a live AI call despite "what are the jobs
+    # i applied" (same meaning, different word order) already working.
+    "show me applied jobs", "show applied jobs", "my applied jobs",
+    "applied jobs",
 }
 
 
@@ -8283,6 +8292,8 @@ _MY_APPLICATIONS_RE = re.compile(
     r"(?:\s+(?:recently|lately|so\s+far))?$"
     r"|^any\s+jobs?\s+(?:did\s+i\s+|have\s+i\s+|i\s+)appl(?:y|ied)(?:\s+(?:to|for))?"
     r"(?:\s+(?:recently|lately|so\s+far))?$"
+    r"|^how\s+many\s+jobs?\s+(?:have\s+i\s+|did\s+i\s+|i\s+)appl(?:y|ied)(?:\s+(?:to|for))?$"
+    r"|^how\s+many\s+applications?\s+(?:have\s+i\s+made|did\s+i\s+make|have\s+i\s+submitted)?$"
 )
 
 
@@ -8406,6 +8417,45 @@ _PLAIN_JOBS_RE = re.compile(
     r"(?: me)?(?: the)?(?: available)? jobs?(?: for me)?(?: please)?$"
     r"|^jobs(?: for me)?$"
 )
+
+
+# "I want to prepare software Tester job" / "prepare me for a Python
+# Developer job" / "give me suggestions to prepare for teacher job role" -
+# extracts the named role and routes DIRECTLY to get_interview_prep,
+# skipping the orchestrator's own "which tool?" call entirely. Reported
+# multiple times as the same recurring phrasing, so worth a real,
+# carefully tested extraction rather than another one-off exact phrase.
+#
+# Deliberately NOT treated as a guaranteed-instant shortcut: if the named
+# role is found (a real application/interview), the tool's own summary is
+# shown directly, zero AI calls. If NOTHING is found, this returns None -
+# NOT a bare "not found" message - so the request correctly falls through
+# to the normal AI flow, where the "give genuinely useful general advice"
+# instruction (see BE A REAL CAREER ASSISTANT in the system prompt) can
+# still apply. Skipping that check here would silently reintroduce the
+# exact "Teacher -> bare not-found message, no real advice" bug already
+# found and fixed once in this file - short-circuiting is only safe when
+# real data was actually found.
+
+_INTERVIEW_PREP_REQUEST_RE = re.compile(
+    r"^i\s+want\s+to\s+prepare\s+(?:for\s+)?(?:an?\s+)?(?:interview\s+for\s+)?(?:the\s+)?(?P<job>.+?)\s+(?:job\s+role|job|role|interview|position)s?$"
+    r"|^(?:please\s+)?prepare\s+(?:me\s+)?for\s+(?:an?\s+)?(?:the\s+)?(?P<job2>.+?)\s+(?:job\s+role|job|role|interview|position)s?$"
+    r"|^(?:can\s+you\s+)?give\s+(?:me\s+)?(?:some\s+)?suggestions?\s+to\s+prepare\s+for\s+(?:an?\s+)?(?:the\s+)?(?P<job3>.+?)\s+(?:job\s+role|job|role|interview|position)s?$"
+)
+
+
+def _extract_interview_prep_role(message):
+    """The named role from a 'prepare for X job' style message, or None."""
+
+    normalized = _normalize_shortcut(message)
+
+    match = _INTERVIEW_PREP_REQUEST_RE.match(normalized)
+
+    if not match:
+
+        return None
+
+    return match.group("job") or match.group("job2") or match.group("job3")
 
 
 _STUDENT_SHORTCUTS = {
@@ -8542,6 +8592,42 @@ def _handle_student_shortcut(profile, user, message):
         # just as easily mean "my applications".
 
         entry = ("list_open_jobs", {})
+
+    if not entry:
+
+        prep_role = _extract_interview_prep_role(message)
+
+        if prep_role:
+
+            prep_executor = TOOL_EXECUTORS.get("get_interview_prep")
+
+            try:
+
+                prep_result = prep_executor(profile, user, {"job_title": prep_role})
+
+            except Exception as e:
+
+                print("Chatbot shortcut error: get_interview_prep", e)
+
+                prep_result = None
+
+            if prep_result is not None and "job_title" in prep_result:
+
+                # A real application/interview WAS found for this role -
+                # the tool's own summary already has the real skills and
+                # description in it, so this is safe to answer directly,
+                # zero further AI calls.
+
+                return _build_tool_payload(
+                    _friendly_fast_text("get_interview_prep", prep_result),
+                    [(None, "get_interview_prep", prep_result)],
+                )
+
+            # Nothing found for this role - do NOT return the bare
+            # "not found" message here. Falling through to the normal AI
+            # flow instead lets the "give genuinely useful general
+            # advice" instruction apply, the same as asking this
+            # un-shortcut-matched would already do.
 
     if not entry:
 
@@ -8853,7 +8939,7 @@ SEMANTIC_MATCH_MARGIN = float(os.getenv("SEMANTIC_MATCH_MARGIN", "0.08"))
 
 _SEMANTIC_FILLER_WORDS = {
     "please", "the", "a", "an", "to", "for", "of", "me", "my",
-    "is", "are", "i", "any",
+    "is", "are", "i", "any", "it", "above",
 }
 
 
@@ -8912,53 +8998,95 @@ class _SemanticShortcutMatcher:
 
             return None
 
+        query_words = normalized.split()
+
         query_vec = self.vectorizer.transform([normalized])
 
         similarities = cosine_similarity(query_vec, self.matrix)[0]
 
-        order = similarities.argsort()[::-1]
+        # Pass 1: any training phrase with a PERFECT word overlap (after
+        # stripping filler) - every significant query word is in it, and
+        # every significant one of ITS words is in the query. This is
+        # checked across EVERY phrase, regardless of raw TF-IDF score,
+        # because that raw score can be misleading: a LONGER, differently
+        # -worded phrase for the exact same tool ("check if my resume is
+        # ats friendly") can outscore the one that's actually a perfect
+        # match ("is my resume ats friendly") purely due to how TF-IDF
+        # weights shared terms - checking only the top-ranked candidate
+        # (or even several ranked candidates above a score threshold)
+        # missed a real match whenever the correct phrase didn't happen to
+        # be the highest-SCORING one. A perfect word-for-word match is its
+        # own strong confidence signal and doesn't need the raw score to
+        # additionally confirm it.
 
-        best_idx, second_idx = order[0], order[1]
+        perfect_matches = [
+            i for i in range(len(self.phrases))
+            if _novel_and_missing_word_counts(
+                query_words, self.phrases[i].split()
+            ) == (0, 0)
+        ]
 
-        best_score = similarities[best_idx]
+        if perfect_matches:
 
-        if best_score < SEMANTIC_MATCH_THRESHOLD:
+            chosen_idx = max(perfect_matches, key=lambda i: similarities[i])
 
-            return None
+        else:
 
-        best_phrase = self.phrases[best_idx]
+            # Pass 2: no perfect word-overlap anywhere - fall back to the
+            # plain similarity threshold for a genuinely fuzzy paraphrase,
+            # still only accepted if it ALSO has zero novel/missing words
+            # (the guard against a MORE SPECIFIC or a too-bare question
+            # silently matching something it shouldn't).
 
-        novel, missing = _novel_and_missing_word_counts(
-            normalized.split(), best_phrase.split()
+            order = similarities.argsort()[::-1]
+
+            if similarities[order[0]] < SEMANTIC_MATCH_THRESHOLD:
+
+                return None
+
+            chosen_idx = None
+
+            for idx in order:
+
+                if similarities[idx] < SEMANTIC_MATCH_THRESHOLD:
+
+                    break
+
+                novel, missing = _novel_and_missing_word_counts(
+                    query_words, self.phrases[idx].split()
+                )
+
+                if novel == 0 and missing == 0:
+
+                    chosen_idx = idx
+
+                    break
+
+            if chosen_idx is None:
+
+                return None
+
+        chosen_tool = self.tools_and_args[chosen_idx][0]
+
+        order_all = similarities.argsort()[::-1]
+
+        runner_up_idx = next(
+            (i for i in order_all if i != chosen_idx), chosen_idx
         )
 
-        if novel > 0 or missing > 0:
+        runner_up_tool = self.tools_and_args[runner_up_idx][0]
 
-            # Either the question adds real new information (a
-            # location, a specific job/company name, "ATS", a time
-            # filter - the fixed-args shortcut has no way to act on
-            # any of that), or it's missing enough of the matched
-            # phrase's own significant words to be a bare, ambiguous
-            # fragment rather than a genuine paraphrase of it. Either
-            # way, let the AI handle it properly instead of guessing.
+        margin = similarities[chosen_idx] - similarities[runner_up_idx]
 
-            return None
+        if runner_up_tool != chosen_tool and margin < SEMANTIC_MATCH_MARGIN:
 
-        best_tool = self.tools_and_args[best_idx][0]
-
-        second_tool = self.tools_and_args[second_idx][0]
-
-        margin = best_score - similarities[second_idx]
-
-        if second_tool != best_tool and margin < SEMANTIC_MATCH_MARGIN:
-
-            # Ambiguous - the two best matches disagree on what the
-            # student even wants, and aren't confidently far apart.
-            # Safer to let the normal AI flow handle it.
+            # Ambiguous - the chosen match and the next-best DIFFERENT
+            # tool aren't confidently far apart. Safer to let the
+            # normal AI flow handle it.
 
             return None
 
-        tool, args = self.tools_and_args[best_idx]
+        tool, args = self.tools_and_args[chosen_idx]
 
         return tool, dict(args)
 
@@ -9553,10 +9681,28 @@ def _generate_reply_inner(user, message, history=None, page_context=None):
         # company question ("who are the candidates?", "show my
         # interviews") answered directly, no AI call - the company
         # portal never had this fast path before.
+        #
+        # Wrapped in its own try/except: an unhandled exception ANYWHERE
+        # inside the shortcut/semantic-matching machinery used to
+        # propagate all the way up and crash the whole Django view with
+        # a raw 500 error page (confirmed from a real report - the
+        # browser console showed Django's own error page, not the
+        # normal graceful "trouble reaching the assistant" message).
+        # Falling through to the normal AI flow on any such failure is
+        # strictly safer than a 500, and costs nothing extra when
+        # nothing actually goes wrong.
 
-        company_shortcut_reply = _handle_company_shortcut(
-            actor_profile, user, message, history
-        )
+        try:
+
+            company_shortcut_reply = _handle_company_shortcut(
+                actor_profile, user, message, history
+            )
+
+        except Exception as e:
+
+            print("Chatbot company shortcut crashed:", e)
+
+            company_shortcut_reply = None
 
         if company_shortcut_reply is not None:
 
@@ -9567,11 +9713,19 @@ def _generate_reply_inner(user, message, history=None, page_context=None):
         # Same idea again: a plain, common placement-admin question
         # ("show all drives", "pending company approvals") answered
         # directly, no AI call - this portal never had this fast
-        # path either.
+        # path either. Same crash-safety wrapping as above.
 
-        placement_shortcut_reply = _handle_placement_shortcut(
-            actor_profile, user, message
-        )
+        try:
+
+            placement_shortcut_reply = _handle_placement_shortcut(
+                actor_profile, user, message
+            )
+
+        except Exception as e:
+
+            print("Chatbot placement shortcut crashed:", e)
+
+            placement_shortcut_reply = None
 
         if placement_shortcut_reply is not None:
 
@@ -9581,8 +9735,18 @@ def _generate_reply_inner(user, message, history=None, page_context=None):
 
         # A tap on one of the chat's own buttons ("Find jobs for me",
         # "Show my notifications", ...) - answered directly, no AI call.
+        # Same crash-safety wrapping as above - this is the exact path
+        # a real report traced a raw Django 500 error back to.
 
-        shortcut_reply = _handle_student_shortcut(actor_profile, user, message)
+        try:
+
+            shortcut_reply = _handle_student_shortcut(actor_profile, user, message)
+
+        except Exception as e:
+
+            print("Chatbot student shortcut crashed:", e)
+
+            shortcut_reply = None
 
         if shortcut_reply is not None:
 
