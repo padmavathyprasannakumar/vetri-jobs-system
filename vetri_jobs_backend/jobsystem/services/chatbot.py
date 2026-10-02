@@ -8337,14 +8337,37 @@ _PLAIN_JOBS_RE = re.compile(
 # real data was actually found.
 
 _INTERVIEW_PREP_REQUEST_RE = re.compile(
-    r"^i\s+want\s+to\s+prepare\s+(?:for\s+)?(?:an?\s+)?(?:interview\s+for\s+)?(?:the\s+)?(?P<job>.+?)\s+(?:job\s+role|job|role|interview|position)s?$"
-    r"|^(?:please\s+)?prepare\s+(?:me\s+)?for\s+(?:an?\s+)?(?:the\s+)?(?P<job2>.+?)\s+(?:job\s+role|job|role|interview|position)s?$"
-    r"|^(?:can\s+you\s+)?give\s+(?:me\s+)?(?:some\s+)?suggestions?\s+to\s+prepare\s+for\s+(?:an?\s+)?(?:the\s+)?(?P<job3>.+?)\s+(?:job\s+role|job|role|interview|position)s?$"
+    r"^i\s+want\s+to\s+prepare\s+(?:for\s+)?(?:an?\s+)?(?:interview\s+for\s+)?(?:the\s+)?(?P<job>.+?)"
+    r"(?:\s+(?:job\s+role|job|role|interview|position)s?)?$"
+    r"|^(?:please\s+)?prepare\s+(?:me\s+)?for\s+(?:an?\s+)?(?:the\s+)?(?P<job2>.+?)"
+    r"(?:\s+(?:job\s+role|job|role|interview|position)s?)?$"
+    r"|^(?:can\s+you\s+)?give\s+(?:me\s+)?(?:some\s+)?suggestions?\s+to\s+prepare\s+for\s+(?:an?\s+)?(?:the\s+)?(?P<job3>.+?)"
+    r"(?:\s+(?:job\s+role|job|role|interview|position)s?)?$"
 )
+
+# A real report found the earlier version of this regex only worked when
+# the sentence ended with an explicit "job"/"role" keyword - "I want to
+# prepare software tester JOB" matched, but the equally natural "I want
+# to prepare Junior Python Full Stack Developer" (no trailing keyword at
+# all) did not. Made that trailing word optional to catch both. Making it
+# optional on its own introduces a new risk though: "prepare for MY
+# INTERVIEW" or "prepare for my scheduled interview" would otherwise get
+# "my"/"my scheduled" extracted as if that were a literal role name -
+# this is specifically the OTHER request (their own real, scheduled
+# interview), not a named role, and needs to be rejected here so it
+# falls through to the AI, which already handles that case correctly.
+
+_INTERVIEW_PREP_NON_ROLE_WORDS = {
+    "my", "the", "a", "an", "this", "that", "next", "upcoming",
+    "scheduled", "interview", "job", "role", "position",
+}
 
 
 def _extract_interview_prep_role(message):
-    """The named role from a 'prepare for X job' style message, or None."""
+    """The named role from a 'prepare for X job' style message, or None
+    if nothing meaningful was actually named (e.g. "prepare for my
+    interview" - that's a reference to their own real interview, not a
+    role name, and must fall through to the AI instead)."""
 
     normalized = _normalize_shortcut(message)
 
@@ -8354,7 +8377,19 @@ def _extract_interview_prep_role(message):
 
         return None
 
-    return match.group("job") or match.group("job2") or match.group("job3")
+    extracted = (
+        match.group("job") or match.group("job2") or match.group("job3") or ""
+    ).strip()
+
+    meaningful = [
+        w for w in extracted.split() if w not in _INTERVIEW_PREP_NON_ROLE_WORDS
+    ]
+
+    if not meaningful:
+
+        return None
+
+    return extracted
 
 
 _STUDENT_SHORTCUTS = {
@@ -9194,6 +9229,11 @@ _OFF_TOPIC_WORDS = {
     # relationships and politics
     "girlfriend", "boyfriend", "dating", "election", "elections",
     "politics", "politician",
+    # financial/commodity prices - a real report found "today gold rate"
+    # fell through to the generic technical error instead of the normal
+    # off-topic redirect, since no category here covered it at all.
+    "gold", "silver", "bitcoin", "crypto", "cryptocurrency", "sensex",
+    "nifty", "stockmarket", "sharemarket",
 }
 
 _OFF_TOPIC_PHRASES = (
