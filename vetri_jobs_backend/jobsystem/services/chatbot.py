@@ -2095,18 +2095,79 @@ def _tool_get_job_details(profile, user, args):
     }
 
 
+def _job_role_strict_match_q(field_prefix, job_role):
+    """
+    Like _job_title_keyword_q, but requires EVERY significant word to
+    match (AND), not just any one (OR) - right for narrowing to ONE
+    specific role like "Python Developer" for skill-gap scoping, where
+    "developer" alone would also pull in "Senior Frontend Developer"
+    (a different specialization entirely) via that one shared, overly
+    generic word. _job_title_keyword_q's looser OR-matching is correct
+    for "find THIS job" (recall matters, one real hit is enough) but
+    wrong here (precision matters - skills for the WRONG role is worse
+    than no scoping at all). Returns None if nothing usable is left.
+    """
+
+    from django.db.models import Q
+
+    words = [
+        w for w in re.split(r"\s+", (job_role or "").lower())
+        if len(w) > 2 and w not in _JOB_TITLE_KEYWORD_STOPWORDS
+    ]
+
+    if not words:
+
+        return None
+
+    q = Q()
+
+    for w in words:
+
+        q &= Q(**{f"{field_prefix}__icontains": w})
+
+    return q
+
+
 def _tool_get_skill_suggestions(profile, user, args):
     """
     Covers "What skills should I improve?" with a real answer grounded
-    in current job-market demand on the platform, not a generic list -
-    the skills most frequently required across active postings that
-    the student doesn't already have.
+    in current job-market demand, not a generic list - the skills most
+    frequently required that the student doesn't already have.
+
+    Optionally scoped to ONE target role ("what skills should I learn
+    for Python Developer?") via job_role - previously this always
+    computed against the WHOLE platform regardless of a role actually
+    being named, so "for Python Developer" was silently ignored and a
+    student targeting one specific role got the same generic answer as
+    someone who named no role at all. Matched by keyword (same approach
+    as _job_title_keyword_q elsewhere), since a student's own phrasing
+    of a role doesn't always exactly match a real posting's title.
     """
 
     from jobsystem.models import Job
     from collections import Counter
 
-    jobs = Job.objects.filter(status="active", is_active=True)[:50]
+    job_role = (args.get("job_role") or "").strip()
+
+    jobs_qs = Job.objects.filter(status="active", is_active=True)
+
+    role_matched = False
+
+    if job_role:
+
+        role_q = _job_role_strict_match_q("title", job_role)
+
+        if role_q is not None:
+
+            scoped = jobs_qs.filter(role_q)
+
+            if scoped.exists():
+
+                jobs_qs = scoped
+
+                role_matched = True
+
+    jobs = jobs_qs[:50]
 
     student_skills = set(
         s.strip().lower()
@@ -2131,15 +2192,24 @@ def _tool_get_skill_suggestions(profile, user, args):
 
     top_missing = [skill for skill, _ in missing_counter.most_common(8)]
 
+    scope_note = f" for {job_role}" if (job_role and role_matched) else ""
+
+    no_postings_note = (
+        f" (no open postings matched \"{job_role}\" specifically, so this "
+        "is based on the overall platform instead)"
+        if (job_role and not role_matched) else ""
+    )
+
     return {
         "current_skills": sorted(student_skills),
         "suggested_skills": top_missing,
+        "target_role": job_role or None,
         "summary": (
-            "Top in-demand skills the student doesn't have yet: "
-            + ", ".join(top_missing)
+            f"Top in-demand skills the student doesn't have yet{scope_note}"
+            f"{no_postings_note}: " + ", ".join(top_missing)
         ) if top_missing else (
-            "The student's current skills already cover most open "
-            "job requirements on the platform."
+            f"The student's current skills already cover most open "
+            f"job requirements{scope_note} on the platform."
         ),
     }
 
@@ -5222,9 +5292,22 @@ TOOL_SCHEMAS = [
                 "Get skills the student should learn, based on what's "
                 "most in-demand across currently active job postings "
                 "that they don't already have. Use when the student "
-                "asks what skills to improve or learn."
+                "asks what skills to improve or learn - pass job_role "
+                "when they named a specific target role ('skills for "
+                "Python Developer'), so the answer is scoped to real "
+                "demand for THAT role, not the whole platform; omit "
+                "it when they asked generally with no role named."
             ),
-            "parameters": {"type": "object", "properties": {}, "required": []},
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "job_role": {
+                        "type": "string",
+                        "description": "The target role the student named, if any (e.g. 'Python Developer', 'Data Analyst').",
+                    }
+                },
+                "required": [],
+            },
         },
     },
     {
@@ -5444,6 +5527,22 @@ TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "rewrite_resume",
+            "description": (
+                "Generate an improved, rewritten version of the "
+                "student's resume content as text, addressing the real "
+                "gaps already found in it. This only shows a proposed "
+                "version in chat for the student to review - it never "
+                "replaces their actual uploaded file. Use when the "
+                "student asks to rewrite, improve, or get a better "
+                "version of their resume content."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_resume_download_link",
             "description": (
                 "Get the student's current active resume ready for "
@@ -5646,6 +5745,7 @@ TOOL_EXECUTORS = {
     "get_resume_download_link": _tool_get_resume_download_link,
     "get_my_profile": _tool_get_my_profile,
     "get_career_plan": _tool_get_career_plan,
+    "rewrite_resume": _tool_rewrite_resume,
     "update_my_skills": _tool_update_my_skills,
     "update_my_projects": _tool_update_my_projects,
     "start_mock_interview": _tool_start_mock_interview,
