@@ -731,13 +731,17 @@ CACHES = {
 
 "BACKEND":
 
-"django.core.cache.backends.redis.RedisCache",
+(
+    "django.core.cache.backends.redis.RedisCache"
+    if os.getenv("REDIS_URL")
+    else "django.core.cache.backends.locmem.LocMemCache"
+),
 
 
 
 "LOCATION":
 
-"redis://127.0.0.1:6379/1"
+os.getenv("REDIS_URL", "vetri-jobs-local-cache"),
 
 }
 
@@ -781,7 +785,7 @@ CELERY_RESULT_SERIALIZER="json"
 
 
 
-CELERY_TIMEZONE="Asia/India"
+CELERY_TIMEZONE="Asia/Kolkata"
 
 # =====================================================
 # LANGUAGE
