@@ -877,6 +877,21 @@ student uses a pronoun ("apply to that job", "the above one"), resolve
 the exact job_title from the most recent job list you showed, then call
 apply_to_job - never guess, never skip the call.
 
+VAGUE PROFILE UPDATE REQUESTS (important): "update my profile" / "I want
+to change my profile" / "edit my profile" with no specifics named is NOT
+enough information to call update_my_skills or update_my_projects - both
+require a real value, and inventing a plausible-sounding one to satisfy
+that would write fabricated data into the student's real profile. Ask
+what they'd like to update instead (skills, projects, or point them to
+the Profile page for other fields) and wait for their answer before
+calling either tool.
+
+GENERAL SKILLS MATCH SCORE: "what is my skills match score" with no job
+named is asking about their overall fit, not one specific role - treat
+it the same as a best-job question (find_matching_jobs, limit=1) and
+explain the score that comes back, rather than guessing which job they
+meant or calling a tool that doesn't exist.
+
 APPLYING TO A JOB (confirmation required): apply_to_job only asks "Apply
 to X at Y?" with Yes/No buttons - it never submits by itself. Don't say
 the application was sent; the tool's own question IS the reply. Pass
@@ -1825,9 +1840,32 @@ def _tool_list_open_jobs(profile, user, args):
 
     company_name = (args.get("company_name") or "").strip()
 
+    keyword = (args.get("keyword") or "").strip()
+
     jobs = Job.objects.filter(
         status="active", is_active=True
     ).select_related("company").order_by("-created_at")
+
+    if keyword:
+
+        # "show me python jobs" / "django jobs" - no tool here could
+        # actually filter by a technology/skill keyword before this,
+        # only by company name. Matches title, required skills, and
+        # the description, so "Python Full Stack Developer" (title),
+        # a job merely requiring "Python, Django" (skills_required),
+        # or one that only mentions it in the description all
+        # correctly count as a match. Imported here, inside the
+        # keyword branch specifically, so a plain "show all jobs"
+        # call (no keyword at all) never needs django.db.models
+        # importable at all - unchanged from before this feature.
+
+        from django.db.models import Q
+
+        jobs = jobs.filter(
+            Q(title__icontains=keyword)
+            | Q(skills_required__icontains=keyword)
+            | Q(description__icontains=keyword)
+        )
 
     if company_name:
 
@@ -1852,6 +1890,7 @@ def _tool_list_open_jobs(profile, user, args):
             "total_open": 0,
             "summary": (
                 f"No open jobs found for \"{company_name}\"." if company_name
+                else f"No open jobs found matching \"{keyword}\"." if keyword
                 else "There are no open jobs right now."
             ),
         }
@@ -5209,7 +5248,9 @@ TOOL_SCHEMAS = [
                 "(find_matching_jobs) or 'new jobs' (find_matching_jobs with "
                 "recent_only)."
                 "Also supports filtering to one named company (e.g. "
-                "\"show me TechNova's posted jobs\") via company_name."
+                "\"show me TechNova's posted jobs\") via company_name, or "
+                "one named technology/skill (e.g. \"show me python jobs\", "
+                "\"django jobs\") via keyword."
             ),
             "parameters": {
                 "type": "object",
@@ -5217,7 +5258,11 @@ TOOL_SCHEMAS = [
                     "company_name": {
                         "type": "string",
                         "description": "Filter to jobs from this company, if the student named one (e.g. 'TechNova').",
-                    }
+                    },
+                    "keyword": {
+                        "type": "string",
+                        "description": "Filter to jobs matching this technology/skill/term, if the student named one (e.g. 'python', 'django', 'react').",
+                    },
                 },
                 "required": [],
             },
@@ -8268,15 +8313,18 @@ _APPLICATION_STATUS_PHRASES = {
 # anything else after the verb phrase still correctly falls through to
 # the AI instead of being swallowed here.
 
+_TIME_TRAILER = r"(?:\s+(?:recently|lately|so\s+far|till\s+now|until\s+now|up\s+to\s+now))?"
+
 _MY_APPLICATIONS_RE = re.compile(
     r"^(?:what|which)\s+(?:are\s+the\s+)?jobs?\s+(?:did\s+i\s+|have\s+i\s+|i\s+)?"
-    r"appl(?:y|ied)(?:\s+(?:to|for))?(?:\s+(?:recently|lately|so\s+far))?$"
+    r"appl(?:y|ied)(?:\s+(?:to|for))?" + _TIME_TRAILER + r"$"
     r"|^(?:i\s+|did\s+i\s+|have\s+i\s+)(?:already\s+)?appl(?:y|ied)\s+(?:to\s+)?(?:any\s+)?jobs?"
-    r"(?:\s+(?:recently|lately|so\s+far))?$"
+    + _TIME_TRAILER + r"$"
     r"|^any\s+jobs?\s+(?:did\s+i\s+|have\s+i\s+|i\s+)appl(?:y|ied)(?:\s+(?:to|for))?"
-    r"(?:\s+(?:recently|lately|so\s+far))?$"
-    r"|^how\s+many\s+jobs?\s+(?:have\s+i\s+|did\s+i\s+|i\s+)appl(?:y|ied)(?:\s+(?:to|for))?$"
-    r"|^how\s+many\s+applications?\s+(?:have\s+i\s+made|did\s+i\s+make|have\s+i\s+submitted)?$"
+    + _TIME_TRAILER + r"$"
+    r"|^how\s+many\s+jobs?\s+(?:have\s+i\s+|did\s+i\s+|i\s+(?:have\s+)?)appl(?:y|ied)(?:\s+(?:to|for))?"
+    + _TIME_TRAILER + r"$"
+    r"|^how\s+many\s+applications?\s+(?:have\s+i\s+made|did\s+i\s+make|have\s+i\s+submitted)?" + _TIME_TRAILER + r"$"
 )
 
 
