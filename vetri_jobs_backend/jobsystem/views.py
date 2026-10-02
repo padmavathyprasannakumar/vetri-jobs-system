@@ -1025,6 +1025,15 @@ class LogoutView(APIView):
 
                 token.blacklist()
 
+            # Also clears any lingering Django session, in case
+            # SessionAuthentication is ever added later - costs
+            # nothing now, and prevents this class of bug by
+            # default if the auth setup ever changes.
+
+            from django.contrib.auth import logout as django_logout
+
+            django_logout(request)
+
             return Response(
 
                 {
@@ -1056,7 +1065,6 @@ class LogoutView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
 
             )
-
         from django.shortcuts import get_object_or_404
 
 
