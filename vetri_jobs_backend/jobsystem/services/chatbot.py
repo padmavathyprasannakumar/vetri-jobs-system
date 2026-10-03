@@ -8548,6 +8548,8 @@ _INTERVIEW_PREP_REQUEST_RE = re.compile(
     r"(?:\s+(?:job\s+role|job|role|interview|position)s?)*$"
     r"|^(?:can\s+you\s+)?give\s+(?:me\s+)?(?:some\s+)?suggestions?\s+to\s+prepare\s+for\s+(?:an?\s+)?(?:the\s+)?(?P<job3>.+?)"
     r"(?:\s+(?:job\s+role|job|role|interview|position)s?)*$"
+    r"|^help\s+me\s+prepare\s+for\s+(?:an?\s+)?(?:the\s+)?(?P<job4>.+?)"
+    r"(?:\s+(?:job\s+role|job|role|interview|position)s?)*$"
 )
 
 # The trailing suffix group above now repeats (* not ?) - a real report
@@ -8591,7 +8593,8 @@ def _extract_interview_prep_role(message):
         return None
 
     extracted = (
-        match.group("job") or match.group("job2") or match.group("job3") or ""
+        match.group("job") or match.group("job2") or match.group("job3")
+        or match.group("job4") or ""
     ).strip()
 
     meaningful = [
@@ -8842,6 +8845,17 @@ def _handle_student_shortcut(profile, user, message):
 # exactly: common, plain company questions answered instantly, zero AI calls,
 # so they can never fail from the shared account's tight quota.
 
+# A general "what have we posted" question - needs no specific job
+# name at all, unlike every other existing company shortcut/tool here.
+_COMPANY_JOBS_POSTED_RE = re.compile(
+    r"^(?:what|which)\s+jobs?\s+(?:have\s+we\s+|did\s+we\s+|have\s+i\s+|did\s+i\s+)?post(?:ed)?\??$"
+    r"|^(?:show|list|see|display)\s+(?:me\s+)?(?:our\s+|my\s+)?(?:posted\s+)?jobs?(?:\s+posted)?$"
+    r"|^any\s+jobs?\s+posted\??$"
+    r"|^jobs?\s+(?:we\s+|i\s+)?posted$"
+    r"|^(?:our|my)\s+(?:posted\s+)?jobs?$"
+)
+
+
 _COMPANY_SHORTCUTS = {
     "who are the candidates": ("get_company_applications", {}),
     "who are my candidates": ("get_company_applications", {}),
@@ -8932,6 +8946,17 @@ def _handle_company_shortcut(profile, user, message, history=None):
     normalized = _normalize_shortcut(message)
 
     entry = _COMPANY_SHORTCUTS.get(normalized)
+
+    if not entry and _COMPANY_JOBS_POSTED_RE.match(normalized):
+
+        # A real report found general "what jobs have we posted" style
+        # questions getting no instant answer at all, even though
+        # get_active_job_postings needs no specific job name - every
+        # existing company shortcut/tool here was built around a NAMED
+        # job (candidates for X, description of X), leaving the plain
+        # "show me everything we've posted" question with no fast path.
+
+        entry = ("get_active_job_postings", {})
 
     if not entry and _last_bot_asked_which_job_for_candidates(history) and _looks_like_a_job_reply(message):
 
