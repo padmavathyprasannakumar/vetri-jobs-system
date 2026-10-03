@@ -948,6 +948,11 @@ THREE DIFFERENT JOB QUESTIONS - never mix up:
 - Show all jobs/the jobs tab/even ineligible ones = EVERY open job
   (list_open_jobs), cards marked applied/eligible/not eligible. Never
   answer this with only the jobs they qualify for.
+- Jobs for a named technology/skill ("python jobs", "react jobs",
+  "django jobs", "testing jobs") = list_open_jobs with keyword set to
+  that exact term - never the plain, unfiltered "every open job" list.
+  A named technology is a real filter the student asked for, not a
+  synonym for "show all jobs".
 
 MORE THAN ONE REQUEST: for several things at once ("applications and
 interviews"), call all matching tools in one turn (up to 3) instead of
@@ -4707,7 +4712,18 @@ END_INTERVIEW_TOOL_SCHEMA = [
 
 _INTERVIEW_EXIT_PATTERNS = [
     r"\bstop\b.*interview", r"\bend\b.*interview", r"\bcancel\b.*interview",
-    r"\bquit\b.*interview", r"^\s*(stop|cancel|quit|exit)\s*[.!]?\s*$",
+    r"\bquit\b.*interview", r"\bexit\b.*interview",
+    # A leading "ok"/"yes"/"please" acknowledgment before the real exit
+    # word - a real report found bare "stop" correctly ending a mock
+    # interview, but "ok stop" and "yes stop" (asked right after) did
+    # not, instead being sent to Groq as if they were the candidate's
+    # actual answer to the current question. Same class of leading-
+    # filler-word gap fixed elsewhere in this file for other shortcuts.
+    r"^\s*(?:ok(?:ay)?|yes|please|sure)[,.\s]+(?:stop|cancel|quit|exit|end)\s*[.!]?\s*$",
+    r"^\s*(stop|cancel|quit|exit|end)\s*[.!]?\s*$",
+    r"^\s*i\s+want\s+to\s+(?:stop|end)(?:\s+(?:this|the)?\s*interview)?\s*[.!]?\s*$",
+    r"^\s*let'?s\s+stop\s*[.!]?\s*$",
+    r"^\s*that'?s\s+enough\s*[.!]?\s*$",
 ]
 
 
@@ -8470,6 +8486,9 @@ _SKILL_SUGGESTION_RE = re.compile(
     r"|^(?:how\s+(?:to|do\s+i|can\s+i)\s+)?improve\s+(?:my\s+)?skills?$"
     r"|^(?:what|which)\s+skills?\s+(?:do\s+i\s+)?(?:need|am\s+i\s+missing|do\s+i\s+lack|lack)\??$"
     r"|^(?:help\s+me\s+)?(?:improve|develop)\s+my\s+skills?$"
+    r"|^suggest\s+(?:some\s+)?skills?(?:\s+to\s+(?:learn|improve|develop|focus\s+on))?$"
+    r"|^(?:give\s+me\s+)?skill\s+(?:suggestions?|recommendations?)$"
+    r"|^(?:how\s+(?:to|do\s+i|can\s+i)\s+)?buil[dt]\s+(?:up\s+)?my\s+skills?$"
 )
 
 
