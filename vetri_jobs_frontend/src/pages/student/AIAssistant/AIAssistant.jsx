@@ -78,7 +78,11 @@ import {
 
     FaLightbulb,
 
-    FaPlus
+    FaPlus,
+
+    FaChartLine,
+
+    FaClipboardCheck
 
 } from "react-icons/fa";
 
@@ -97,6 +101,10 @@ const QUICK_ACTIONS = [
     { icon:<FaChalkboardTeacher/>, label:"Prepare for interview", text:"How can I prepare for my interview?" },
 
     { icon:<FaLightbulb/>, label:"Suggest skills to learn", text:"What skills should I improve?" },
+
+    { icon:<FaChartLine/>, label:"Check my resume score", text:"What is my resume score?" },
+
+    { icon:<FaClipboardCheck/>, label:"Check ATS friendliness", text:"Is my resume ATS friendly?" },
 
 ];
 
