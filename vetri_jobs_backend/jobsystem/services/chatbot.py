@@ -7253,7 +7253,11 @@ def _tool_find_jobs_platform_wide(profile, user, args):
 
     Supports an optional company_name keyword ("jobs at Google") and
     an optional status filter - both matched flexibly, same approach
-    as get_job_description on the company side.
+    as get_job_description on the company side. Also supports an
+    optional department keyword ("jobs for Computer Science students") -
+    a real report found this specific question with no tool behind it
+    at all, even though Job.eligible_departments already holds exactly
+    this data; it just had never been queried anywhere in the chatbot.
     """
 
     from django.db.models import Q
@@ -7263,7 +7267,15 @@ def _tool_find_jobs_platform_wide(profile, user, args):
 
     status_filter = (args.get("status") or "").strip().lower()
 
+    department = (args.get("department") or "").strip()
+
     jobs_qs = Job.objects.select_related("company")
+
+    if department:
+
+        jobs_qs = jobs_qs.filter(
+            eligible_departments__icontains=department
+        )
 
     if company_name:
 
@@ -7288,7 +7300,11 @@ def _tool_find_jobs_platform_wide(profile, user, args):
 
     if not jobs:
 
-        if company_name:
+        if department:
+
+            summary = f"No job postings found eligible for \"{department}\" students."
+
+        elif company_name:
 
             summary = f"No job postings found for \"{company_name}\"."
 
@@ -7396,7 +7412,9 @@ PLACEMENT_TOOL_SCHEMAS = [
                 "company, not one). Use for 'find jobs'/'jobs at "
                 "<company>'/'show me jobs' style questions from the "
                 "placement admin - this is the 'Find Jobs' capability "
-                "advertised on this page."
+                "advertised on this page. Pass department when the "
+                "admin asked which jobs suit a specific department's "
+                "students (e.g. 'jobs for Computer Science students')."
             ),
             "parameters": {
                 "type": "object",
@@ -7408,6 +7426,10 @@ PLACEMENT_TOOL_SCHEMAS = [
                     "status": {
                         "type": "string",
                         "description": "active/pending/closed/rejected, if the admin asked for a specific status.",
+                    },
+                    "department": {
+                        "type": "string",
+                        "description": "A department/course to filter by eligibility, if the admin named one (e.g. 'Computer Science').",
                     },
                 },
                 "required": [],
