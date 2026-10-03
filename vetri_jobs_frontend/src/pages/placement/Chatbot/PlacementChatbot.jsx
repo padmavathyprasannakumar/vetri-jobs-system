@@ -487,21 +487,44 @@ SUGGESTED_QUESTIONS.map((q,index)=>(
 <ul className="pc-recent-list">
 
 {
-history.slice(0,4).map((h,index)=>(
+// Only the admin's OWN questions, not the bot's answers (history
+// holds every message, both senders) - and the 4 MOST RECENT ones,
+// not the oldest. .slice(0,4) on messages ordered oldest-first was
+// always pinned to the very first few things ever asked, no matter
+// how much was asked afterward - the opposite of "recent". Reversed
+// after slicing so the newest still appears at the top of the list.
 
-<li key={index}>
+history
 
-<span>{h.message || h.title || "Conversation"}</span>
+.filter(h=>h.sender==="user")
+
+.slice(-4)
+
+.reverse()
+
+.map((h,index)=>{
+
+const text = h.message || h.title || "Conversation";
+
+const truncated = text.length > 60 ? text.slice(0,60) + "…" : text;
+
+return (
+
+<li key={index} onClick={()=>handleSend(text)} style={{cursor:"pointer"}}>
+
+<span>{truncated}</span>
 
 <small>{h.created_at ? new Date(h.created_at).toLocaleDateString() : ""}</small>
 
 </li>
 
-))
+);
+
+})
 }
 
 {
-history.length===0 &&
+history.filter(h=>h.sender==="user").length===0 &&
 
 <li className="pc-recent-empty">No conversations yet</li>
 }
