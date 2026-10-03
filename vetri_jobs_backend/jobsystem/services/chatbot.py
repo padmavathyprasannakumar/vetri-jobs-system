@@ -7275,6 +7275,15 @@ def _tool_find_jobs_platform_wide(profile, user, args):
 
         jobs_qs = jobs_qs.filter(status=status_filter)
 
+    # Real total BEFORE the display slice - a "how many jobs are
+    # posted" question needs the true count, not however many happen
+    # to fit in the detailed list below. Capping the count itself to
+    # the display limit would silently under-report once postings
+    # exceed that limit (e.g. truly 50 postings, incorrectly answered
+    # "15 job posting(s)").
+
+    total_count = jobs_qs.count()
+
     jobs = list(jobs_qs.order_by("-created_at")[:15])
 
     if not jobs:
@@ -7317,7 +7326,13 @@ def _tool_find_jobs_platform_wide(profile, user, args):
             f"{job.salary or 'salary not disclosed'}"
         )
 
-    summary = f"{len(data)} job posting(s):\n\n" + "\n".join(lines[:8])
+    shown_note = (
+        f" (showing the {len(data)} most recent)" if total_count > len(data) else ""
+    )
+
+    summary = (
+        f"{total_count} job posting(s){shown_note}:\n\n" + "\n".join(lines[:8])
+    )
 
     return {
         "jobs": data,
@@ -9025,6 +9040,18 @@ _HOW_MANY_APPLIED_RE = re.compile(
 )
 
 
+# General job-posting questions ("what are the jobs are posted", "how
+# many jobs are posted") - need no specific company/status, unlike
+# every exact-phrase entry below which was built around named filters.
+_PLACEMENT_JOBS_POSTED_RE = re.compile(
+    r"^(?:what|which)\s+(?:are\s+the\s+)?jobs?\s+(?:are\s+|have\s+been\s+|were\s+)?posted\??$"
+    r"|^(?:show|list|see|display)\s+(?:me\s+)?(?:all\s+)?(?:the\s+)?(?:active\s+|posted\s+)?jobs?$"
+    r"|^how\s+many\s+(?:active\s+)?jobs?\s+(?:are\s+|have\s+been\s+|were\s+)?posted\??$"
+    r"|^how\s+many\s+active\s+jobs?\s+(?:are\s+)?available\??$"
+    r"|^how\s+many\s+jobs?\s+(?:are\s+there|in\s+total)\??$"
+)
+
+
 _PLACEMENT_SHORTCUTS = {
     "show all drives": ("get_placement_drives", {}),
     "show drives": ("get_placement_drives", {}),
@@ -9327,6 +9354,15 @@ def _handle_placement_shortcut(profile, user, message):
     if not entry and _HOW_MANY_APPLIED_RE.match(normalized):
 
         entry = ("get_placement_overview", {})
+
+    if not entry and _PLACEMENT_JOBS_POSTED_RE.match(normalized):
+
+        # A real report found "what are the jobs are posted" and "how
+        # many jobs are posted" both failing - find_jobs_platform_wide
+        # already existed and needs no specific company/status to
+        # answer either one, but no phrasing routed to it at all.
+
+        entry = ("find_jobs_platform_wide", {})
 
     if not entry:
 
