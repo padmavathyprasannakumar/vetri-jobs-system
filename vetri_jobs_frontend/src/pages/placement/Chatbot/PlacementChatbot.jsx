@@ -73,8 +73,6 @@ const SUGGESTED_QUESTIONS = [
 
     "What are the eligibility criteria for internships?",
 
-    "Give me tips to crack technical interviews",
-
 ];
 
 
