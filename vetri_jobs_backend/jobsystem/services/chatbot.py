@@ -8524,12 +8524,20 @@ _PLAIN_JOBS_RE = re.compile(
 
 _INTERVIEW_PREP_REQUEST_RE = re.compile(
     r"^i\s+want\s+to\s+prepare\s+(?:for\s+)?(?:an?\s+)?(?:interview\s+for\s+)?(?:the\s+)?(?P<job>.+?)"
-    r"(?:\s+(?:job\s+role|job|role|interview|position)s?)?$"
+    r"(?:\s+(?:job\s+role|job|role|interview|position)s?)*$"
     r"|^(?:please\s+)?prepare\s+(?:me\s+)?for\s+(?:an?\s+)?(?:the\s+)?(?P<job2>.+?)"
-    r"(?:\s+(?:job\s+role|job|role|interview|position)s?)?$"
+    r"(?:\s+(?:job\s+role|job|role|interview|position)s?)*$"
     r"|^(?:can\s+you\s+)?give\s+(?:me\s+)?(?:some\s+)?suggestions?\s+to\s+prepare\s+for\s+(?:an?\s+)?(?:the\s+)?(?P<job3>.+?)"
-    r"(?:\s+(?:job\s+role|job|role|interview|position)s?)?$"
+    r"(?:\s+(?:job\s+role|job|role|interview|position)s?)*$"
 )
+
+# The trailing suffix group above now repeats (* not ?) - a real report
+# found "I want to prepare teacher job interview" incorrectly extracting
+# "teacher job" as the role (with "job" wrongly left attached), because
+# the old version could only strip ONE trailing descriptor word, and
+# this phrase stacks two ("job" then "interview"). Allowing the suffix
+# to match zero-OR-MORE such words correctly strips both, leaving just
+# "teacher".
 
 # A real report found the earlier version of this regex only worked when
 # the sentence ended with an explicit "job"/"role" keyword - "I want to
@@ -8633,11 +8641,29 @@ _STUDENT_SHORTCUTS = {
 }
 
 
+# A leading conversational preamble ("can you please tell me...", "could
+# you...") before the REAL question - a real report found "can you please
+# tell me how many jobs i have applied" failing to match, while the bare
+# "how many jobs i have applied" (asked moments later) worked instantly.
+# Stripped here, at the single shared normalization point every shortcut/
+# regex/semantic check goes through, so every one of them benefits
+# without needing its own separate fix. Checked against every existing
+# exact-phrase entry first - none of them start with these words, so
+# this can't silently break an existing match.
+
+_LEADING_FILLER_RE = re.compile(
+    r"^(?:can\s+you\s+|could\s+you\s+|would\s+you\s+|please\s+|pls\s+)*"
+    r"(?:tell\s+me\s+|let\s+me\s+know\s+)?"
+)
+
+
 def _normalize_shortcut(message):
 
     text = re.sub(r"[^a-z0-9 ]+", "", (message or "").lower())
 
-    return re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"\s+", " ", text).strip()
+
+    return _LEADING_FILLER_RE.sub("", text).strip()
 
 
 def _handle_student_shortcut(profile, user, message):
