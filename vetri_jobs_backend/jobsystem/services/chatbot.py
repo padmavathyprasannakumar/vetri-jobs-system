@@ -7258,6 +7258,14 @@ def _tool_find_jobs_platform_wide(profile, user, args):
     a real report found this specific question with no tool behind it
     at all, even though Job.eligible_departments already holds exactly
     this data; it just had never been queried anywhere in the chatbot.
+
+    Also supports deadline_filter ("expired"/"closing_soon") - Job has
+    no "expired" STATUS value at all (only pending/active/closed/
+    rejected - confirmed directly from the real model), so "expired"
+    has to be computed: an "active" job whose application_deadline has
+    already passed, using India time for consistency with the rest of
+    this file's date handling. "Closing soon" is active with a
+    deadline in the next 7 days.
     """
 
     from django.db.models import Q
@@ -7268,6 +7276,8 @@ def _tool_find_jobs_platform_wide(profile, user, args):
     status_filter = (args.get("status") or "").strip().lower()
 
     department = (args.get("department") or "").strip()
+
+    deadline_filter = (args.get("deadline_filter") or "").strip().lower()
 
     jobs_qs = Job.objects.select_related("company")
 
@@ -7287,6 +7297,25 @@ def _tool_find_jobs_platform_wide(profile, user, args):
 
         jobs_qs = jobs_qs.filter(status=status_filter)
 
+    if deadline_filter in {"expired", "closing_soon"}:
+
+        today = _india_now().date()
+
+        jobs_qs = jobs_qs.filter(
+            status="active", application_deadline__isnull=False
+        )
+
+        if deadline_filter == "expired":
+
+            jobs_qs = jobs_qs.filter(application_deadline__lt=today)
+
+        else:
+
+            jobs_qs = jobs_qs.filter(
+                application_deadline__gte=today,
+                application_deadline__lte=today + timedelta(days=7),
+            )
+
     # Real total BEFORE the display slice - a "how many jobs are
     # posted" question needs the true count, not however many happen
     # to fit in the detailed list below. Capping the count itself to
@@ -7300,7 +7329,15 @@ def _tool_find_jobs_platform_wide(profile, user, args):
 
     if not jobs:
 
-        if department:
+        if deadline_filter == "expired":
+
+            summary = "No expired job postings found - every active posting's deadline is still open."
+
+        elif deadline_filter == "closing_soon":
+
+            summary = "No job postings are closing in the next 7 days."
+
+        elif department:
 
             summary = f"No job postings found eligible for \"{department}\" students."
 
@@ -7327,6 +7364,11 @@ def _tool_find_jobs_platform_wide(profile, user, args):
             if hasattr(job, "get_status_display") else job.status
         )
 
+        deadline_display = (
+            job.application_deadline.strftime("%b %d, %Y")
+            if job.application_deadline else "no deadline set"
+        )
+
         data.append({
             "title": job.title,
             "company": company,
@@ -7334,20 +7376,39 @@ def _tool_find_jobs_platform_wide(profile, user, args):
             "location": job.location or "",
             "salary": job.salary or "",
             "skills_required": job.skills_required or "",
+            "application_deadline": deadline_display,
         })
 
-        lines.append(
-            f"- {job.title} at {company} ({status_label}) - "
-            f"{job.location or 'location not set'}, "
-            f"{job.salary or 'salary not disclosed'}"
-        )
+        if deadline_filter in {"expired", "closing_soon"}:
+
+            # The deadline itself is the whole point of this question -
+            # shown instead of salary, which isn't what was asked about.
+
+            lines.append(
+                f"- {job.title} at {company} - deadline: {deadline_display}"
+            )
+
+        else:
+
+            lines.append(
+                f"- {job.title} at {company} ({status_label}) - "
+                f"{job.location or 'location not set'}, "
+                f"{job.salary or 'salary not disclosed'}"
+            )
 
     shown_note = (
         f" (showing the {len(data)} most recent)" if total_count > len(data) else ""
     )
 
+    deadline_label = (
+        " expiring" if deadline_filter == "expired"
+        else " closing within 7 days" if deadline_filter == "closing_soon"
+        else ""
+    )
+
     summary = (
-        f"{total_count} job posting(s){shown_note}:\n\n" + "\n".join(lines[:8])
+        f"{total_count} job posting(s){deadline_label}{shown_note}:\n\n"
+        + "\n".join(lines[:8])
     )
 
     return {
@@ -7358,42 +7419,167 @@ def _tool_find_jobs_platform_wide(profile, user, args):
 
 
 def _tool_get_candidate_pipeline(profile, user, args):
+    """
+    A real report found "how many students applied for Junior Python
+    Full Stack Developer" answered with a platform-wide total (every
+    job, not that one) alongside a "most recent" candidate list that
+    could easily belong to a DIFFERENT job entirely - because this
+    tool had no job filter at all, so it was the only thing the AI
+    could call regardless of whether a specific job was named, and the
+    count and the displayed names were never actually scoped together.
+
+    job_title now properly scopes BOTH the stats and the candidate
+    list to one specific job (strict, all-words matching - same
+    precision fix used elsewhere in this file for the identical
+    "Senior X" vs "X" false-match risk). Omitted, this is unchanged:
+    the original platform-wide pipeline.
+
+    When scoped to one job, candidates are also ranked by real AI
+    match score (reusing compute_job_match, the same scoring already
+    used on the company side's own top-candidates tool) so "who is
+    the top candidate for this job" has a real, grounded answer
+    instead of an invented one.
+    """
 
     from jobsystem.models import Application
 
-    apps = Application.objects.select_related(
-        "student", "job", "job__company"
-    ).order_by("-applied_date")[:15]
+    job_title = (args.get("job_title") or "").strip()
 
-    candidates = [
-        {
-            "name": a.student.full_name,
-            "job_title": a.job.title,
-            "company": a.job.company.company_name if a.job.company else "",
-            "status": a.get_status_display(),
+    apps_qs = Application.objects.select_related(
+        "student", "job", "job__company"
+    )
+
+    job_matched = False
+
+    if job_title:
+
+        title_q = _job_role_strict_match_q("job__title", job_title)
+
+        if title_q is not None:
+
+            scoped = apps_qs.filter(title_q)
+
+            if scoped.exists():
+
+                apps_qs = scoped
+
+                job_matched = True
+
+    if job_title and not job_matched:
+
+        return {
+            "candidates": [],
+            "summary": (
+                f"No applications found for a job matching "
+                f"\"{job_title}\" - please confirm the exact title or "
+                "company."
+            ),
         }
-        for a in apps
-    ]
 
     stats = {
-        "total_applicants": Application.objects.count(),
-        "shortlisted": Application.objects.filter(status="shortlisted").count(),
-        "interviews_scheduled": Application.objects.filter(status="interview").count(),
-        "final_selected": Application.objects.filter(status="selected").count(),
+        "total_applicants": apps_qs.count(),
+        "shortlisted": apps_qs.filter(status="shortlisted").count(),
+        "interviews_scheduled": apps_qs.filter(status="interview").count(),
+        "final_selected": apps_qs.filter(status="selected").count(),
     }
 
-    recent_lines = [
-        f"- {c['name']} ({c['job_title']} at {c['company'] or 'company not set'}): {c['status']}"
-        for c in candidates[:5]
-    ]
+    if job_matched:
 
-    summary = (
-        f"{stats['total_applicants']} total applicant(s), "
-        f"{stats['shortlisted']} shortlisted, "
-        f"{stats['interviews_scheduled']} in interview stage, "
-        f"{stats['final_selected']} selected.\n\nMost recent:\n"
-        + "\n".join(recent_lines)
-    )
+        # Real ranking, not just the most recent - rank_jobs-style
+        # scoring per application so "top candidate" is a genuine,
+        # grounded answer rather than guessed or invented. Imported
+        # here, inside the job-scoped branch specifically, so the
+        # plain platform-wide pipeline (no job_title at all) never
+        # needs this importable - unchanged from before this feature,
+        # same reasoning as the django.db.models.Q scoping elsewhere
+        # in this file.
+
+        from jobsystem.services.job_matching import compute_job_match
+
+        scored = []
+
+        for a in apps_qs.order_by("-applied_date")[:30]:
+
+            try:
+
+                score, _ = compute_job_match(a.student, a.job)
+
+            except Exception:
+
+                score = None
+
+            scored.append((a, score))
+
+        scored.sort(key=lambda pair: (pair[1] if pair[1] is not None else -1), reverse=True)
+
+        apps = [a for a, _ in scored[:15]]
+
+        candidates = [
+            {
+                "name": a.student.full_name,
+                "job_title": a.job.title,
+                "company": a.job.company.company_name if a.job.company else "",
+                "status": a.get_status_display(),
+                "match_score": score,
+            }
+            for a, score in scored[:15]
+        ]
+
+        if candidates and candidates[0].get("match_score") is not None:
+
+            top = candidates[0]
+
+            top_line = (
+                f"Top candidate for {job_title}: {top['name']} "
+                f"({top['match_score']}% match, {top['status']}).\n\n"
+            )
+
+        else:
+
+            top_line = ""
+
+        list_lines = [
+            f"- {c['name']}"
+            + (f" ({c['match_score']}% match)" if c.get("match_score") is not None else "")
+            + f": {c['status']}"
+            for c in candidates[:8]
+        ]
+
+        summary = (
+            top_line
+            + f"{stats['total_applicants']} applicant(s) for {job_title}, "
+            f"{stats['shortlisted']} shortlisted, "
+            f"{stats['interviews_scheduled']} in interview stage, "
+            f"{stats['final_selected']} selected.\n\n"
+            + "\n".join(list_lines)
+        )
+
+    else:
+
+        apps = list(apps_qs.order_by("-applied_date")[:15])
+
+        candidates = [
+            {
+                "name": a.student.full_name,
+                "job_title": a.job.title,
+                "company": a.job.company.company_name if a.job.company else "",
+                "status": a.get_status_display(),
+            }
+            for a in apps
+        ]
+
+        recent_lines = [
+            f"- {c['name']} ({c['job_title']} at {c['company'] or 'company not set'}): {c['status']}"
+            for c in candidates[:5]
+        ]
+
+        summary = (
+            f"{stats['total_applicants']} total applicant(s), "
+            f"{stats['shortlisted']} shortlisted, "
+            f"{stats['interviews_scheduled']} in interview stage, "
+            f"{stats['final_selected']} selected.\n\nMost recent:\n"
+            + "\n".join(recent_lines)
+        )
 
     return {
         "candidates": candidates,
@@ -7402,7 +7588,142 @@ def _tool_get_candidate_pipeline(profile, user, args):
     }
 
 
+def _tool_get_job_eligibility_criteria(profile, user, args):
+    """
+    A real report found "Senior Software Tester eligibility
+    requirements" answered with a job LISTING (title/company/status),
+    not the actual eligibility fields - because no tool existed for
+    this at all, so the AI fell back to the only job-related tool it
+    had. Job already stores REAL structured eligibility data
+    (min_cgpa, min_percentage, eligible_departments,
+    eligible_graduation_years, max_backlogs, min_age, max_age) plus
+    free-text fields (eligibility_criteria, qualification_required,
+    experience_required) - this reads them directly and states
+    plainly which ones aren't set, rather than inventing a plausible-
+    looking requirement for a blank field.
+    """
+
+    from jobsystem.models import Job
+
+    job_title = (args.get("job_title") or "").strip()
+
+    company_name = (args.get("company_name") or "").strip()
+
+    if not job_title:
+
+        return {"summary": "Which job would you like the eligibility criteria for?"}
+
+    title_q = _job_role_strict_match_q("title", job_title)
+
+    jobs_qs = Job.objects.select_related("company")
+
+    if title_q is not None:
+
+        jobs_qs = jobs_qs.filter(title_q)
+
+    if company_name:
+
+        jobs_qs = jobs_qs.filter(company__company_name__icontains=company_name)
+
+    matches = list(jobs_qs[:5])
+
+    if not matches:
+
+        return {
+            "summary": (
+                f"No job found matching \"{job_title}\""
+                + (f" at \"{company_name}\"" if company_name else "")
+                + " - please confirm the exact title or company."
+            )
+        }
+
+    if len(matches) > 1 and not company_name:
+
+        options = "; ".join(
+            f"{j.title} at {j.company.company_name if j.company else 'unknown company'}"
+            for j in matches
+        )
+
+        return {
+            "summary": (
+                f"Multiple postings match \"{job_title}\": {options}. "
+                "Which one did you mean - please name the company too?"
+            )
+        }
+
+    job = matches[0]
+
+    company_display = job.company.company_name if job.company else "Unknown company"
+
+    lines = [f"Eligibility criteria for {job.title} at {company_display}:"]
+
+    def add(label, value):
+
+        lines.append(f"- {label}: {value if value not in (None, '', []) else 'not specified'}")
+
+    add("Minimum CGPA", job.min_cgpa)
+
+    add("Minimum 10th/12th percentage", job.min_percentage)
+
+    add("Eligible departments", job.eligible_departments or "all departments")
+
+    add("Eligible graduation years", job.eligible_graduation_years or "any year")
+
+    add("Maximum backlogs allowed", job.max_backlogs if job.max_backlogs is not None else "no limit")
+
+    age_range = (
+        f"{job.min_age or 'no minimum'}-{job.max_age or 'no maximum'}"
+        if (job.min_age or job.max_age) else None
+    )
+
+    add("Age range", age_range)
+
+    add("Required qualification", job.qualification_required)
+
+    add("Required experience", job.experience_required)
+
+    if job.eligibility_criteria:
+
+        lines.append(f"- Additional criteria: {job.eligibility_criteria}")
+
+    return {
+        "job_title": job.title,
+        "company": company_display,
+        "summary": "\n".join(lines),
+    }
+
+
 PLACEMENT_TOOL_SCHEMAS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_job_eligibility_criteria",
+            "description": (
+                "Get the ACTUAL eligibility requirements for ONE "
+                "specific job posting - min CGPA, min percentage, "
+                "eligible departments, eligible graduation years, max "
+                "backlogs, age range, required qualification/"
+                "experience. Use when the admin asks about eligibility "
+                "requirements/criteria for a named job, or whether a "
+                "job needs specific qualifications - NOT for a plain "
+                "job listing (use find_jobs_platform_wide for that)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "job_title": {
+                        "type": "string",
+                        "description": "The job's title, as named by the admin.",
+                    },
+                    "company_name": {
+                        "type": "string",
+                        "description": "The company, if named or needed to disambiguate multiple similarly-titled postings.",
+                    },
+                },
+                "required": ["job_title"],
+            },
+        },
+    },
     {
         "type": "function",
         "function": {
@@ -7414,7 +7735,10 @@ PLACEMENT_TOOL_SCHEMAS = [
                 "placement admin - this is the 'Find Jobs' capability "
                 "advertised on this page. Pass department when the "
                 "admin asked which jobs suit a specific department's "
-                "students (e.g. 'jobs for Computer Science students')."
+                "students (e.g. 'jobs for Computer Science students'). "
+                "Pass deadline_filter='expired' or 'closing_soon' for "
+                "'show expired jobs'/'which jobs are closing soon' "
+                "style questions."
             ),
             "parameters": {
                 "type": "object",
@@ -7430,6 +7754,10 @@ PLACEMENT_TOOL_SCHEMAS = [
                     "department": {
                         "type": "string",
                         "description": "A department/course to filter by eligibility, if the admin named one (e.g. 'Computer Science').",
+                    },
+                    "deadline_filter": {
+                        "type": "string",
+                        "description": "'expired' for active jobs whose application deadline has already passed, or 'closing_soon' for active jobs with a deadline in the next 7 days. Use when the admin asks about expired jobs or jobs closing soon.",
                     },
                 },
                 "required": [],
@@ -7569,13 +7897,26 @@ PLACEMENT_TOOL_SCHEMAS = [
         "function": {
             "name": "get_candidate_pipeline",
             "description": (
-                "Get the platform-wide candidate pipeline: recent "
-                "applicants across every company, their job, and "
-                "their current stage, plus pipeline stage counts. Use "
-                "for 'show the candidate pipeline' or similar "
-                "platform-wide (not one company's) requests."
+                "Get the candidate pipeline: applicants, their job, and "
+                "their current stage, plus pipeline stage counts. "
+                "Omit job_title for the platform-wide pipeline (every "
+                "company). Pass job_title when the admin asked about "
+                "ONE specific job's applicants/candidates - 'how many "
+                "applied for X', 'show applicants for X', 'who is the "
+                "top candidate for X' - this correctly scopes both the "
+                "counts and the candidate list to that job only, and "
+                "ranks candidates by real match score."
             ),
-            "parameters": {"type": "object", "properties": {}, "required": []},
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "job_title": {
+                        "type": "string",
+                        "description": "The specific job to scope to, if the admin named one.",
+                    }
+                },
+                "required": [],
+            },
         },
     },
 ]
@@ -7585,6 +7926,7 @@ PLACEMENT_TOOL_EXECUTORS = {
     "list_students": _tool_list_students,
     "get_company_insights": _tool_get_company_insights,
     "find_jobs_platform_wide": _tool_find_jobs_platform_wide,
+    "get_job_eligibility_criteria": _tool_get_job_eligibility_criteria,
     "get_placement_overview": _tool_get_placement_overview,
     "get_pending_company_approvals": _tool_get_pending_company_approvals,
     "get_unverified_students": _tool_get_unverified_students,
@@ -9061,6 +9403,36 @@ _HOW_MANY_APPLIED_RE = re.compile(
     r"(\s+(for|to))?(\s+(a\s+job|the\s+job|jobs?))?\??$"
 )
 
+# A real report found "how many students applied for Junior Python Full
+# Stack Developer" answered with a platform-wide total, not that job's -
+# because the only placement tool that existed had no job filter at all,
+# so it was used regardless. Extracts the named job, routed directly to
+# get_candidate_pipeline WITH that job_title, which now correctly scopes
+# both the count and the candidate list to it.
+
+_APPLIED_FOR_JOB_RE = re.compile(
+    r"^how\s+many\s+(?:students?|applicants?|people)\s+(?:are\s+|have\s+)?applied\s+(?:for|to)\s+(?:the\s+|a\s+)?(?P<job>.+?)(?:\s+job)?\??$"
+    r"|^(?:show|list)\s+(?:me\s+)?applicants?\s+for\s+(?:the\s+)?(?P<job2>.+?)(?:\s+job)?$"
+    r"|^(?:show|list)\s+(?:me\s+)?candidates?\s+for\s+(?:the\s+)?(?P<job3>.+?)(?:\s+job)?$"
+)
+
+
+def _extract_applied_for_job(message):
+    """The named job from a 'how many applied for X' style placement-
+    admin message, or None."""
+
+    normalized = _normalize_shortcut(message)
+
+    match = _APPLIED_FOR_JOB_RE.match(normalized)
+
+    if not match:
+
+        return None
+
+    return (
+        match.group("job") or match.group("job2") or match.group("job3") or ""
+    ).strip() or None
+
 
 # General job-posting questions ("what are the jobs are posted", "how
 # many jobs are posted") - need no specific company/status, unlike
@@ -9376,6 +9748,38 @@ def _handle_placement_shortcut(profile, user, message):
     if not entry and _HOW_MANY_APPLIED_RE.match(normalized):
 
         entry = ("get_placement_overview", {})
+
+    if not entry:
+
+        applied_job = _extract_applied_for_job(message)
+
+        if applied_job:
+
+            pipeline_executor = PLACEMENT_TOOL_EXECUTORS.get("get_candidate_pipeline")
+
+            try:
+
+                pipeline_result = pipeline_executor(profile, user, {"job_title": applied_job})
+
+            except Exception as e:
+
+                print("Chatbot placement shortcut error: get_candidate_pipeline", e)
+
+                pipeline_result = None
+
+            if pipeline_result is not None and pipeline_result.get("candidates"):
+
+                # A real job match was found - safe to answer directly.
+                # If nothing was found, fall through to the normal AI
+                # flow instead (same safety pattern as interview prep
+                # elsewhere in this file), so the admin still gets a
+                # sensible clarifying response rather than a bare
+                # "no applications found" with no further help.
+
+                return _build_tool_payload(
+                    _user_facing(pipeline_result.get("summary", "Here's what I found.")),
+                    [(None, "get_candidate_pipeline", pipeline_result)],
+                )
 
     if not entry and _PLACEMENT_JOBS_POSTED_RE.match(normalized):
 
