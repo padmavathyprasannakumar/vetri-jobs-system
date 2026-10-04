@@ -11217,6 +11217,149 @@ def _write_intent_missing(name, message, history):
     return not ok
 
 
+# =====================================================
+# TOOL SELECTION (token saving)
+#
+# Every tool schema sent to Groq costs tokens on EVERY call, whether or
+# not the model uses it - the full student tool list alone is roughly
+# 2,500 tokens. Only the tool groups whose keywords appear in the
+# message (or in the previous two turns, so follow-ups like "tell me
+# more about it" still work) are sent. If nothing matches, ALL tools are
+# sent exactly as before, so an unusual question is never left without
+# the tool it needs. A bare greeting or thanks needs no tools at all.
+# Only the list OFFERED to the model changes - every tool can still run.
+# =====================================================
+
+_TOOL_GROUPS = {
+    "student": [
+        (("job", "apply", "eligib", "opening", "vacanc", "role", "position",
+          "hiring", "compan", "saved", "match", "salary", "requirement",
+          "intern", "developer", "tester", "engineer", "analyst"),
+         ("find_matching_jobs", "list_open_jobs", "check_job_eligibility",
+          "get_job_details", "apply_to_job", "get_saved_jobs",
+          "get_company_info")),
+        (("application", "applied", "status", "shortlist", "selected",
+          "rejected"),
+         ("get_application_status", "get_upcoming_interviews")),
+        (("interview", "mock", "prepar", "prep", "practice", "slot"),
+         ("get_upcoming_interviews", "get_interview_prep",
+          "start_mock_interview", "get_mock_interview_report",
+          "request_interview_slot", "get_application_status")),
+        (("resume", "cv", "ats", "score", "download", "rewrite"),
+         ("get_resume_feedback", "check_ats_friendliness", "rewrite_resume",
+          "get_resume_download_link")),
+        (("skill", "learn", "roadmap", "improve", "missing"),
+         ("get_skill_suggestions", "get_company_skill_gap",
+          "update_my_skills", "get_job_details")),
+        (("profile", "project", "cgpa", "department", "update", "add "),
+         ("get_my_profile", "update_my_skills", "update_my_projects")),
+        (("career", "plan", "placed", "next", "overall", "guidance",
+          "how am i"),
+         ("get_career_plan", "find_matching_jobs", "get_resume_feedback")),
+        (("notification", "alert", "unread"), ("get_notifications",)),
+        (("drive", "placement"), ("get_upcoming_drives",)),
+        (("query", "queries", "complain", "issue", "problem", "placement",
+          "contact", "ticket"),
+         ("raise_placement_query", "request_interview_slot")),
+    ],
+    "company": [
+        (("candidate", "applicant", "applied", "application", "shortlist",
+          "reject", "student", "top", "best", "duplicate", "same name",
+          "selected", "who "),
+         ("search_candidates", "get_top_candidates_for_job",
+          "get_duplicate_candidate_names", "get_company_applications",
+          "shortlist_candidate", "reject_candidate")),
+        (("interview",), ("get_company_interviews",)),
+        (("job", "posting", "posted", "description", "role", "position"),
+         ("get_job_description", "get_active_job_postings",
+          "list_all_job_postings")),
+        (("analytic", "stat", "summary", "how many", "hired", "report"),
+         ("get_company_analytics_summary",)),
+        (("profile", "verified", "approval", "our company", "my company"),
+         ("get_company_profile_info",)),
+        (("question", "query", "queries", "cq", "raise", "placement",
+          "admin", "answered"),
+         ("raise_company_query", "get_my_company_queries")),
+    ],
+    "placement_admin": [
+        (("job", "posting", "eligib", "deadline", "expired", "closing",
+          "criteria", "requirement"),
+         ("find_jobs_platform_wide", "get_job_eligibility_criteria")),
+        (("compan", "approval", "pending", "insight", "history"),
+         ("get_company_insights", "get_pending_company_approvals",
+          "get_company_history")),
+        (("student", "verif", "candidate", "applicant", "applied",
+          "pipeline"),
+         ("list_students", "get_unverified_students",
+          "get_candidate_pipeline")),
+        (("overview", "report", "rate", "placed", "stat", "how are we",
+          "percentage", "total", "how many"),
+         ("get_placement_overview", "get_placement_report")),
+        (("drive",), ("get_placement_drives",)),
+        (("question", "query", "queries", "cq", "answer", "in review"),
+         ("list_company_queries", "get_company_query_detail",
+          "answer_company_query", "update_company_query_status")),
+    ],
+}
+
+_BARE_GREETING_RE = re.compile(
+    r"^\s*(?:hi+|hello+|hey+|hai|thanks?|thank\s+you|thx|"
+    r"good\s+(?:morning|afternoon|evening|night)|bye|goodbye)"
+    r"(?:\s+(?:there|so\s+much|a\s+lot|vetri|ai))?\s*[.!]*\s*$",
+    re.IGNORECASE,
+)
+
+
+def _select_tool_schemas(role, message, history, schemas):
+    """The subset of `schemas` worth sending for this message - see the
+    TOOL SELECTION note above. Never raises: on any problem the full
+    list is returned, which is exactly the previous behaviour."""
+
+    try:
+
+        if _BARE_GREETING_RE.match(message or ""):
+
+            return []
+
+        groups = _TOOL_GROUPS.get(role)
+
+        if not groups:
+
+            return schemas
+
+        recent = " ".join(
+            str(turn.get("message", ""))
+            for turn in (history or [])[-2:]
+            if isinstance(turn, dict)
+        )
+
+        text = f"{message or ''} {recent}".lower()
+
+        wanted = set()
+
+        for keywords, tool_names in groups:
+
+            if any(keyword in text for keyword in keywords):
+
+                wanted.update(tool_names)
+
+        if not wanted:
+
+            return schemas
+
+        selected = [s for s in schemas if s["function"]["name"] in wanted]
+
+        print(f"[chatbot] offering {len(selected)} of {len(schemas)} tools")
+
+        return selected or schemas
+
+    except Exception as e:
+
+        print("Chatbot tool selection error:", e)
+
+        return schemas
+
+
 def generate_reply(user, message, history=None, page_context=None):
     """Public entry point. Gives each chat message its own AI time
     budget (see GROQ_REQUEST_BUDGET), then runs the real logic."""
@@ -11607,6 +11750,12 @@ def _generate_reply_inner(user, message, history=None, page_context=None):
         "role": "user",
         "content": message
     })
+
+    if tool_schemas:
+
+        tool_schemas = _select_tool_schemas(
+            role, message, history, tool_schemas
+        )
 
     if not tool_schemas:
 
