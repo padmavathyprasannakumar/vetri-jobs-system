@@ -4041,7 +4041,7 @@ class ResumeAnalysis(models.Model):
 
     def __str__(self):
 
-        return f"{self.resume.title} Analysis"
+        return f"{self.resume.filename} Analysis"
 
 # =====================================================
 # SAVED / BOOKMARKED JOBS (student wishlist)
