@@ -4378,6 +4378,101 @@ class PlacementQuery(models.Model):
     def __str__(self):
         return f"{self.student} - {self.get_category_display()}"
 
+# =====================================================
+# COMPANY QUERY (company-raised questions, answered by
+# Placement Admin through the chatbot)
+#
+# PlacementQuery (already in this file) is student-specific
+# (student FK, no company field, no admin_answer field) and
+# cannot be reused here - this is a genuinely new model, not
+# a duplicate of anything that already exists.
+#
+# Add this class to models.py, then run:
+#   python manage.py makemigrations
+#   python manage.py migrate
+# =====================================================
+
+class CompanyQuery(models.Model):
+
+    STATUS_CHOICES = (
+        ("pending", "Pending"),
+        ("in_review", "In Review"),
+        ("answered", "Answered"),
+        ("closed", "Closed"),
+    )
+
+    company = models.ForeignKey(
+        CompanyProfile,
+        on_delete=models.CASCADE,
+        related_name="raised_queries",
+    )
+
+    subject = models.CharField(
+        max_length=200,
+    )
+
+    question_text = models.TextField()
+
+    related_job = models.ForeignKey(
+        Job,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="related_queries",
+    )
+
+    related_drive = models.ForeignKey(
+        PlacementDrive,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="related_queries",
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default="pending",
+    )
+
+    admin_answer = models.TextField(
+        blank=True,
+    )
+
+    answered_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="answered_company_queries",
+    )
+
+    answered_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    source = models.CharField(
+        max_length=20,
+        default="chatbot",
+        help_text="Where this query came from (chatbot, form, etc.)",
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name_plural = "Company queries"
+
+    def __str__(self):
+        return f"CQ-{self.id}: {self.subject} ({self.company.company_name})"
+
 
 # =====================================================
 # SITE BRANDING (logo managed from Django Admin, read by
