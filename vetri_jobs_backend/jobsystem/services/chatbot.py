@@ -3843,8 +3843,6 @@ def _tool_get_upcoming_interviews(profile, user, args):
 
     today_only = bool(args.get("today"))
 
-    week_end = now + timedelta(days=7)
-
     qs = Interview.objects.filter(
         application__student=profile,
         interview_date__gte=now,
@@ -3870,7 +3868,16 @@ def _tool_get_upcoming_interviews(profile, user, args):
 
     elif week_only:
 
-        qs = qs.filter(interview_date__lte=week_end)
+        # A real report found this using "now + 7 days" - a rolling
+        # window, not an actual calendar week, so asking on a Saturday
+        # would silently reach into part of NEXT week while still
+        # calling it "this week". Now uses the same real Monday-Sunday,
+        # India-time week boundary already fixed for this identical
+        # issue on the company side.
+
+        _week_start, week_end = _india_this_week_utc_bounds()
+
+        qs = qs.filter(interview_date__lt=week_end)
 
     interviews = [_serialize_interview(iv) for iv in qs]
 
