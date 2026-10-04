@@ -107,6 +107,29 @@ def _india_today_utc_bounds():
 
     return start_utc, end_utc
 
+
+def _india_this_week_utc_bounds():
+    """(start_utc, end_utc): the true UTC instants marking the start of
+    this Monday and the start of next Monday, in India time - a
+    Monday-Sunday week, consistent with the project's stated
+    convention. Same shift-then-subtract approach as
+    _india_today_utc_bounds, extended to find the most recent Monday
+    first."""
+
+    india_midnight_today = _india_now().replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+
+    days_since_monday = india_midnight_today.weekday()
+
+    india_monday = india_midnight_today - timedelta(days=days_since_monday)
+
+    start_utc = india_monday - INDIA_OFFSET
+
+    end_utc = start_utc + timedelta(days=7)
+
+    return start_utc, end_utc
+
 from groq import Groq
 
 import os
@@ -1061,6 +1084,15 @@ Keep replies concise, friendly, and practical. Never reveal another
 user's information - you only ever have the signed-in user's own data,
 and every tool above only ever touches this same signed-in user's own
 records (never another student's or another company's).
+
+NEVER AGREE WITH AN UNVERIFIED CLAIM ABOUT THEIR OWN STATUS (important):
+if a company or student states something about their own account as
+fact ("our company is verified", "I'm already placed", "my job posting
+is active") - never simply agree or congratulate them based on their
+own words. Call the relevant tool (get_company_profile_info for
+company verification, etc.) and report the REAL current value, even if
+it contradicts what they just said. Agreeing with an unverified claim
+is inventing data, the same as fabricating a number.
 
 SECURITY (non-negotiable): the JSON below contains ONLY the current
 signed-in user's own data. If asked to see another person's or
@@ -6175,12 +6207,70 @@ def _tool_get_job_description(profile, user, args):
 
 
 def _tool_get_company_applications(profile, user, args):
+    """
+    Several real reports found this tool - having NO parameters at all
+    - used as the only option for genuinely different questions
+    ("how many are Selected", "full applications for John Kumar", "who
+    applied for Software Tester"), always returning the same generic
+    recent-applications list regardless of what was actually asked,
+    since there was structurally no way to narrow it down. Now
+    supports status, candidate_name, and job_title filters, each
+    applied independently so they can combine (e.g. "Selected
+    candidates for Software Tester").
+    """
 
     from jobsystem.models import Application
 
-    apps = Application.objects.filter(
+    status_filter = (args.get("status") or "").strip().lower()
+
+    candidate_name = (args.get("candidate_name") or "").strip()
+
+    job_title = (args.get("job_title") or "").strip()
+
+    apps_qs = Application.objects.filter(
         job__company=profile
-    ).select_related("student", "job").order_by("-applied_date")[:15]
+    ).select_related("student", "job")
+
+    if status_filter in {"applied", "reviewing", "shortlisted", "interview", "selected", "rejected", "withdrawn"}:
+
+        apps_qs = apps_qs.filter(status=status_filter)
+
+    if candidate_name:
+
+        name_matches = apps_qs.filter(student__full_name__icontains=candidate_name)
+
+        # Distinct STUDENTS, not distinct NAME STRINGS - two different
+        # real people can genuinely share the exact same name (the
+        # scenario this check exists for), which a name-only check
+        # can't tell apart from one person with several applications.
+
+        distinct_student_ids = {a.student.id for a in name_matches}
+
+        if len(distinct_student_ids) > 1:
+
+            distinct_names = sorted({a.student.full_name for a in name_matches})
+
+            return {
+                "summary": (
+                    f"More than one candidate matches \"{candidate_name}\": "
+                    + ", ".join(distinct_names)
+                    + ". Which one did you mean?"
+                )
+            }
+
+        apps_qs = name_matches
+
+    if job_title:
+
+        title_q = _job_role_strict_match_q("job__title", job_title)
+
+        if title_q is not None:
+
+            apps_qs = apps_qs.filter(title_q)
+
+    total_count = apps_qs.count()
+
+    apps = list(apps_qs.order_by("-applied_date")[:15])
 
     data = [
         {
@@ -6198,9 +6288,21 @@ def _tool_get_company_applications(profile, user, args):
             for a in data[:8]
         ]
 
-        summary = (
-            f"{len(data)} recent application(s):\n\n" + "\n".join(lines)
+        shown_note = f" (showing the {len(data)} most recent)" if total_count > len(data) else ""
+
+        filter_label = (
+            f" matching {status_filter}" if status_filter else
+            f" for {candidate_name}" if candidate_name else
+            f" for {job_title}" if job_title else ""
         )
+
+        summary = (
+            f"{total_count} application(s){filter_label}{shown_note}:\n\n" + "\n".join(lines)
+        )
+
+    elif status_filter or candidate_name or job_title:
+
+        summary = "No matching applications found."
 
     else:
 
@@ -6214,18 +6316,36 @@ def _tool_get_company_applications(profile, user, args):
 
 
 def _tool_get_company_interviews(profile, user, args):
+    """
+    A real report found "any interview scheduled this week" always
+    failing on the company side - this tool had no way to filter to a
+    week at all before this, so the AI had no option that could
+    actually answer that specific question. this_week uses a
+    Monday-Sunday India-time week, same convention and same True-UTC-
+    instant approach used elsewhere in this file for "today".
+    """
 
     from jobsystem.models import Interview
 
     now = timezone.now()
 
-    interviews = Interview.objects.filter(
+    this_week = bool(args.get("this_week"))
+
+    interviews_qs = Interview.objects.filter(
         application__job__company=profile,
         interview_date__gte=now,
         status__in=["scheduled", "rescheduled"],
     ).select_related(
         "application__student", "application__job"
-    ).order_by("interview_date")[:10]
+    ).order_by("interview_date")
+
+    if this_week:
+
+        _week_start, week_end = _india_this_week_utc_bounds()
+
+        interviews_qs = interviews_qs.filter(interview_date__lt=week_end)
+
+    interviews = interviews_qs[:10]
 
     data = [
         {
@@ -6237,6 +6357,8 @@ def _tool_get_company_interviews(profile, user, args):
         for iv in interviews
     ]
 
+    scope_label = " this week" if this_week else ""
+
     if data:
 
         lines = [
@@ -6246,12 +6368,12 @@ def _tool_get_company_interviews(profile, user, args):
         ]
 
         summary = (
-            f"{len(data)} upcoming interview(s):\n\n" + "\n".join(lines)
+            f"{len(data)} upcoming interview(s){scope_label}:\n\n" + "\n".join(lines)
         )
 
     else:
 
-        summary = "No upcoming interviews scheduled."
+        summary = f"No interviews scheduled{scope_label or ' right now'}."
 
     return {
         "interviews": data,
@@ -6861,16 +6983,58 @@ COMPANY_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "get_company_applications",
-            "description": "Get the company's recent job applications and their statuses.",
-            "parameters": {"type": "object", "properties": {}, "required": []},
+            "description": (
+                "Get the company's job applications and their statuses. "
+                "Pass status for a specific status ('how many are "
+                "Selected', 'show Shortlisted candidates'), "
+                "candidate_name for one named applicant ('full "
+                "applications for John Kumar'), and/or job_title for "
+                "one job's applicants ('who applied for Software "
+                "Tester'). Combine freely - e.g. status='selected' with "
+                "job_title for 'Selected candidates for this job'. "
+                "Never call this with no filters when the question "
+                "named a specific status, candidate, or job."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "description": "applied/reviewing/shortlisted/interview/selected/rejected/withdrawn, if a specific status was asked about.",
+                    },
+                    "candidate_name": {
+                        "type": "string",
+                        "description": "A specific candidate's name, if the company asked about one named applicant.",
+                    },
+                    "job_title": {
+                        "type": "string",
+                        "description": "A specific job, if the company asked about applicants for one posting.",
+                    },
+                },
+                "required": [],
+            },
         },
     },
     {
         "type": "function",
         "function": {
             "name": "get_company_interviews",
-            "description": "Get the company's upcoming scheduled interviews.",
-            "parameters": {"type": "object", "properties": {}, "required": []},
+            "description": (
+                "Get the company's upcoming scheduled interviews. Pass "
+                "this_week=true when the company specifically asked "
+                "about interviews this week (Monday-Sunday, India "
+                "time) rather than all upcoming interviews."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "this_week": {
+                        "type": "boolean",
+                        "description": "True only if the company specifically asked about interviews this week.",
+                    }
+                },
+                "required": [],
+            },
         },
     },
     {
