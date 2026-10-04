@@ -162,22 +162,46 @@ GROQ_MIN_ATTEMPT_WINDOW = 8.0   # don't start a new attempt with less than this 
 RECENT_JOB_DAYS = 14
 
 
-try:
+def _build_groq_client(api_key):
 
-    client = Groq(
-        api_key=os.getenv("GROQ_API_KEY"),
-        timeout=GROQ_ATTEMPT_TIMEOUT,
-        max_retries=0,
-    )
+    try:
 
-except TypeError:
+        return Groq(
+            api_key=api_key,
+            timeout=GROQ_ATTEMPT_TIMEOUT,
+            max_retries=0,
+        )
 
-    # An older SDK that doesn't accept these options - keep working with
-    # its defaults rather than failing at import time.
+    except TypeError:
 
-    client = Groq(
-        api_key=os.getenv("GROQ_API_KEY")
-    )
+        # An older SDK that doesn't accept these options - keep
+        # working with its defaults rather than failing at import time.
+
+        return Groq(api_key=api_key)
+
+
+# Matches the exact prior behavior: always constructs a client, even if
+# the env var happens to be unset - the same as before this change,
+# letting the Groq SDK itself handle that case at request time rather
+# than skipping construction here.
+
+client = _build_groq_client(os.getenv("GROQ_API_KEY"))
+
+# A second key, same Groq organization, purely for resilience - NOT a
+# way to raise the shared quota. Groq's own error messages confirm the
+# token-per-day and token-per-minute limits are tracked per MODEL per
+# ORGANIZATION ("Rate limit reached for model X in organization Y") -
+# two keys under that same organization share that same limit, for
+# every model, identically. What a second key genuinely helps with:
+# this one key being accidentally revoked/rotated/disabled, or a
+# transient auth/connection issue specific to one key's session -
+# real, if less common, failure modes a rate limit error does not
+# cover. Entirely optional: if GROQ_API_KEY_2 is never set, this stays
+# None and every call behaves exactly as before.
+
+_secondary_key = os.getenv("GROQ_API_KEY_2")
+
+client_secondary = _build_groq_client(_secondary_key) if _secondary_key else None
 
 
 # One clock per chat message (per thread), started in generate_reply().
@@ -5331,11 +5355,11 @@ TOOL_SCHEMAS = [
                 "type": "object",
                 "properties": {
                     "company_name": {
-                        "type": "string",
+                        "type": ["string", "null"],
                         "description": "Filter to jobs from this company, if the student named one (e.g. 'TechNova').",
                     },
                     "keyword": {
-                        "type": "string",
+                        "type": ["string", "null"],
                         "description": "Filter to jobs matching this technology/skill/term, if the student named one (e.g. 'python', 'django', 'react').",
                     },
                 },
@@ -5401,7 +5425,7 @@ TOOL_SCHEMAS = [
                 "type": "object",
                 "properties": {
                     "job_role": {
-                        "type": "string",
+                        "type": ["string", "null"],
                         "description": "The target role the student named, if any (e.g. 'Python Developer', 'Data Analyst').",
                     }
                 },
@@ -5478,7 +5502,7 @@ TOOL_SCHEMAS = [
                         "description": "Just the job title, e.g. \"Software Tester\" - without the company name.",
                     },
                     "company_name": {
-                        "type": "string",
+                        "type": ["string", "null"],
                         "description": "The company offering the job, if known (e.g. from a job card you showed).",
                     },
                 },
@@ -5564,7 +5588,7 @@ TOOL_SCHEMAS = [
                 "type": "object",
                 "properties": {
                     "job_title": {
-                        "type": "string",
+                        "type": ["string", "null"],
                         "description": "The job title to prepare for, if the student mentioned one.",
                     }
                 },
@@ -5770,7 +5794,7 @@ TOOL_SCHEMAS = [
                         "description": "The job role to practice interviewing for.",
                     },
                     "company_name": {
-                        "type": "string",
+                        "type": ["string", "null"],
                         "description": "The target company, if the student mentioned one.",
                     },
                 },
@@ -5803,7 +5827,7 @@ TOOL_SCHEMAS = [
                 "type": "object",
                 "properties": {
                     "note": {
-                        "type": "string",
+                        "type": ["string", "null"],
                         "description": "Any extra detail the student gave about their request.",
                     }
                 },
@@ -6900,11 +6924,11 @@ COMPANY_TOOL_SCHEMAS = [
                 "type": "object",
                 "properties": {
                     "query": {
-                        "type": "string",
+                        "type": ["string", "null"],
                         "description": "A skill, name, or course keyword to search for.",
                     },
                     "department": {
-                        "type": "string",
+                        "type": ["string", "null"],
                         "description": "Department to filter by, if mentioned.",
                     },
                     "min_cgpa": {
@@ -6971,7 +6995,7 @@ COMPANY_TOOL_SCHEMAS = [
                 "type": "object",
                 "properties": {
                     "job_title": {
-                        "type": "string",
+                        "type": ["string", "null"],
                         "description": "The job title or role the recruiter named, exactly as they said it - matched by keyword, not an exact title.",
                     }
                 },
@@ -6999,15 +7023,15 @@ COMPANY_TOOL_SCHEMAS = [
                 "type": "object",
                 "properties": {
                     "status": {
-                        "type": "string",
+                        "type": ["string", "null"],
                         "description": "applied/reviewing/shortlisted/interview/selected/rejected/withdrawn, if a specific status was asked about.",
                     },
                     "candidate_name": {
-                        "type": "string",
+                        "type": ["string", "null"],
                         "description": "A specific candidate's name, if the company asked about one named applicant.",
                     },
                     "job_title": {
-                        "type": "string",
+                        "type": ["string", "null"],
                         "description": "A specific job, if the company asked about applicants for one posting.",
                     },
                 },
@@ -7170,7 +7194,7 @@ COMPANY_TOOL_SCHEMAS = [
                         "description": "The actual question or issue, in the company's own words.",
                     },
                     "related_job_title": {
-                        "type": "string",
+                        "type": ["string", "null"],
                         "description": "This company's own job the question relates to, if any.",
                     },
                 },
@@ -7192,7 +7216,7 @@ COMPANY_TOOL_SCHEMAS = [
                 "type": "object",
                 "properties": {
                     "status": {
-                        "type": "string",
+                        "type": ["string", "null"],
                         "description": "pending/in_review/answered/closed, if the company asked for a specific status.",
                     }
                 },
@@ -7269,7 +7293,8 @@ def _tool_get_placement_overview(profile, user, args):
         "summary": (
             f"{placed} of {total_students} students placed "
             f"({placement_pct}%). {total_companies} companies, "
-            f"{active_jobs} active jobs, {active_drives} active drive(s)."
+            f"{active_jobs} active jobs, {total_applications} total "
+            f"application(s), {active_drives} active drive(s)."
         ),
     }
 
@@ -8365,7 +8390,7 @@ PLACEMENT_TOOL_SCHEMAS = [
                         "description": "The job's title, as named by the admin.",
                     },
                     "company_name": {
-                        "type": "string",
+                        "type": ["string", "null"],
                         "description": "The company, if named or needed to disambiguate multiple similarly-titled postings.",
                     },
                 },
@@ -8398,27 +8423,27 @@ PLACEMENT_TOOL_SCHEMAS = [
                 "type": "object",
                 "properties": {
                     "company_name": {
-                        "type": "string",
+                        "type": ["string", "null"],
                         "description": "A company name to filter by, if the admin named one.",
                     },
                     "status": {
-                        "type": "string",
+                        "type": ["string", "null"],
                         "description": "active/pending/closed/rejected, if the admin asked for a specific status.",
                     },
                     "department": {
-                        "type": "string",
+                        "type": ["string", "null"],
                         "description": "A department/course to filter by eligibility, if the admin named one (e.g. 'Computer Science').",
                     },
                     "deadline_filter": {
-                        "type": "string",
+                        "type": ["string", "null"],
                         "description": "'expired' for active jobs whose application deadline has already passed, or 'closing_soon' for active jobs with a deadline in the next 7 days. Use when the admin asks about expired jobs or jobs closing soon.",
                     },
                     "keyword": {
-                        "type": "string",
+                        "type": ["string", "null"],
                         "description": "A role/title/technology to filter by, if the admin named one (e.g. 'Python developer', 'frontend'). Matches the job title first.",
                     },
                     "location": {
-                        "type": "string",
+                        "type": ["string", "null"],
                         "description": "A location to filter by, if the admin named one (e.g. 'Chennai').",
                     },
                 },
@@ -8508,7 +8533,7 @@ PLACEMENT_TOOL_SCHEMAS = [
                 "type": "object",
                 "properties": {
                     "status": {
-                        "type": "string",
+                        "type": ["string", "null"],
                         "description": (
                             "One of upcoming, ongoing, completed, "
                             "cancelled. Defaults to upcoming."
@@ -8576,7 +8601,7 @@ PLACEMENT_TOOL_SCHEMAS = [
                 "type": "object",
                 "properties": {
                     "job_title": {
-                        "type": "string",
+                        "type": ["string", "null"],
                         "description": "The specific job to scope to, if the admin named one.",
                     },
                     "rank_candidates": {
@@ -8603,15 +8628,15 @@ PLACEMENT_TOOL_SCHEMAS = [
                 "type": "object",
                 "properties": {
                     "status": {
-                        "type": "string",
+                        "type": ["string", "null"],
                         "description": "pending/in_review/answered/closed, if the admin asked for a specific status.",
                     },
                     "company_name": {
-                        "type": "string",
+                        "type": ["string", "null"],
                         "description": "A company name, if the admin named one.",
                     },
                     "job_title": {
-                        "type": "string",
+                        "type": ["string", "null"],
                         "description": "A related job title, if the admin asked about questions for a specific job.",
                     },
                 },
@@ -8853,31 +8878,49 @@ def _call_groq_plain(messages):
 
             break
 
-        started = time.monotonic()
+        # Same primary-then-secondary-key approach as
+        # _call_groq_with_tools, and the same reason a RateLimitError
+        # skips straight to the next model instead of retrying on the
+        # secondary key.
 
-        try:
+        for attempt_client, label in (
+            (client, "primary key"),
+            (client_secondary, "secondary key"),
+        ):
 
-            response = client.chat.completions.create(
-                model=model_name,
-                messages=messages,
-                temperature=0.4,
-                max_tokens=500,
-            )
+            if attempt_client is None:
 
-            print(f"[chatbot] {model_name} answered in {time.monotonic() - started:.1f}s")
+                continue
 
-            return response.choices[0].message.content.strip()
+            started = time.monotonic()
 
-        except Exception as e:
+            try:
 
-            last_error = e
+                response = attempt_client.chat.completions.create(
+                    model=model_name,
+                    messages=messages,
+                    temperature=0.4,
+                    max_tokens=500,
+                )
 
-            print(
-                f"[chatbot] {model_name} failed after "
-                f"{time.monotonic() - started:.1f}s: {type(e).__name__}: {e}"
-            )
+                print(f"[chatbot] {model_name} ({label}) answered in {time.monotonic() - started:.1f}s")
 
-            continue
+                return response.choices[0].message.content.strip()
+
+            except Exception as e:
+
+                last_error = e
+
+                print(
+                    f"[chatbot] {model_name} ({label}) failed after "
+                    f"{time.monotonic() - started:.1f}s: {type(e).__name__}: {e}"
+                )
+
+                if type(e).__name__ == "RateLimitError":
+
+                    break
+
+                continue
 
     raise last_error or Exception("Chatbot: all models failed or time budget used up")
 
@@ -8896,33 +8939,59 @@ def _call_groq_with_tools(messages, tools, tool_choice="auto"):
 
             break
 
-        started = time.monotonic()
+        # Try the primary key, then - ONLY for a non-rate-limit failure
+        # - the secondary key if one is configured. A RateLimitError is
+        # never retried on the secondary key: both keys share the same
+        # organization-level, per-model limit (confirmed directly from
+        # Groq's own error text), so that attempt would be guaranteed
+        # to fail identically and would only waste the remaining time
+        # budget. Other failures (an invalid/revoked key, a transient
+        # connection error) genuinely can differ between the two keys,
+        # so those ARE worth a real second attempt.
 
-        try:
+        for attempt_client, label in (
+            (client, "primary key"),
+            (client_secondary, "secondary key"),
+        ):
 
-            response = client.chat.completions.create(
-                model=model_name,
-                messages=messages,
-                tools=tools,
-                tool_choice=tool_choice,
-                temperature=0.3,
-                max_tokens=600,
-            )
+            if attempt_client is None:
 
-            print(f"[chatbot] {model_name} answered in {time.monotonic() - started:.1f}s")
+                continue
 
-            return response
+            started = time.monotonic()
 
-        except Exception as e:
+            try:
 
-            last_error = e
+                response = attempt_client.chat.completions.create(
+                    model=model_name,
+                    messages=messages,
+                    tools=tools,
+                    tool_choice=tool_choice,
+                    temperature=0.3,
+                    max_tokens=600,
+                )
 
-            print(
-                f"[chatbot] {model_name} failed after "
-                f"{time.monotonic() - started:.1f}s: {type(e).__name__}: {e}"
-            )
+                print(f"[chatbot] {model_name} ({label}) answered in {time.monotonic() - started:.1f}s")
 
-            continue
+                return response
+
+            except Exception as e:
+
+                last_error = e
+
+                print(
+                    f"[chatbot] {model_name} ({label}) failed after "
+                    f"{time.monotonic() - started:.1f}s: {type(e).__name__}: {e}"
+                )
+
+                if type(e).__name__ == "RateLimitError":
+
+                    # Guaranteed to fail the same way on the secondary
+                    # key too - skip straight to the next model instead.
+
+                    break
+
+                continue
 
     raise last_error or Exception("Chatbot: all models failed or time budget used up")
 
