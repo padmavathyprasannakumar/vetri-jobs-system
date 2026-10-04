@@ -10058,6 +10058,26 @@ def _extract_applied_for_job(message):
 # General job-posting questions ("what are the jobs are posted", "how
 # many jobs are posted") - need no specific company/status, unlike
 # every exact-phrase entry below which was built around named filters.
+# "How many students are registered" (and the common typo "registred")
+# - the underlying data already exists in get_placement_overview, but
+# no shortcut routed this very common question to it, so it always
+# needed a live AI call for something that's pure instant lookup.
+_STUDENTS_REGISTERED_RE = re.compile(
+    r"^how\s+many\s+students?\s+(?:are\s+|have\s+)?regist(?:e|re)?red\??$"
+    r"|^(?:show|what\s+is)\s+(?:the\s+)?(?:total\s+)?(?:number\s+of\s+)?(?:registered\s+)?students?(?:\s+count)?\??$"
+    r"|^total\s+students?\??$"
+)
+
+# General "company questions raised" style phrasing, for the new
+# company-query feature - routes to list_company_queries.
+_COMPANY_QUESTIONS_RE = re.compile(
+    r"^(?:company|companies)\s+(?:any\s+)?questions?\s+raised\??$"
+    r"|^(?:show|list)\s+(?:all\s+)?(?:company\s+)?questions?(?:\s+raised)?$"
+    r"|^any\s+(?:company\s+)?questions?(?:\s+raised)?\??$"
+    r"|^(?:show|list)\s+(?:all\s+)?(?:unanswered|pending)\s+company\s+questions?$"
+)
+
+
 _PLACEMENT_JOBS_POSTED_RE = re.compile(
     r"^(?:what|which)\s+(?:are\s+the\s+)?jobs?\s+(?:are\s+|have\s+been\s+|were\s+)?posted\??$"
     r"|^(?:show|list|see|display)\s+(?:me\s+)?(?:all\s+)?(?:the\s+)?(?:active\s+|posted\s+)?jobs?$"
@@ -10401,6 +10421,14 @@ def _handle_placement_shortcut(profile, user, message):
                     _user_facing(pipeline_result.get("summary", "Here's what I found.")),
                     [(None, "get_candidate_pipeline", pipeline_result)],
                 )
+
+    if not entry and _STUDENTS_REGISTERED_RE.match(normalized):
+
+        entry = ("get_placement_overview", {})
+
+    if not entry and _COMPANY_QUESTIONS_RE.match(normalized):
+
+        entry = ("list_company_queries", {})
 
     if not entry and _PLACEMENT_JOBS_POSTED_RE.match(normalized):
 
