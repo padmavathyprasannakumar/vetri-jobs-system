@@ -7266,6 +7266,17 @@ def _tool_find_jobs_platform_wide(profile, user, args):
     already passed, using India time for consistency with the rest of
     this file's date handling. "Closing soon" is active with a
     deadline in the next 7 days.
+
+    Also supports keyword (role/title - "Python developer jobs") and
+    location ("jobs in Chennai"). keyword is TITLE-PRIORITY: a real
+    report found "show active Python developer jobs in Chennai"
+    incorrectly returning an unrelated Senior Frontend Developer
+    posting, purely because "Python" happened to appear somewhere in
+    THAT job's skills list. Matches the job TITLE first; only if
+    nothing matches the title does it fall back to a skills-based
+    match, returned SEPARATELY (skill_matched_jobs) and clearly
+    labelled as such, rather than silently mixed into the main results
+    as if it were an equally strong, title-based match.
     """
 
     from django.db.models import Q
@@ -7278,6 +7289,10 @@ def _tool_find_jobs_platform_wide(profile, user, args):
     department = (args.get("department") or "").strip()
 
     deadline_filter = (args.get("deadline_filter") or "").strip().lower()
+
+    keyword = (args.get("keyword") or "").strip()
+
+    location = (args.get("location") or "").strip()
 
     jobs_qs = Job.objects.select_related("company")
 
@@ -7293,9 +7308,34 @@ def _tool_find_jobs_platform_wide(profile, user, args):
             company__company_name__icontains=company_name
         )
 
+    if location:
+
+        jobs_qs = jobs_qs.filter(location__icontains=location)
+
     if status_filter in {"active", "pending", "closed", "rejected"}:
 
         jobs_qs = jobs_qs.filter(status=status_filter)
+
+    skill_matched_note = False
+
+    if keyword:
+
+        title_matches = jobs_qs.filter(title__icontains=keyword)
+
+        if title_matches.exists():
+
+            jobs_qs = title_matches
+
+        else:
+
+            # No job TITLE contains this keyword - fall back to a
+            # skills-based match, but keep it clearly distinct rather
+            # than silently treating "mentions this skill somewhere"
+            # as equivalent to "this role is literally this title".
+
+            jobs_qs = jobs_qs.filter(skills_required__icontains=keyword)
+
+            skill_matched_note = True
 
     if deadline_filter in {"expired", "closing_soon"}:
 
@@ -7336,6 +7376,12 @@ def _tool_find_jobs_platform_wide(profile, user, args):
         elif deadline_filter == "closing_soon":
 
             summary = "No job postings are closing in the next 7 days."
+
+        elif keyword:
+
+            summary = f"No job postings found matching \"{keyword}\"" + (
+                f" in {location}." if location else "."
+            )
 
         elif department:
 
@@ -7406,13 +7452,21 @@ def _tool_find_jobs_platform_wide(profile, user, args):
         else ""
     )
 
+    skill_match_prefix = (
+        f"No job titled \"{keyword}\" found - showing postings that "
+        f"require \"{keyword}\" as a skill instead:\n\n"
+        if skill_matched_note else ""
+    )
+
     summary = (
-        f"{total_count} job posting(s){deadline_label}{shown_note}:\n\n"
+        skill_match_prefix
+        + f"{total_count} job posting(s){deadline_label}{shown_note}:\n\n"
         + "\n".join(lines[:8])
     )
 
     return {
         "jobs": data,
+        "skill_matched": skill_matched_note,
         "navigate_to": "/placement/jobs",
         "summary": summary,
     }
@@ -7444,6 +7498,8 @@ def _tool_get_candidate_pipeline(profile, user, args):
     from jobsystem.models import Application
 
     job_title = (args.get("job_title") or "").strip()
+
+    rank_candidates = bool(args.get("rank_candidates"))
 
     apps_qs = Application.objects.select_related(
         "student", "job", "job__company"
@@ -7483,7 +7539,7 @@ def _tool_get_candidate_pipeline(profile, user, args):
         "final_selected": apps_qs.filter(status="selected").count(),
     }
 
-    if job_matched:
+    if job_matched and rank_candidates:
 
         # Real ranking, not just the most recent - rank_jobs-style
         # scoring per application so "top candidate" is a genuine,
@@ -7493,6 +7549,13 @@ def _tool_get_candidate_pipeline(profile, user, args):
         # needs this importable - unchanged from before this feature,
         # same reasoning as the django.db.models.Q scoping elsewhere
         # in this file.
+        #
+        # Gated behind rank_candidates specifically - a real report
+        # found "how many students applied for X" (a plain count
+        # question) ALWAYS getting a "Top candidate: ..." line
+        # attached, even when nobody asked for a ranking. That's a
+        # different question ("who is the top candidate for X") and
+        # now only runs this real scoring work when actually asked.
 
         from jobsystem.services.job_matching import compute_job_match
 
@@ -7548,6 +7611,38 @@ def _tool_get_candidate_pipeline(profile, user, args):
         summary = (
             top_line
             + f"{stats['total_applicants']} applicant(s) for {job_title}, "
+            f"{stats['shortlisted']} shortlisted, "
+            f"{stats['interviews_scheduled']} in interview stage, "
+            f"{stats['final_selected']} selected.\n\n"
+            + "\n".join(list_lines)
+        )
+
+    elif job_matched:
+
+        # Job-scoped, but ranking was NOT asked for - a plain count
+        # and real applicant list for this one job, no match-score
+        # computation, no "top candidate" line. This is the actual
+        # fix for the real report: "how many applied for X" now gets
+        # exactly that, nothing more.
+
+        apps = list(apps_qs.order_by("-applied_date")[:15])
+
+        candidates = [
+            {
+                "name": a.student.full_name,
+                "job_title": a.job.title,
+                "company": a.job.company.company_name if a.job.company else "",
+                "status": a.get_status_display(),
+            }
+            for a in apps
+        ]
+
+        list_lines = [
+            f"- {c['name']}: {c['status']}" for c in candidates[:8]
+        ]
+
+        summary = (
+            f"{stats['total_applicants']} applicant(s) for {job_title}, "
             f"{stats['shortlisted']} shortlisted, "
             f"{stats['interviews_scheduled']} in interview stage, "
             f"{stats['final_selected']} selected.\n\n"
@@ -7738,7 +7833,12 @@ PLACEMENT_TOOL_SCHEMAS = [
                 "students (e.g. 'jobs for Computer Science students'). "
                 "Pass deadline_filter='expired' or 'closing_soon' for "
                 "'show expired jobs'/'which jobs are closing soon' "
-                "style questions."
+                "style questions. Pass keyword for a role/title "
+                "('Python developer', 'frontend') and location for a "
+                "place ('Chennai') - keyword matches the job TITLE "
+                "first; a skills-only match (the role isn't in the "
+                "title, but the skill is required) is clearly labelled "
+                "as such, never silently mixed in as if equivalent."
             ),
             "parameters": {
                 "type": "object",
@@ -7758,6 +7858,14 @@ PLACEMENT_TOOL_SCHEMAS = [
                     "deadline_filter": {
                         "type": "string",
                         "description": "'expired' for active jobs whose application deadline has already passed, or 'closing_soon' for active jobs with a deadline in the next 7 days. Use when the admin asks about expired jobs or jobs closing soon.",
+                    },
+                    "keyword": {
+                        "type": "string",
+                        "description": "A role/title/technology to filter by, if the admin named one (e.g. 'Python developer', 'frontend'). Matches the job title first.",
+                    },
+                    "location": {
+                        "type": "string",
+                        "description": "A location to filter by, if the admin named one (e.g. 'Chennai').",
                     },
                 },
                 "required": [],
@@ -7902,10 +8010,13 @@ PLACEMENT_TOOL_SCHEMAS = [
                 "Omit job_title for the platform-wide pipeline (every "
                 "company). Pass job_title when the admin asked about "
                 "ONE specific job's applicants/candidates - 'how many "
-                "applied for X', 'show applicants for X', 'who is the "
-                "top candidate for X' - this correctly scopes both the "
-                "counts and the candidate list to that job only, and "
-                "ranks candidates by real match score."
+                "applied for X', 'show applicants for X' - this scopes "
+                "both the counts and the candidate list to that job "
+                "only. Set rank_candidates=true ONLY for a genuine "
+                "ranking question - 'who is the top candidate for X', "
+                "'which candidate is the best match' - NOT for a plain "
+                "count question; those are different questions and a "
+                "count question should never include a ranking."
             ),
             "parameters": {
                 "type": "object",
@@ -7913,7 +8024,11 @@ PLACEMENT_TOOL_SCHEMAS = [
                     "job_title": {
                         "type": "string",
                         "description": "The specific job to scope to, if the admin named one.",
-                    }
+                    },
+                    "rank_candidates": {
+                        "type": "boolean",
+                        "description": "True only if the admin explicitly asked for the top/best/highest-ranked candidate - not for a plain applicant count.",
+                    },
                 },
                 "required": [],
             },
