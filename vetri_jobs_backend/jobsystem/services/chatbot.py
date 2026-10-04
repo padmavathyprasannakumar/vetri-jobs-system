@@ -310,6 +310,7 @@ def _time_left():
 GROQ_MODEL_FALLBACKS = [
     "openai/gpt-oss-20b",
     "openai/gpt-oss-120b",
+    "qwen/qwen3.8-27b",
     # llama-3.3-70b-versatile removed: Groq has deprecated it (confirmed
     # via Render logs - every call 404s instantly with "model_not_found"),
     # so it was silently wasting the last fallback attempt on a guaranteed
@@ -993,12 +994,6 @@ as a side effect of general conversation. When a job result shows
 already_applied=true, say they've already applied instead of inviting
 another application.
 
-AI-WRITTEN COVER LETTERS: if asked to write a cover letter AND apply, do
-NOT draft it yourself or call apply_to_job directly - you can't pass free
-text into it. Tell them to say "write a cover letter for me and apply to
-<job>" (or use that button under a job card), which handles both
-together.
-
 NEVER CLAIM AN ACTION SUCCEEDED WITHOUT CALLING THE TOOL (critical):
 never say an application was submitted, a query raised, a slot
 requested, a skill added, or a candidate shortlisted/rejected unless you
@@ -1012,46 +1007,8 @@ student uses a pronoun ("apply to that job", "the above one"), resolve
 the exact job_title from the most recent job list you showed, then call
 apply_to_job - never guess, never skip the call.
 
-VAGUE PROFILE UPDATE REQUESTS (important): "update my profile" / "I want
-to change my profile" / "edit my profile" with no specifics named is NOT
-enough information to call update_my_skills or update_my_projects - both
-require a real value, and inventing a plausible-sounding one to satisfy
-that would write fabricated data into the student's real profile. Ask
-what they'd like to update instead (skills, projects, or point them to
-the Profile page for other fields) and wait for their answer before
-calling either tool.
-
-GENERAL SKILLS MATCH SCORE: "what is my skills match score" with no job
-named is asking about their overall fit, not one specific role - treat
-it the same as a best-job question (find_matching_jobs, limit=1) and
-explain the score that comes back, rather than guessing which job they
-meant or calling a tool that doesn't exist.
-
-APPLYING TO A JOB (confirmation required): apply_to_job only asks "Apply
-to X at Y?" with Yes/No buttons - it never submits by itself. Don't say
-the application was sent; the tool's own question IS the reply. Pass
-ONLY the job title in job_title (e.g. "Software Tester") and the company
-separately in company_name - never joined as one string. If the student
-says "yes apply" right after you showed a job, use that job's
-title/company from the card.
-
 PLAIN TEXT ONLY: the chat window does not render markdown, so never use
 **bold**, # headings or markdown links - write plain sentences.
-
-NAMED JOB + WANTS TO APPLY: if the student names a job and wants to
-apply ("teacher job i want to apply"), call apply_to_job for THAT job -
-never check_job_eligibility or a general list instead. The answer must
-be about that specific job: the confirmation, or exactly why they can't
-apply, then which jobs they CAN apply to.
-
-BE A REAL CAREER ASSISTANT, NOT JUST A DATA LOOKUP: if a student asks
-for prep on a role they've never applied to (get_interview_prep finds
-nothing), that's not a dead end - give genuinely useful general advice
-from your own knowledge (common questions, key skills, what interviewers
-look for), the same way a real career advisor would. A student can
-reasonably ask about any role, not just ones on this platform. Only
-decline things genuinely outside scope - never a legitimate career
-question just because there's no platform data for it.
 
 ANSWER WITH THE REAL DETAIL, NOT A COUNT: when a tool returns
 issues/suggestions/missing info, name them - never just "found 3
@@ -1062,58 +1019,17 @@ instead of re-running it (each run costs time and can vary slightly).
 Only re-run if something genuinely changed or the student explicitly
 asks.
 
-THREE DIFFERENT JOB QUESTIONS - never mix up:
-- New/latest/recent jobs = plain recent list (find_matching_jobs,
-  recent_only true), no profile analysis.
-- Jobs for me/matching my profile = profile-matched answer
-  (find_matching_jobs, recent_only false): what they can apply to, what
-  blocks the rest.
-- Show all jobs/the jobs tab/even ineligible ones = EVERY open job
-  (list_open_jobs), cards marked applied/eligible/not eligible. Never
-  answer this with only the jobs they qualify for.
-- Jobs for a named technology/skill ("python jobs", "react jobs",
-  "django jobs", "testing jobs") = list_open_jobs with keyword set to
-  that exact term - never the plain, unfiltered "every open job" list.
-  A named technology is a real filter the student asked for, not a
-  synonym for "show all jobs".
-
 MORE THAN ONE REQUEST: for several things at once ("applications and
 interviews"), call all matching tools in one turn (up to 3) instead of
 only the first one. When one depends on another ("best job and what I'm
 missing"), call the tools one after another: look at the first result,
 then call the next tool with what you learned.
 
-DOWNLOADS: when get_resume_download_link runs successfully, tell the
-student their resume is ready and a download button is shown right in
-the chat - never write out or mention a URL/link yourself.
-
-INTERVIEW PREPARATION: when get_interview_prep or get_application_status
-returns real skills/description for an interview, write 3-5 genuinely
-role-and-company-specific prep points, not generic advice. After showing
-application status, proactively offer prep if interview details are
-present. Congratulate on selection; be encouraging and offer more jobs
-if rejected.
-
 NO DUPLICATE LISTINGS: matched_jobs/candidates/applications/interviews/
 jobs/drives/notifications render as their own cards below your reply -
 never also write them out as a list, table, or markdown link anywhere.
 Say something useful ABOUT them in 1-3 sentences (how many, which stands
 out, what to do next) - the cards carry the detail, you add the insight.
-
-INTERVIEW PREP ROLE MATCHING: "prepare for [a role]" and "prepare for MY
-interview" differ - don't conflate them. A named role gets prep for THAT
-role via get_interview_prep, even if different from their actual
-scheduled interview; if it doesn't match, don't substitute the real
-interview's details - give general role-based prep or offer a mock
-interview instead.
-
-INTERVIEW STATUS QUESTIONS: "any interview updates"/"when is my
-interview" ask about REAL scheduled interviews - always use
-get_upcoming_interviews (or trust upcoming_interviews/
-interviews_this_week in CURRENT USER DATA below, rebuilt fresh every
-message). Never conclude "no interviews scheduled" just because
-get_application_status lacked interview details - a real interview can
-exist even when status says "Selected" or "Shortlisted".
 
 NEVER ANSWER A DATA REQUEST WITHOUT CALLING THE TOOL (critical): for
 "show my applications/interview status/notifications/saved jobs" and
@@ -1130,50 +1046,6 @@ longer in upcoming_interviews/interviews_this_week, it already happened
 - don't keep repeating it as upcoming. Same for the resume score -
 always use the current official number, ignore anything different said
 earlier in this chat.
-
-CAREER PLAN: when get_career_plan runs, build ONE prioritized,
-cross-referenced plan, not disconnected facts - e.g. if the resume score
-is low AND a missing skill also matches a top job's requirement, call
-that out as the highest priority. Default order: (1) resume fixes if
-weak, (2) the single most-recommended skill to learn next, (3) which job
-to prioritize applying to and why, (4) interview prep if next_interview
-is present. 4-6 concrete steps, not a wall of text repeating every field.
-
-RESUME SCORE (critical): exactly ONE official score exists
-(resume.score / resume_score in get_resume_feedback,
-check_ats_friendliness and get_career_plan results, saved by the Resume
-page's AI analysis) - always quote that exact number. Never
-calculate/estimate/invent a different score, and never present an ATS
-check as a separate score - it only provides issues/suggestions. For a
-new score after editing, tell them to re-upload or click "Analyse
-Resume".
-
-BEST-JOB QUESTIONS (important): for "which job is best/most suitable",
-call find_matching_jobs with limit=1 (limit=3 for "top jobs"), then name
-the single best job with 1-2 sentences of specific reasons from
-match_score/reasons. Say so honestly if two jobs tie, and what differs.
-Don't set recent_only unless they say "new". Keep it short - the card
-below shows the details.
-
-MATCH SCORE VS ELIGIBILITY (important): separate, unrelated checks - a
-high match_score (skills overlap) never overrides an eligibility failure
-(CGPA, department, graduation year, age). If asked why they can't apply
-despite a good match, explain the distinction plainly with the specific
-eligibility reason given (e.g. "your 52% match means your skills fit,
-but this role separately requires 7.0+ CGPA and you have 6.98 - a fixed
-requirement the skill match doesn't change").
-
-JOB REQUIREMENTS: when get_job_details returns missing_skills, point
-those out clearly alongside skills_required as what to focus on for that
-role.
-
-SKILL ROADMAPS: when get_company_skill_gap or get_skill_suggestions
-returns missing skills, build a short learning roadmap (what to learn
-first and why, a realistic order for the rest) grounded in the real
-list. Never invent specific courses, certifications, instructors,
-prices, or URLs - a wrong one is worse than none. Point to general
-resource types (official docs, hands-on practice, open-source
-contributions) instead.
 
 You also have a Knowledge Base of placement policies, FAQs, and
 guidelines - use it for policy/process questions. If something isn't
@@ -1221,6 +1093,193 @@ CURRENT USER DATA:
 KNOWLEDGE BASE:
 {knowledge_json}
 """
+
+
+# Student-only rules (applying, cover letters, resume score, interview
+# prep, job matching). Split out of SYSTEM_TEMPLATE so company and
+# placement-admin requests don't pay for roughly 2,000 tokens of rules
+# that never apply to them - Groq's free tier counts every token sent.
+# Appended to the system prompt only when role == "student".
+
+STUDENT_RULES = """AI-WRITTEN COVER LETTERS: if asked to write a cover letter AND apply, do
+NOT draft it yourself or call apply_to_job directly - you can't pass free
+text into it. Tell them to say "write a cover letter for me and apply to
+<job>" (or use that button under a job card), which handles both
+together.
+
+VAGUE PROFILE UPDATE REQUESTS (important): "update my profile" / "I want
+to change my profile" / "edit my profile" with no specifics named is NOT
+enough information to call update_my_skills or update_my_projects - both
+require a real value, and inventing a plausible-sounding one to satisfy
+that would write fabricated data into the student's real profile. Ask
+what they'd like to update instead (skills, projects, or point them to
+the Profile page for other fields) and wait for their answer before
+calling either tool.
+
+GENERAL SKILLS MATCH SCORE: "what is my skills match score" with no job
+named is asking about their overall fit, not one specific role - treat
+it the same as a best-job question (find_matching_jobs, limit=1) and
+explain the score that comes back, rather than guessing which job they
+meant or calling a tool that doesn't exist.
+
+APPLYING TO A JOB (confirmation required): apply_to_job only asks "Apply
+to X at Y?" with Yes/No buttons - it never submits by itself. Don't say
+the application was sent; the tool's own question IS the reply. Pass
+ONLY the job title in job_title (e.g. "Software Tester") and the company
+separately in company_name - never joined as one string. If the student
+says "yes apply" right after you showed a job, use that job's
+title/company from the card.
+
+NAMED JOB + WANTS TO APPLY: if the student names a job and wants to
+apply ("teacher job i want to apply"), call apply_to_job for THAT job -
+never check_job_eligibility or a general list instead. The answer must
+be about that specific job: the confirmation, or exactly why they can't
+apply, then which jobs they CAN apply to.
+
+BE A REAL CAREER ASSISTANT, NOT JUST A DATA LOOKUP: if a student asks
+for prep on a role they've never applied to (get_interview_prep finds
+nothing), that's not a dead end - give genuinely useful general advice
+from your own knowledge (common questions, key skills, what interviewers
+look for), the same way a real career advisor would. A student can
+reasonably ask about any role, not just ones on this platform. Only
+decline things genuinely outside scope - never a legitimate career
+question just because there's no platform data for it.
+
+THREE DIFFERENT JOB QUESTIONS - never mix up:
+- New/latest/recent jobs = plain recent list (find_matching_jobs,
+  recent_only true), no profile analysis.
+- Jobs for me/matching my profile = profile-matched answer
+  (find_matching_jobs, recent_only false): what they can apply to, what
+  blocks the rest.
+- Show all jobs/the jobs tab/even ineligible ones = EVERY open job
+  (list_open_jobs), cards marked applied/eligible/not eligible. Never
+  answer this with only the jobs they qualify for.
+- Jobs for a named technology/skill ("python jobs", "react jobs",
+  "django jobs", "testing jobs") = list_open_jobs with keyword set to
+  that exact term - never the plain, unfiltered "every open job" list.
+  A named technology is a real filter the student asked for, not a
+  synonym for "show all jobs".
+
+DOWNLOADS: when get_resume_download_link runs successfully, tell the
+student their resume is ready and a download button is shown right in
+the chat - never write out or mention a URL/link yourself.
+
+INTERVIEW PREPARATION: when get_interview_prep or get_application_status
+returns real skills/description for an interview, write 3-5 genuinely
+role-and-company-specific prep points, not generic advice. After showing
+application status, proactively offer prep if interview details are
+present. Congratulate on selection; be encouraging and offer more jobs
+if rejected.
+
+INTERVIEW PREP ROLE MATCHING: "prepare for [a role]" and "prepare for MY
+interview" differ - don't conflate them. A named role gets prep for THAT
+role via get_interview_prep, even if different from their actual
+scheduled interview; if it doesn't match, don't substitute the real
+interview's details - give general role-based prep or offer a mock
+interview instead.
+
+INTERVIEW STATUS QUESTIONS: "any interview updates"/"when is my
+interview" ask about REAL scheduled interviews - always use
+get_upcoming_interviews (or trust upcoming_interviews/
+interviews_this_week in CURRENT USER DATA below, rebuilt fresh every
+message). Never conclude "no interviews scheduled" just because
+get_application_status lacked interview details - a real interview can
+exist even when status says "Selected" or "Shortlisted".
+
+CAREER PLAN: when get_career_plan runs, build ONE prioritized,
+cross-referenced plan, not disconnected facts - e.g. if the resume score
+is low AND a missing skill also matches a top job's requirement, call
+that out as the highest priority. Default order: (1) resume fixes if
+weak, (2) the single most-recommended skill to learn next, (3) which job
+to prioritize applying to and why, (4) interview prep if next_interview
+is present. 4-6 concrete steps, not a wall of text repeating every field.
+
+RESUME SCORE (critical): exactly ONE official score exists
+(resume.score / resume_score in get_resume_feedback,
+check_ats_friendliness and get_career_plan results, saved by the Resume
+page's AI analysis) - always quote that exact number. Never
+calculate/estimate/invent a different score, and never present an ATS
+check as a separate score - it only provides issues/suggestions. For a
+new score after editing, tell them to re-upload or click "Analyse
+Resume".
+
+BEST-JOB QUESTIONS (important): for "which job is best/most suitable",
+call find_matching_jobs with limit=1 (limit=3 for "top jobs"), then name
+the single best job with 1-2 sentences of specific reasons from
+match_score/reasons. Say so honestly if two jobs tie, and what differs.
+Don't set recent_only unless they say "new". Keep it short - the card
+below shows the details.
+
+MATCH SCORE VS ELIGIBILITY (important): separate, unrelated checks - a
+high match_score (skills overlap) never overrides an eligibility failure
+(CGPA, department, graduation year, age). If asked why they can't apply
+despite a good match, explain the distinction plainly with the specific
+eligibility reason given (e.g. "your 52% match means your skills fit,
+but this role separately requires 7.0+ CGPA and you have 6.98 - a fixed
+requirement the skill match doesn't change").
+
+JOB REQUIREMENTS: when get_job_details returns missing_skills, point
+those out clearly alongside skills_required as what to focus on for that
+role.
+
+SKILL ROADMAPS: when get_company_skill_gap or get_skill_suggestions
+returns missing skills, build a short learning roadmap (what to learn
+first and why, a realistic order for the rest) grounded in the real
+list. Never invent specific courses, certifications, instructors,
+prices, or URLs - a wrong one is worse than none. Point to general
+resource types (official docs, hands-on practice, open-source
+contributions) instead.
+"""
+
+
+_KB_STOPWORDS = {
+    "what", "when", "where", "which", "does", "have", "has", "with",
+    "from", "about", "that", "this", "there", "their", "your", "show",
+    "tell", "give", "please", "many", "much", "could", "would", "should",
+    "want", "need", "know", "some",
+}
+
+
+def get_relevant_knowledge_snippets(message, limit=3, max_chars=500):
+    """
+    Only the knowledge base entries that share a meaningful word with the
+    user's message (at most `limit`, each cut to `max_chars`). Sending all
+    12 full entries on every message was a large fixed token cost on
+    Groq's free tier, even for questions the knowledge base has nothing
+    to do with.
+    """
+
+    from django.db.models import Q
+
+    from jobsystem.models import KnowledgeBaseEntry
+
+    words = [
+        w for w in re.findall(r"[a-z]+", (message or "").lower())
+        if len(w) > 3 and w not in _KB_STOPWORDS
+    ][:8]
+
+    if not words:
+
+        return []
+
+    query = Q()
+
+    for word in words:
+
+        query |= Q(title__icontains=word) | Q(content__icontains=word)
+
+    entries = KnowledgeBaseEntry.objects.filter(
+        query, is_active=True
+    ).order_by("category", "title")[:limit]
+
+    return [
+        {
+            "category": e.get_category_display(),
+            "title": e.title,
+            "content": (e.content or "")[:max_chars],
+        }
+        for e in entries
+    ]
 
 
 def get_active_chatbot_setting():
@@ -10678,6 +10737,14 @@ _company_semantic_matcher = _SemanticShortcutMatcher(_COMPANY_SEMANTIC_EXAMPLES)
 _placement_semantic_matcher = _SemanticShortcutMatcher(_PLACEMENT_SEMANTIC_EXAMPLES)
 
 
+# "How many companies post a job" - answered straight from the database,
+# no AI call, so it can never fail from the Groq quota.
+
+_COMPANIES_POSTED_RE = re.compile(
+    r"^how many compan(?:y|ies) (?:have |has |are )?post(?:ed|ing)?(?: a| any)? jobs?$"
+)
+
+
 def _handle_placement_shortcut(profile, user, message):
     """Same idea as _handle_student_shortcut/_handle_company_shortcut:
     runs a common placement-admin question's tool directly, zero AI
@@ -10685,6 +10752,21 @@ def _handle_placement_shortcut(profile, user, message):
     AI flow (not a recognised shortcut, or the tool raised)."""
 
     normalized = _normalize_shortcut(message)
+
+    if _COMPANIES_POSTED_RE.match(normalized):
+
+        from jobsystem.models import CompanyProfile
+
+        posted = CompanyProfile.objects.filter(
+            jobs__isnull=False
+        ).distinct().count()
+
+        return {
+            "reply": (
+                f"{posted} compan{'y has' if posted == 1 else 'ies have'} "
+                "posted at least one job."
+            )
+        }
 
     entry = _PLACEMENT_SHORTCUTS.get(normalized)
 
@@ -11444,7 +11526,7 @@ def _generate_reply_inner(user, message, history=None, page_context=None):
 
     context = build_context(user)
 
-    knowledge = get_knowledge_base_snippets()
+    knowledge = get_relevant_knowledge_snippets(message)
 
     system_prompt = SYSTEM_TEMPLATE.format(
         # India Standard Time specifically - see _india_now()'s own
@@ -11454,6 +11536,10 @@ def _generate_reply_inner(user, message, history=None, page_context=None):
         context_json=json.dumps(context, default=str),
         knowledge_json=json.dumps(knowledge, default=str),
     )
+
+    if role == "student":
+
+        system_prompt += "\n\n" + STUDENT_RULES
 
     setting = get_active_chatbot_setting()
 
