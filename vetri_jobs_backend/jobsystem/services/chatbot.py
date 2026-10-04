@@ -6649,6 +6649,119 @@ def _tool_get_company_profile_info(profile, user, args):
     }
 
 
+def _tool_raise_company_query(profile, user, args):
+    """
+    A company raising a question to the placement admin team - a new
+    capability (CompanyQuery is a new model; the existing
+    PlacementQuery is student-specific and has no company/answer
+    fields at all, confirmed directly against the real models.py).
+    Mirrors _tool_raise_placement_query's style on the student side.
+    """
+
+    from jobsystem.models import CompanyQuery, Job
+
+    subject = (args.get("subject") or "").strip()
+
+    question_text = (args.get("question_text") or "").strip()
+
+    job_title = (args.get("related_job_title") or "").strip()
+
+    if not subject or len(question_text) < 5:
+
+        return {
+            "success": False,
+            "summary": (
+                "I can raise this with the placement team - what's a short "
+                "subject line, and what would you like to ask?"
+            ),
+        }
+
+    related_job = None
+
+    if job_title:
+
+        title_q = _job_role_strict_match_q("title", job_title)
+
+        if title_q is not None:
+
+            related_job = Job.objects.filter(
+                title_q, company=profile
+            ).first()
+
+    query = CompanyQuery.objects.create(
+        company=profile,
+        subject=subject,
+        question_text=question_text,
+        related_job=related_job,
+        source="chatbot",
+    )
+
+    return {
+        "success": True,
+        "query_id": query.id,
+        "summary": (
+            f"Question raised as CQ-{query.id}: \"{subject}\" - the "
+            "placement team will respond soon. You can ask me "
+            f"\"has CQ-{query.id} been answered\" to check later."
+        ),
+    }
+
+
+def _tool_get_my_company_queries(profile, user, args):
+    """
+    A company checking its own previously raised questions and any
+    saved admin answers. Scoped to the authenticated company's own
+    records only (profile is the authenticated CompanyProfile, never
+    a company_id trusted from the message/LLM arguments).
+    """
+
+    from jobsystem.models import CompanyQuery
+
+    status_filter = (args.get("status") or "").strip().lower()
+
+    qs = CompanyQuery.objects.filter(company=profile).order_by("-created_at")
+
+    if status_filter in {"pending", "in_review", "answered", "closed"}:
+
+        qs = qs.filter(status=status_filter)
+
+    queries = list(qs[:15])
+
+    if not queries:
+
+        summary = (
+            f"No {status_filter} questions found." if status_filter
+            else "You haven't raised any questions yet."
+        )
+
+        return {"queries": [], "summary": summary}
+
+    lines = []
+
+    for q in queries:
+
+        line = f"- CQ-{q.id}: {q.subject} ({q.get_status_display()})"
+
+        if q.status == "answered" and q.admin_answer:
+
+            line += f"\n  Answer: {q.admin_answer}"
+
+        lines.append(line)
+
+    return {
+        "queries": [
+            {
+                "id": q.id,
+                "subject": q.subject,
+                "status": q.get_status_display(),
+                "answer": q.admin_answer or None,
+            }
+            for q in queries
+        ],
+        "summary": f"{len(queries)} question(s):\n\n" + "\n".join(lines),
+    }
+
+
 COMPANY_TOOL_SCHEMAS = [
     {
         "type": "function",
@@ -6868,10 +6981,67 @@ COMPANY_TOOL_SCHEMAS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "raise_company_query",
+            "description": (
+                "Raise a question/issue to the Placement Admin team on "
+                "behalf of the authenticated company - e.g. a deadline "
+                "extension request, a question about a drive or job "
+                "posting. Only call when the company clearly asked to "
+                "raise/submit a question and you have both a subject "
+                "and the actual question text - ask for whichever is "
+                "missing rather than inventing one."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "subject": {
+                        "type": "string",
+                        "description": "A short subject line for the question.",
+                    },
+                    "question_text": {
+                        "type": "string",
+                        "description": "The actual question or issue, in the company's own words.",
+                    },
+                    "related_job_title": {
+                        "type": "string",
+                        "description": "This company's own job the question relates to, if any.",
+                    },
+                },
+                "required": ["subject", "question_text"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_my_company_queries",
+            "description": (
+                "Get the authenticated company's own previously raised "
+                "questions, their status, and any saved admin answer. "
+                "Use for 'show my questions', 'has CQ-102 been "
+                "answered', 'what's the status of my question'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "description": "pending/in_review/answered/closed, if the company asked for a specific status.",
+                    }
+                },
+                "required": [],
+            },
+        },
+    },
 ]
 
 
 COMPANY_TOOL_EXECUTORS = {
+    "raise_company_query": _tool_raise_company_query,
+    "get_my_company_queries": _tool_get_my_company_queries,
     "get_duplicate_candidate_names": _tool_get_duplicate_candidate_names,
     "get_job_description": _tool_get_job_description,
     "search_candidates": _tool_search_candidates,
@@ -7788,6 +7958,226 @@ def _tool_get_job_eligibility_criteria(profile, user, args):
     }
 
 
+def _tool_list_company_queries(profile, user, args):
+    """
+    A placement admin listing company-raised questions, optionally
+    filtered by status and/or company. New capability - see
+    _tool_raise_company_query's docstring for why PlacementQuery
+    (student-specific) couldn't be reused for this.
+    """
+
+    from jobsystem.models import CompanyQuery
+
+    status_filter = (args.get("status") or "").strip().lower()
+
+    company_name = (args.get("company_name") or "").strip()
+
+    job_title = (args.get("job_title") or "").strip()
+
+    qs = CompanyQuery.objects.select_related(
+        "company", "related_job", "answered_by"
+    ).order_by("-created_at")
+
+    if status_filter in {"pending", "in_review", "answered", "closed"}:
+
+        qs = qs.filter(status=status_filter)
+
+    if company_name:
+
+        qs = qs.filter(company__company_name__icontains=company_name)
+
+    if job_title:
+
+        title_q = _job_role_strict_match_q("related_job__title", job_title)
+
+        if title_q is not None:
+
+            qs = qs.filter(title_q)
+
+    total_count = qs.count()
+
+    queries = list(qs[:15])
+
+    if not queries:
+
+        label = status_filter or (f"from \"{company_name}\"" if company_name else "")
+
+        summary = f"No {label} company questions found." if label else "No company questions found."
+
+        return {"queries": [], "summary": summary}
+
+    lines = [
+        f"- CQ-{q.id}: {q.subject} ({q.company.company_name if q.company else 'unknown company'}) - {q.get_status_display()}"
+        for q in queries
+    ]
+
+    shown_note = f" (showing the {len(queries)} most recent)" if total_count > len(queries) else ""
+
+    return {
+        "queries": [
+            {
+                "id": q.id,
+                "subject": q.subject,
+                "company": q.company.company_name if q.company else "",
+                "status": q.get_status_display(),
+            }
+            for q in queries
+        ],
+        "summary": f"{total_count} company question(s){shown_note}:\n\n" + "\n".join(lines[:10]),
+    }
+
+
+def _tool_get_company_query_detail(profile, user, args):
+    """A placement admin retrieving one specific question's full detail."""
+
+    from jobsystem.models import CompanyQuery
+
+    query_id = args.get("query_id")
+
+    if not query_id:
+
+        return {"summary": "Which question - please give the CQ number (e.g. CQ-102)."}
+
+    query = CompanyQuery.objects.select_related(
+        "company", "related_job", "answered_by"
+    ).filter(id=query_id).first()
+
+    if not query:
+
+        return {"summary": f"No question found with ID CQ-{query_id}."}
+
+    lines = [
+        f"CQ-{query.id}: {query.subject}",
+        f"Company: {query.company.company_name if query.company else 'unknown'}",
+        f"Status: {query.get_status_display()}",
+        f"Question: {query.question_text}",
+    ]
+
+    if query.related_job:
+
+        lines.append(f"Related job: {query.related_job.title}")
+
+    if query.status == "answered" and query.admin_answer:
+
+        lines.append(f"Answer: {query.admin_answer}")
+
+        lines.append(f"Answered by: {query.answered_by.email if query.answered_by else 'unknown'}")
+
+    return {
+        "query_id": query.id,
+        "status": query.status,
+        "summary": "\n".join(lines),
+    }
+
+
+def _tool_answer_company_query(profile, user, args):
+    """
+    A placement admin answering a company question. Writes directly
+    when the question isn't already answered - the admin has already
+    given both the exact target (query_id) and the complete answer
+    text in one message, unlike a vague "shortlist this candidate"
+    request, so there's materially less ambiguity to confirm here.
+    If a question ALREADY has an answer, this does NOT silently
+    overwrite it - shows the existing answer and asks for explicit
+    confirmation first, per the project's own specified behavior for
+    this exact case.
+    """
+
+    from django.utils import timezone as _tz
+    from jobsystem.models import CompanyQuery
+
+    query_id = args.get("query_id")
+
+    answer_text = (args.get("answer_text") or "").strip()
+
+    if not query_id:
+
+        return {"success": False, "summary": "Which question - please give the CQ number."}
+
+    if not answer_text:
+
+        return {"success": False, "summary": "What would you like the answer to say?"}
+
+    query = CompanyQuery.objects.filter(id=query_id).first()
+
+    if not query:
+
+        return {"success": False, "summary": f"No question found with ID CQ-{query_id}."}
+
+    if query.status == "answered" and query.admin_answer and not args.get("confirm_overwrite"):
+
+        return {
+            "success": False,
+            "summary": (
+                f"CQ-{query.id} already has an answer: \"{query.admin_answer}\". "
+                "Reply with \"yes, overwrite\" if you want to replace it with "
+                "your new answer, or ask something else."
+            ),
+        }
+
+    query.admin_answer = answer_text
+
+    query.status = "answered"
+
+    query.answered_by = user
+
+    query.answered_at = _tz.now()
+
+    query.save()
+
+    try:
+
+        from jobsystem.services.notification_engine import dispatch
+
+        dispatch(
+            "company_query_answered",
+            query.company.user,
+            {"subject": query.subject, "query_id": query.id},
+        )
+
+    except Exception as e:
+
+        print("CompanyQuery answer notification error:", e)
+
+    return {
+        "success": True,
+        "summary": f"Answer saved for CQ-{query.id}. The company has been notified.",
+    }
+
+
+def _tool_update_company_query_status(profile, user, args):
+    """A placement admin changing a question's status without necessarily answering it (e.g. marking it 'in review')."""
+
+    from jobsystem.models import CompanyQuery
+
+    query_id = args.get("query_id")
+
+    new_status = (args.get("status") or "").strip().lower()
+
+    if not query_id:
+
+        return {"success": False, "summary": "Which question - please give the CQ number."}
+
+    if new_status not in {"pending", "in_review", "answered", "closed"}:
+
+        return {"success": False, "summary": "Status must be one of: pending, in review, answered, closed."}
+
+    query = CompanyQuery.objects.filter(id=query_id).first()
+
+    if not query:
+
+        return {"success": False, "summary": f"No question found with ID CQ-{query_id}."}
+
+    query.status = new_status
+
+    query.save()
+
+    return {
+        "success": True,
+        "summary": f"CQ-{query.id} marked as {query.get_status_display()}.",
+    }
+
+
 PLACEMENT_TOOL_SCHEMAS = [
     {
         "type": "function",
@@ -8034,12 +8424,128 @@ PLACEMENT_TOOL_SCHEMAS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_company_queries",
+            "description": (
+                "List company-raised questions, optionally filtered by "
+                "status, company, or related job. Use for 'show pending "
+                "company questions', 'how many company questions are "
+                "pending', 'show questions raised by X', 'show answered "
+                "company questions'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "description": "pending/in_review/answered/closed, if the admin asked for a specific status.",
+                    },
+                    "company_name": {
+                        "type": "string",
+                        "description": "A company name, if the admin named one.",
+                    },
+                    "job_title": {
+                        "type": "string",
+                        "description": "A related job title, if the admin asked about questions for a specific job.",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_company_query_detail",
+            "description": (
+                "Get one specific company question's full detail, "
+                "including its answer if it has one. Use for 'show "
+                "question CQ-102', 'show the full history of CQ-102'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query_id": {
+                        "type": "integer",
+                        "description": "The CQ number the admin named.",
+                    }
+                },
+                "required": ["query_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "answer_company_query",
+            "description": (
+                "Answer a company question. Only call when the admin "
+                "gave BOTH the exact question (a CQ number) and the "
+                "complete answer text in their message - never invent "
+                "an answer, and never call this just because a "
+                "question was discussed without an explicit answer "
+                "being dictated. If the question already has a saved "
+                "answer, this will ask for confirmation before "
+                "overwriting it rather than silently replacing it."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query_id": {
+                        "type": "integer",
+                        "description": "The CQ number to answer.",
+                    },
+                    "answer_text": {
+                        "type": "string",
+                        "description": "The exact answer text the admin dictated.",
+                    },
+                    "confirm_overwrite": {
+                        "type": "boolean",
+                        "description": "True only if the admin just confirmed overwriting an existing answer.",
+                    },
+                },
+                "required": ["query_id", "answer_text"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_company_query_status",
+            "description": (
+                "Change a company question's status WITHOUT answering "
+                "it (e.g. marking it 'in review'). Use for 'mark CQ-102 "
+                "as in review' - for actually answering a question, "
+                "use answer_company_query instead."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query_id": {
+                        "type": "integer",
+                        "description": "The CQ number to update.",
+                    },
+                    "status": {
+                        "type": "string",
+                        "description": "pending/in_review/answered/closed.",
+                    },
+                },
+                "required": ["query_id", "status"],
+            },
+        },
+    },
 ]
 
 
 PLACEMENT_TOOL_EXECUTORS = {
     "list_students": _tool_list_students,
     "get_company_insights": _tool_get_company_insights,
+    "list_company_queries": _tool_list_company_queries,
+    "get_company_query_detail": _tool_get_company_query_detail,
+    "answer_company_query": _tool_answer_company_query,
+    "update_company_query_status": _tool_update_company_query_status,
     "find_jobs_platform_wide": _tool_find_jobs_platform_wide,
     "get_job_eligibility_criteria": _tool_get_job_eligibility_criteria,
     "get_placement_overview": _tool_get_placement_overview,
