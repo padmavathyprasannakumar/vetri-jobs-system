@@ -203,6 +203,82 @@ _secondary_key = os.getenv("GROQ_API_KEY_2")
 
 client_secondary = _build_groq_client(_secondary_key) if _secondary_key else None
 
+# Per-page key routing: purely for separate usage visibility per page
+# on Groq's own dashboard (filterable by key) - NOT a way to raise the
+# shared quota. All keys here can belong to the same Groq organization,
+# and Groq tracks its token-per-day/token-per-minute limits per MODEL
+# per ORGANIZATION (confirmed directly from Groq's own error text) -
+# every key under that organization shares the exact same limit,
+# regardless of which page/role used it. A student page, a company
+# page, and a placement admin page each drawing from their own key
+# still draws from the same underlying daily allowance; this only
+# changes which key's name shows up in Groq's usage breakdown.
+#
+# GROQ_API_KEY   -> student pages, and the default/fallback for any
+#                   role with no key of its own configured
+# GROQ_API_KEY_2 -> company pages (reuses the key already set up for
+#                   the earlier resilience feature - same client)
+# GROQ_API_KEY_3 -> placement admin pages
+#
+# Any of these can be left unset - everything silently falls back to
+# the single GROQ_API_KEY client, exactly as before this feature.
+
+_placement_key = os.getenv("GROQ_API_KEY_3")
+
+client_placement = (
+    _build_groq_client(_placement_key) if _placement_key else None
+)
+
+_ROLE_CLIENTS = {
+    "company": client_secondary,
+    "placement_admin": client_placement,
+    "super_admin": client_placement,
+}
+
+# Thread-local, set once per message at the top of _generate_reply_inner
+# (the same pattern already used for _request_clock below) - read by
+# _call_groq_with_tools/_call_groq_plain to pick which key's client to
+# try first for this one request.
+
+_role_context = threading.local()
+
+
+def _set_current_role(role):
+
+    _role_context.role = role
+
+
+def _client_for_current_role():
+    """The role-specific client for this request if one is configured
+    and actually different from the default, else the default client -
+    same object, so no behavior changes at all for anyone who hasn't
+    set GROQ_API_KEY_2/_3."""
+
+    role = getattr(_role_context, "role", None)
+
+    role_client = _ROLE_CLIENTS.get(role)
+
+    return role_client if role_client is not None else client
+
+
+def _attempt_clients():
+    """The ordered (client, label) pairs to try for this request: this
+    role's own key first, then the generic secondary key as a genuine
+    fallback - but only if it's a different client than the one just
+    tried, so a role with no key of its own (falling back to the
+    default client above) never tries that same client twice in a
+    row under two different labels."""
+
+    primary = _client_for_current_role()
+
+    attempts = [(primary, "primary key")]
+
+    if client_secondary is not None and client_secondary is not primary:
+
+        attempts.append((client_secondary, "secondary key"))
+
+    return attempts
+
 
 # One clock per chat message (per thread), started in generate_reply().
 
@@ -8883,14 +8959,7 @@ def _call_groq_plain(messages):
         # skips straight to the next model instead of retrying on the
         # secondary key.
 
-        for attempt_client, label in (
-            (client, "primary key"),
-            (client_secondary, "secondary key"),
-        ):
-
-            if attempt_client is None:
-
-                continue
+        for attempt_client, label in _attempt_clients():
 
             started = time.monotonic()
 
@@ -8949,14 +9018,7 @@ def _call_groq_with_tools(messages, tools, tool_choice="auto"):
         # connection error) genuinely can differ between the two keys,
         # so those ARE worth a real second attempt.
 
-        for attempt_client, label in (
-            (client, "primary key"),
-            (client_secondary, "secondary key"),
-        ):
-
-            if attempt_client is None:
-
-                continue
+        for attempt_client, label in _attempt_clients():
 
             started = time.monotonic()
 
@@ -11071,6 +11133,12 @@ def generate_reply(user, message, history=None, page_context=None):
     budget (see GROQ_REQUEST_BUDGET), then runs the real logic."""
 
     _start_request_clock()
+
+    _set_current_role(
+        getattr(user, "role", None)
+        if user and getattr(user, "is_authenticated", False)
+        else None
+    )
 
     try:
 
