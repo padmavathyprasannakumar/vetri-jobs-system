@@ -311,6 +311,8 @@ GROQ_MODEL_FALLBACKS = [
     "openai/gpt-oss-20b",
     "openai/gpt-oss-120b",
     "qwen/qwen3.8-27b",
+    # Last resort only: a small model with its own 500K daily quota.
+    "allam-2-7b",
     # llama-3.3-70b-versatile removed: Groq has deprecated it (confirmed
     # via Render logs - every call 404s instantly with "model_not_found"),
     # so it was silently wasting the last fallback attempt on a guaranteed
