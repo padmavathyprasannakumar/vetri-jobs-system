@@ -1101,7 +1101,14 @@ KNOWLEDGE BASE:
 # that never apply to them - Groq's free tier counts every token sent.
 # Appended to the system prompt only when role == "student".
 
-STUDENT_RULES = """AI-WRITTEN COVER LETTERS: if asked to write a cover letter AND apply, do
+STUDENT_RULES = """SPOKEN LANGUAGES ARE NOT SKILLS: English, Tamil, Hindi and other
+spoken languages go to update_my_languages, never update_my_skills
+(programming languages like Python or Java ARE skills). If the student
+says something is not a skill, call remove_my_skills for it, and
+update_my_languages too if it is a spoken language. Profile updates
+happen right here in the chat - never say a page opened.
+
+AI-WRITTEN COVER LETTERS: if asked to write a cover letter AND apply, do
 NOT draft it yourself or call apply_to_job directly - you can't pass free
 text into it. Tell them to say "write a cover letter for me and apply to
 <job>" (or use that button under a job card), which handles both
@@ -4711,7 +4718,7 @@ def _looks_like_a_skill(text):
     return 0 < len(words) <= 4 and len(text) <= 30 and not (set(words) & _SENTENCE_WORDS)
 
 
-def _tool_update_my_skills(profile, user, args):
+def _tool_update_my_skills_only(profile, user, args):
     """
     A real write action - adds new skills directly to the student's
     profile from chat. Purely additive (never removes or overwrites
@@ -4782,6 +4789,168 @@ def _tool_update_my_skills(profile, user, args):
         "all_skills": profile.skills,
         "summary": f"Added {', '.join(added)} to the student's skills.",
     }
+
+
+# Spoken languages are NOT skills. A real report: "add English to my
+# spoken languages" was saved into the student's SKILLS, because the only
+# profile write tools were skills and projects. These go to
+# profile.languages instead - even if the model picks the skills tool.
+
+_SPOKEN_LANGUAGES = {
+    "english", "tamil", "hindi", "telugu", "malayalam", "kannada",
+    "marathi", "bengali", "gujarati", "punjabi", "urdu", "odia", "oriya",
+    "assamese", "sanskrit", "konkani", "sinhala", "nepali", "french",
+    "german", "spanish", "italian", "portuguese", "russian", "arabic",
+    "japanese", "chinese", "mandarin", "cantonese", "korean", "malay",
+    "thai", "dutch", "turkish",
+}
+
+
+def _split_list(text):
+    """'English, Tamil and Hindi' -> ['English', 'Tamil', 'Hindi']."""
+
+    parts = re.split(r",|\band\b|&|\n|/", text or "", flags=re.IGNORECASE)
+
+    return [p.strip(" .") for p in parts if p.strip(" .")]
+
+
+def _tool_update_my_languages(profile, user, args):
+    """
+    A real write action - adds spoken languages to profile.languages.
+    Additive only (never removes or overwrites), same design as
+    update_my_skills. Stays in the chat - no page navigation.
+    """
+
+    wanted = [
+        item for item in _split_list(args.get("languages"))
+        if len(item) <= 30 and len(item.split()) <= 3
+        and re.fullmatch(r"[A-Za-z][A-Za-z .()-]*", item)
+    ]
+
+    if not wanted:
+
+        return {
+            "success": False,
+            "summary": (
+                "Which spoken languages should I add? For example: "
+                "English, Tamil, Hindi."
+            ),
+        }
+
+    current = _split_list(profile.languages)
+
+    known = {c.lower() for c in current}
+
+    added = []
+
+    for item in wanted:
+
+        if item.lower() not in known:
+
+            added.append(item)
+
+            known.add(item.lower())
+
+    if not added:
+
+        return {
+            "success": False,
+            "summary": (
+                f"{', '.join(wanted)} "
+                f"{'is' if len(wanted) == 1 else 'are'} already in your "
+                "spoken languages."
+            ),
+        }
+
+    profile.languages = ", ".join(current + added)
+
+    profile.save()
+
+    return {
+        "success": True,
+        "added_languages": added,
+        "all_languages": profile.languages,
+        "summary": (
+            f"Added {', '.join(added)} to the spoken languages on your "
+            "profile."
+        ),
+    }
+
+
+def _tool_remove_my_skills(profile, user, args):
+    """
+    A real write action - removes named skills from the student's
+    profile. Only runs when the student clearly asked to remove
+    something or said it is not a skill (see _write_intent_missing).
+    """
+
+    targets = {t.lower() for t in _split_list(args.get("skills"))}
+
+    if not targets:
+
+        return {
+            "success": False,
+            "summary": "Which skill should I remove from your profile?",
+        }
+
+    current = [s.strip() for s in (profile.skills or "").split(",") if s.strip()]
+
+    kept = [s for s in current if s.lower() not in targets]
+
+    removed = [s for s in current if s.lower() in targets]
+
+    if not removed:
+
+        return {
+            "success": False,
+            "summary": "That isn't in your skills, so there was nothing to remove.",
+        }
+
+    profile.skills = ", ".join(kept)
+
+    profile.save()
+
+    return {
+        "success": True,
+        "removed_skills": removed,
+        "all_skills": profile.skills,
+        "summary": f"Removed {', '.join(removed)} from your skills.",
+    }
+
+
+def _tool_update_my_skills(profile, user, args):
+    """Adds skills - but any spoken language in the list (English,
+    Tamil...) is saved to the profile's languages instead."""
+
+    items = [x.strip() for x in (args.get("skills") or "").split(",") if x.strip()]
+
+    spoken = [x for x in items if x.lower() in _SPOKEN_LANGUAGES]
+
+    if not spoken:
+
+        return _tool_update_my_skills_only(profile, user, args)
+
+    rest = [x for x in items if x.lower() not in _SPOKEN_LANGUAGES]
+
+    language_result = _tool_update_my_languages(
+        profile, user, {"languages": ", ".join(spoken)}
+    )
+
+    if not rest:
+
+        return language_result
+
+    result = dict(
+        _tool_update_my_skills_only(profile, user, {"skills": ", ".join(rest)})
+    )
+
+    result["summary"] = language_result["summary"] + " " + result["summary"]
+
+    result["success"] = bool(
+        result.get("success") or language_result.get("success")
+    )
+
+    return result
 
 
 def _tool_update_my_projects(profile, user, args):
@@ -4973,6 +5142,7 @@ _PLATFORM_INTENT_PATTERNS = [
     r"\bfind (me )?(a )?jobs?\b", r"\bsearch (for )?jobs?\b",
     r"\bmy resume\b", r"\bnotifications?\b", r"\bsaved jobs?\b",
     r"\bmy profile\b", r"\bskill(s)? (i|should)\b",
+    r"\brequirements?\s+(for|of)\b", r"\beligib", r"\bjob details\b",
 ]
 
 
@@ -5426,6 +5596,49 @@ def _tool_get_career_plan(profile, user, args):
 
 
 TOOL_SCHEMAS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "update_my_languages",
+            "description": (
+                "Add spoken languages (English, Tamil, Hindi...) to the "
+                "student's profile. Use this - never update_my_skills - "
+                "for spoken languages. Programming languages (Python, "
+                "Java) are skills, not this."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "languages": {
+                        "type": "string",
+                        "description": "Comma-separated spoken language(s) to add.",
+                    }
+                },
+                "required": ["languages"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "remove_my_skills",
+            "description": (
+                "Remove skills from the student's profile. Only use when "
+                "the student asks to remove a skill or says something is "
+                "not a skill."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "skills": {
+                        "type": "string",
+                        "description": "Comma-separated skill(s) to remove.",
+                    }
+                },
+                "required": ["skills"],
+            },
+        },
+    },
     {
         "type": "function",
         "function": {
@@ -6017,6 +6230,8 @@ TOOL_EXECUTORS = {
     "rewrite_resume": _tool_rewrite_resume,
     "update_my_skills": _tool_update_my_skills,
     "update_my_projects": _tool_update_my_projects,
+    "update_my_languages": _tool_update_my_languages,
+    "remove_my_skills": _tool_remove_my_skills,
     "start_mock_interview": _tool_start_mock_interview,
     "get_mock_interview_report": _tool_get_mock_interview_report,
     "get_saved_jobs": _tool_get_saved_jobs,
@@ -8509,7 +8724,186 @@ def _tool_update_company_query_status(profile, user, args):
     }
 
 
+_APPLICATION_STATUS_WORDS = {
+    "selected": "selected", "placed": "selected", "hired": "selected",
+    "shortlisted": "shortlisted", "rejected": "rejected",
+    "applied": "applied", "reviewing": "reviewing",
+    "interview": "interview", "withdrawn": "withdrawn",
+}
+
+
+def _tool_get_students_by_status(profile, user, args):
+    """
+    WHO is selected / shortlisted / rejected - real names with the job
+    and company. A real report: "how many students are selected" was
+    answered ("1"), but the follow-up "that selected student name" could
+    not be, because no placement tool returned students by application
+    status - only counts, or a general student list with no link to
+    who was actually selected.
+    """
+
+    from jobsystem.models import Application
+
+    word = (args.get("status") or "selected").strip().lower()
+
+    status = _APPLICATION_STATUS_WORDS.get(word, "selected")
+
+    apps = list(
+        Application.objects.filter(status=status)
+        .select_related("student", "job", "job__company")
+        .order_by("-updated_at")[:30]
+    )
+
+    if not apps:
+
+        return {"students": [], "summary": f"No students are {status} right now."}
+
+    seen = {}
+
+    for app in apps:
+
+        seen.setdefault(app.student.id, (app.student, []))[1].append(app)
+
+    lines = []
+
+    students = []
+
+    for student, student_apps in seen.values():
+
+        jobs = "; ".join(
+            f"{a.job.title} at "
+            f"{a.job.company.company_name if a.job.company else 'company not set'}"
+            for a in student_apps
+        )
+
+        lines.append(f"- {student.full_name}: {jobs}")
+
+        students.append({
+            "full_name": student.full_name,
+            "department": student.department,
+            "verified": student.verified,
+            "placement_status": student.placement_status,
+        })
+
+    count = len(students)
+
+    return {
+        "students": students,
+        "summary": (
+            f"{count} student{'' if count == 1 else 's'} "
+            f"{'is' if count == 1 else 'are'} {status}:\n\n"
+            + "\n".join(lines[:15])
+        ),
+    }
+
+
+def _tool_get_student_details(profile, user, args):
+    """One named student's profile summary and every application with its
+    real status - so "Student A" has a real answer."""
+
+    from jobsystem.models import StudentProfile, Application
+
+    name = (args.get("name") or "").strip()
+
+    if not name:
+
+        return {"summary": "Which student would you like details on?"}
+
+    matches = list(StudentProfile.objects.filter(full_name__iexact=name)[:5])
+
+    if not matches:
+
+        matches = list(StudentProfile.objects.filter(full_name__icontains=name)[:5])
+
+    if not matches:
+
+        return {"summary": f"No student found matching \"{name}\"."}
+
+    if len(matches) > 1:
+
+        return {
+            "summary": (
+                f"More than one student matches \"{name}\": "
+                + ", ".join(s.full_name for s in matches)
+                + ". Which one did you mean?"
+            )
+        }
+
+    student = matches[0]
+
+    apps = Application.objects.filter(
+        student=student
+    ).select_related("job", "job__company").order_by("-applied_date")[:10]
+
+    lines = [
+        f"{student.full_name} - {student.department or 'department not set'}"
+        f"{', ' + student.course if student.course else ''}.",
+        f"CGPA: {student.ug_cgpa if student.ug_cgpa is not None else 'not set'} | "
+        f"Graduation year: {student.graduation_year or 'not set'} | "
+        f"{'Verified' if student.verified else 'Not verified'} | "
+        f"Placement status: {student.placement_status}",
+    ]
+
+    app_lines = [
+        f"- {a.job.title} at "
+        f"{a.job.company.company_name if a.job.company else 'company not set'}: "
+        f"{a.get_status_display()}"
+        for a in apps
+    ]
+
+    lines.append(
+        "\nApplications:\n" + "\n".join(app_lines) if app_lines
+        else "\nNo applications yet."
+    )
+
+    return {"student_name": student.full_name, "summary": "\n".join(lines)}
+
+
 PLACEMENT_TOOL_SCHEMAS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_students_by_status",
+            "description": (
+                "Names of the students whose application is in a given "
+                "status, with the job and company. Use for 'who is "
+                "selected/placed', 'selected student names', 'show "
+                "shortlisted students' - any question asking WHO, not "
+                "just how many."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "description": "selected/shortlisted/rejected/applied/reviewing/interview/withdrawn. 'placed' means selected.",
+                    }
+                },
+                "required": ["status"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_student_details",
+            "description": (
+                "One named student's profile summary and all their "
+                "applications with status. Use when the admin names a "
+                "specific student."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "The student's name.",
+                    }
+                },
+                "required": ["name"],
+            },
+        },
+    },
     {
         "type": "function",
         "function": {
@@ -8872,6 +9266,8 @@ PLACEMENT_TOOL_SCHEMAS = [
 
 PLACEMENT_TOOL_EXECUTORS = {
     "list_students": _tool_list_students,
+    "get_students_by_status": _tool_get_students_by_status,
+    "get_student_details": _tool_get_student_details,
     "get_company_insights": _tool_get_company_insights,
     "list_company_queries": _tool_list_company_queries,
     "get_company_query_detail": _tool_get_company_query_detail,
@@ -9147,6 +9543,7 @@ _FORWARDED_LIST_KEYS = (
 _WRITE_ACTION_TOOLS = {
     "apply_to_job", "request_interview_slot",
     "raise_placement_query", "update_my_skills", "update_my_projects",
+    "update_my_languages", "remove_my_skills",
     "shortlist_candidate", "reject_candidate",
 }
 
@@ -9156,6 +9553,8 @@ _WRITE_ACTION_TOOLS = {
 _REFRESH_AFTER = {
     "update_my_skills": ["profile", "dashboard", "jobs"],
     "update_my_projects": ["profile", "dashboard"],
+    "update_my_languages": ["profile", "dashboard"],
+    "remove_my_skills": ["profile", "dashboard", "jobs"],
     "request_interview_slot": ["interviews"],
     "raise_placement_query": ["queries"],
 }
@@ -10049,12 +10448,43 @@ def _normalize_shortcut(message):
     return _LEADING_FILLER_RE.sub("", text).strip()
 
 
+# "can you conduct mock interview for teacher role" - starts the mock
+# interview directly. It used to need an extra AI call first just to
+# decide which tool to use, and that extra call is what failed with
+# "trouble reaching the assistant" when the quota was tight.
+
+_MOCK_INTERVIEW_REQUEST_RE = re.compile(
+    r"^(?:i\s+(?:want|need|would\s+like)\s+(?:to\s+)?)?"
+    r"(?:(?:conduct|start|begin|do|take|attend|practice|give\s+me|have)\s+)?"
+    r"(?:an?\s+)?mock\s+interview\s+(?:for|on|as)\s+(?:an?\s+|the\s+)?"
+    r"(?P<job>.+?)(?:\s+(?:job\s+role|job|role|position)s?)*$"
+)
+
+
 def _handle_student_shortcut(profile, user, message):
     """Runs a button's tool directly. Returns a reply dict, or None to
     carry on with the normal AI flow (not a button text, or the tool
     raised)."""
 
     normalized = _normalize_shortcut(message)
+
+    mock_match = _MOCK_INTERVIEW_REQUEST_RE.match(normalized)
+
+    if mock_match:
+
+        mock_role = (mock_match.group("job") or "").strip()
+
+        if any(
+            w not in _INTERVIEW_PREP_NON_ROLE_WORDS for w in mock_role.split()
+        ):
+
+            mock_result = _tool_start_mock_interview(
+                profile, user, {"job_title": mock_role.title()}
+            )
+
+            if mock_result.get("question"):
+
+                return {"reply": mock_result["question"]}
 
     entry = _STUDENT_SHORTCUTS.get(normalized)
 
@@ -10745,6 +11175,26 @@ _COMPANIES_POSTED_RE = re.compile(
 )
 
 
+# "how many students are selected" / "that selected student name" /
+# "who is placed" - answered from the database with the real names.
+
+_STATUS_WORD = r"(selected|placed|hired|shortlisted|rejected)"
+
+_STUDENTS_BY_STATUS_RE = re.compile(
+    r"^how many students? (?:are |were |is |have been |got |get )?" + _STATUS_WORD + r"$"
+    r"|^(?:show |list |give |tell |what is |what are )?(?:me )?(?:that |the |those )?"
+    r"(?:names? of )?(?:that |the |those )?" + _STATUS_WORD
+    + r" (?:students?|candidates?)(?: names?| list| details)?$"
+    r"|^who (?:is|are|got|was|were|all are|all got) (?:the )?" + _STATUS_WORD
+    + r"(?: students?| candidates?)?$"
+    r"|^which students? (?:is |are |got |were |was )?" + _STATUS_WORD + r"$"
+)
+
+_COMPANIES_VERIFIED_RE = re.compile(
+    r"^how many compan(?:y|ies) (?:are |is |were |got )?(?:verified|approved)$"
+)
+
+
 def _handle_placement_shortcut(profile, user, message):
     """Same idea as _handle_student_shortcut/_handle_company_shortcut:
     runs a common placement-admin question's tool directly, zero AI
@@ -10765,6 +11215,40 @@ def _handle_placement_shortcut(profile, user, message):
             "reply": (
                 f"{posted} compan{'y has' if posted == 1 else 'ies have'} "
                 "posted at least one job."
+            )
+        }
+
+    status_match = _STUDENTS_BY_STATUS_RE.match(normalized)
+
+    if status_match:
+
+        status_word = next(g for g in status_match.groups() if g)
+
+        status_result = _tool_get_students_by_status(
+            profile, user, {"status": status_word}
+        )
+
+        return _build_tool_payload(
+            status_result["summary"],
+            [(None, "get_students_by_status", status_result)],
+        )
+
+    if _COMPANIES_VERIFIED_RE.match(normalized):
+
+        from jobsystem.models import CompanyProfile
+
+        total = CompanyProfile.objects.count()
+
+        verified = CompanyProfile.objects.filter(verified=True).count()
+
+        approved = CompanyProfile.objects.filter(
+            approval_status="approved"
+        ).count()
+
+        return {
+            "reply": (
+                f"{verified} of {total} companies are marked verified, and "
+                f"{approved} of {total} have an approved registration."
             )
         }
 
@@ -10829,6 +11313,19 @@ def _handle_placement_shortcut(profile, user, message):
         # handlers - see the SEMANTIC SHORTCUT MATCHING block above.
 
         entry = _placement_semantic_matcher.match(message)
+
+    if not entry and 0 < len(normalized.split()) <= 4:
+
+        # A bare student name ("Student A") - answered directly instead
+        # of needing a live AI call just to recognise it as a name.
+
+        from jobsystem.models import StudentProfile
+
+        typed_name = (message or "").strip()
+
+        if StudentProfile.objects.filter(full_name__iexact=typed_name).count() == 1:
+
+            entry = ("get_student_details", {"name": typed_name})
 
     if not entry:
 
@@ -10936,7 +11433,11 @@ def _build_tool_payload(final_text, executed):
     # Only auto-navigate when there was a single action - with several
     # results at once there is no single "right" tab to open.
 
-    if len(executed) == 1 and executed[0][2].get("navigate_to"):
+    if (
+        len(executed) == 1
+        and executed[0][2].get("navigate_to")
+        and executed[0][1] not in _WRITE_ACTION_TOOLS
+    ):
 
         result_payload["navigate_to"] = executed[0][2]["navigate_to"]
 
@@ -11151,6 +11652,16 @@ _PROJECT_INTENT_RE = re.compile(
     re.IGNORECASE,
 )
 
+_LANGUAGE_INTENT_RE = re.compile(
+    r"\b(languages?|speak|spoken|add|know)\b", re.IGNORECASE
+)
+
+_REMOVE_SKILL_INTENT_RE = re.compile(
+    r"\b(remove|delete|drop|take\s+(?:off|out)|"
+    r"(?:is\s+not|isn'?t|not)\s+(?:a\s+)?skills?)\b",
+    re.IGNORECASE,
+)
+
 _INTENT_MISSING_REPLIES = {
     "raise_placement_query": (
         "I haven't sent anything to the placement team, because I wasn't sure "
@@ -11164,6 +11675,14 @@ _INTENT_MISSING_REPLIES = {
     "update_my_skills": (
         "I haven't changed your skills. To add some, tell me which ones - for "
         "example: \"Add Selenium and API Testing to my skills\"."
+    ),
+    "update_my_languages": (
+        "I haven't changed your languages. To add one, say for example: "
+        "\"Add English and Tamil to my spoken languages\"."
+    ),
+    "remove_my_skills": (
+        "I haven't removed anything. To remove a skill, say for example: "
+        "\"Remove English from my skills\"."
     ),
     "update_my_projects": (
         "I haven't added anything to your projects. To add one, tell me "
@@ -11205,6 +11724,18 @@ def _write_intent_missing(name, message, history):
     elif name == "update_my_skills":
 
         ok = bool(_SKILL_INTENT_RE.search(text)) or _last_bot_asked_for_skills(history)
+
+    elif name == "update_my_languages":
+
+        ok = bool(_LANGUAGE_INTENT_RE.search(text)) or _affirming_a_proposal(
+            text, history, ("language",)
+        )
+
+    elif name == "remove_my_skills":
+
+        ok = bool(_REMOVE_SKILL_INTENT_RE.search(text)) or _affirming_a_proposal(
+            text, history, ("remove",)
+        )
 
     elif name == "update_my_projects":
 
@@ -11250,9 +11781,12 @@ _TOOL_GROUPS = {
           "get_resume_download_link")),
         (("skill", "learn", "roadmap", "improve", "missing"),
          ("get_skill_suggestions", "get_company_skill_gap",
-          "update_my_skills", "get_job_details")),
-        (("profile", "project", "cgpa", "department", "update", "add "),
-         ("get_my_profile", "update_my_skills", "update_my_projects")),
+          "update_my_skills", "get_job_details", "remove_my_skills",
+          "update_my_languages")),
+        (("profile", "project", "cgpa", "department", "update", "add ",
+          "language", "spoken", "speak", "remove", "delete"),
+         ("get_my_profile", "update_my_skills", "update_my_projects",
+          "update_my_languages", "remove_my_skills")),
         (("career", "plan", "placed", "next", "overall", "guidance",
           "how am i"),
          ("get_career_plan", "find_matching_jobs", "get_resume_feedback")),
@@ -11289,9 +11823,11 @@ _TOOL_GROUPS = {
          ("get_company_insights", "get_pending_company_approvals",
           "get_company_history")),
         (("student", "verif", "candidate", "applicant", "applied",
-          "pipeline"),
+          "pipeline", "selected", "placed", "shortlist", "rejected",
+          "hired", "name", "who "),
          ("list_students", "get_unverified_students",
-          "get_candidate_pipeline")),
+          "get_candidate_pipeline", "get_students_by_status",
+          "get_student_details")),
         (("overview", "report", "rate", "placed", "stat", "how are we",
           "percentage", "total", "how many"),
          ("get_placement_overview", "get_placement_report")),
