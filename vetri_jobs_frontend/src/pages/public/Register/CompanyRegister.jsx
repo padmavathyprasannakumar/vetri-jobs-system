@@ -850,7 +850,7 @@ onChange={(e)=>setAgreed(e.target.checked)}
 
 />
 
-<span>I agree to the <Link to="/terms">Terms and Conditions</Link></span>
+<span>I agree to the <a href="https://vetrijob.com/terms/company/" target="_blank" rel="noopener noreferrer">Terms and Conditions</a></span>
 
 </label>
 
