@@ -8396,7 +8396,6 @@ def _tool_get_candidate_pipeline(profile, user, args):
 
     return {
         "candidates": candidates,
-        "navigate_to": "/placement/candidates/pipeline",
         "summary": summary,
     }
 
