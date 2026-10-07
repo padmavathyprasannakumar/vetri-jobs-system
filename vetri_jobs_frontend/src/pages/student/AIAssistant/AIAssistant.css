@@ -530,3 +530,196 @@
     cursor: not-allowed;
 
 }
+
+
+/* =====================================================
+   BUG_005: JOB / INTERVIEW / APPLICATION / DRIVE /
+   NOTIFICATION CARDS INSIDE A CHAT MESSAGE
+
+   AIAssistant.jsx has always used these class names, but
+   no rules for them existed in this file - so the cards
+   showed as unstyled text and default browser buttons
+   ("Junior Python Full Stack Developer54% match", the
+   plain "View details" button, cards running into each
+   other and into the reply chips above them).
+   ===================================================== */
+
+
+/* The chat bubble uses "white-space: pre-line" for the reply text.
+   Inside the chips and cards that turns the line breaks between
+   elements into extra blank lines, so it is switched back to normal. */
+
+.ai-quick-replies,
+.ai-chat-job-cards{
+
+    white-space: normal;
+
+}
+
+
+.ai-chat-job-cards{
+
+    display: flex;
+
+    flex-direction: column;
+
+    gap: 10px;
+
+    margin-top: 12px;
+
+}
+
+
+.ai-chat-job-card{
+
+    background: white;
+
+    border: 1px solid #e2e8f0;
+
+    border-radius: 12px;
+
+    padding: 12px 14px;
+
+    box-shadow: 0 1px 3px rgba(15,23,42,.05);
+
+}
+
+
+.ai-chat-job-card-top{
+
+    display: flex;
+
+    align-items: flex-start;
+
+    justify-content: space-between;
+
+    gap: 10px;
+
+}
+
+
+.ai-chat-job-card-top strong{
+
+    font-size: 14px;
+
+    color: #0f172a;
+
+    line-height: 1.35;
+
+}
+
+
+.ai-chat-job-card-score{
+
+    display: inline-flex;
+
+    align-items: center;
+
+    background: #eef2ff;
+
+    color: #4338ca;
+
+    border-radius: 20px;
+
+    padding: 3px 10px;
+
+    font-size: 11.5px;
+
+    font-weight: 600;
+
+    white-space: nowrap;
+
+    flex-shrink: 0;
+
+}
+
+
+.ai-chat-job-card-sub{
+
+    margin: 4px 0 0;
+
+    font-size: 12.5px;
+
+    color: #64748b;
+
+    line-height: 1.45;
+
+}
+
+
+.ai-chat-job-card-actions{
+
+    display: flex;
+
+    flex-wrap: wrap;
+
+    align-items: center;
+
+    gap: 8px;
+
+    margin-top: 10px;
+
+}
+
+
+.ai-chat-job-card-apply,
+.ai-chat-job-card-view{
+
+    border-radius: 8px;
+
+    padding: 7px 14px;
+
+    font-size: 12.5px;
+
+    font-weight: 600;
+
+    font-family: inherit;
+
+    cursor: pointer;
+
+}
+
+
+.ai-chat-job-card-apply{
+
+    background: linear-gradient(135deg, #4338ca, #6366f1);
+
+    color: white;
+
+    border: 1px solid transparent;
+
+}
+
+
+.ai-chat-job-card-apply:hover:not(:disabled){
+
+    filter: brightness(1.08);
+
+}
+
+
+.ai-chat-job-card-apply:disabled{
+
+    opacity: .6;
+
+    cursor: not-allowed;
+
+}
+
+
+.ai-chat-job-card-view{
+
+    background: white;
+
+    color: #4338ca;
+
+    border: 1px solid #c7d2fe;
+
+}
+
+
+.ai-chat-job-card-view:hover{
+
+    background: #eef2ff;
+
+}
