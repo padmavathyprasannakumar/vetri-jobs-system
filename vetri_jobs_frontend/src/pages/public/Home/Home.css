@@ -65,13 +65,32 @@
     max-width: 460px;
 }
 
+/* BUG_009: the image, the three cards and the side text used to be placed
+   with fixed "position: absolute" offsets, so the cards could collide with
+   each other and with the image. They now sit in a grid - side text on the
+   left, image in the middle, the three cards stacked on the right, each in
+   its own row - so they can never overlap. */
+
 .home2-illustration{
 
     position: relative;
-    display: flex;
-    justify-content: center;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    grid-template-rows: repeat(3, auto);
+    column-gap: 18px;
+    row-gap: 12px;
+    align-items: center;
+    align-content: center;
     margin-bottom: 20px;
-    padding: 8px 44px;
+    padding: 8px 0;
+}
+
+.home2-illustration > img,
+.home2-illustration-fallback{
+
+    grid-column: 2;
+    grid-row: 1 / span 3;
+    justify-self: center;
 }
 
 .home2-illustration img{
@@ -98,7 +117,10 @@
 
 .home2-floating-badge{
 
-    position: absolute;
+    position: static;
+    grid-column: 3;
+    justify-self: start;
+    width: fit-content;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -112,20 +134,19 @@
 
 .home2-badge-score{
 
-    top: 0;
-    right: 0;
+    grid-row: 1;
 }
 
 .home2-badge-match{
 
-    top: 66px;
-    right: -10px;
+    grid-row: 2;
+    margin-left: 22px;
 }
 
 .home2-badge-ready{
 
-    bottom: 20px;
-    right: 14px;
+    grid-row: 3;
+    margin-left: 6px;
     font-weight: 700;
     color: #0f172a;
 }
@@ -190,10 +211,11 @@
 
 .home2-decorative-text{
 
-    position: absolute;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%) rotate(-6deg);
+    position: static;
+    grid-column: 1;
+    grid-row: 1 / span 3;
+    justify-self: end;
+    transform: rotate(-6deg);
     font-family: cursive;
     font-style: italic;
     font-weight: 700;
@@ -504,6 +526,35 @@
 
         max-width: 400px;
         margin: 0 auto;
+    }
+}
+
+/* Two-column layout on a narrower screen: there is not enough room beside
+   the image for both the side text and the cards, so the side text is
+   hidden and the image + cards are centred together. */
+
+@media(min-width: 1001px) and (max-width: 1180px){
+
+    .home2-illustration{
+
+        grid-template-columns: auto auto;
+        justify-content: center;
+    }
+
+    .home2-illustration > img,
+    .home2-illustration-fallback{
+
+        grid-column: 1;
+    }
+
+    .home2-floating-badge{
+
+        grid-column: 2;
+    }
+
+    .home2-decorative-text{
+
+        display: none;
     }
 }
 
