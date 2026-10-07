@@ -104,6 +104,11 @@ const [editId,setEditId]=useState(null);
 const [message,setMessage]=useState("");
 
 
+// BUG_002: "View All" under Upcoming Drives filters the table by status.
+
+const [statusFilter,setStatusFilter]=useState("");
+
+
 
 const [form,setForm]=useState(initialForm);
 
@@ -237,11 +242,56 @@ search.toLowerCase()
 
 
 
+if(statusFilter){
+
+
+data=data.filter(drive=>
+
+(drive.status||"").toLowerCase()===statusFilter
+
+);
+
+
+}
+
+
+
 setFilteredDrives(data);
 
 
 
-},[search,drives]);
+},[search,drives,statusFilter]);
+
+
+
+
+
+
+
+
+
+// =================================
+// VIEW ALL (Upcoming Drives panel)
+// =================================
+
+
+const viewAllUpcoming=()=>{
+
+
+setSearch("");
+
+
+setStatusFilter("upcoming");
+
+
+document
+
+.getElementById("drives-table")
+
+?.scrollIntoView({behavior:"smooth",block:"start"});
+
+
+};
 
 
 
@@ -987,7 +1037,33 @@ Cancel
 
 
 
-<div className="drives-table-wrap">
+<div className="drives-table-wrap" id="drives-table">
+
+{
+
+statusFilter &&
+
+<div style={{padding:"12px 16px",fontSize:"13px",color:"#4338ca",fontWeight:600}}>
+
+Showing {statusFilter} drives only.{" "}
+
+<button
+
+type="button"
+
+onClick={()=>setStatusFilter("")}
+
+style={{background:"none",border:"none",color:"#4338ca",textDecoration:"underline",cursor:"pointer",fontWeight:600}}
+
+>
+
+Show all drives
+
+</button>
+
+</div>
+
+}
 
 <table className="drives-table">
 
@@ -1119,7 +1195,19 @@ filteredDrives.map((drive,index)=>(
 
 <h2>Upcoming Drives</h2>
 
-<span>View All</span>
+<button
+
+type="button"
+
+onClick={viewAllUpcoming}
+
+style={{background:"none",border:"none",padding:0,cursor:"pointer",fontSize:"11.5px",color:"#4338ca",fontWeight:600}}
+
+>
+
+View All
+
+</button>
 
 </div>
 
