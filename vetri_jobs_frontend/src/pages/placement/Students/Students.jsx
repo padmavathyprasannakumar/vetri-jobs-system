@@ -693,8 +693,6 @@ Not Placed
 
 <tr>
 
-<th><input type="checkbox"/></th>
-
 <th>#</th>
 
 <th>STUDENT</th>
@@ -721,8 +719,6 @@ filteredStudents.length > 0 ?
 filteredStudents.map((student,index)=>(
 
 <tr key={student.id}>
-
-<td><input type="checkbox"/></td>
 
 <td>{index + 1}</td>
 
@@ -854,7 +850,7 @@ onClick={()=>updateStatus(student.id,"Not Placed")}
 
 <tr>
 
-<td colSpan="8">
+<td colSpan="7">
 
 <div className="empty-students">
 
