@@ -367,7 +367,12 @@
 
 /* ===================== TERMS + SUBMIT ===================== */
 
-.cr2-terms{
+/* BUG-006: ".cr2-main form > label" (display:block) was overriding this
+   rule, so the checkbox and text were not aligned. The longer selector
+   below wins, which restores the flex row. */
+
+.cr2-terms,
+.cr2-main form > label.cr2-terms{
 
     display: flex;
     align-items: center;
@@ -381,6 +386,9 @@
 
     width: 16px;
     height: 16px;
+    margin: 0;
+    flex-shrink: 0;
+    cursor: pointer;
 }
 
 .cr2-terms a{
