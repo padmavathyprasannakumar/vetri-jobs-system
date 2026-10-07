@@ -116,7 +116,7 @@ const trendMax = Math.max(...trend.map(t=>Math.max(t.applications||0,t.placed||0
 // BUG_003 / BUG_004: "View All" opens the full list on its own page.
 // Works with a mouse click and with Enter / Space from the keyboard.
 
-const viewAllProps = (path)=>({
+const viewAllProps = (open)=>({
 
 role:"button",
 
@@ -124,7 +124,7 @@ tabIndex:0,
 
 style:{cursor:"pointer"},
 
-onClick:()=>navigate(path),
+onClick:open,
 
 onKeyDown:(e)=>{
 
@@ -132,13 +132,38 @@ if(e.key==="Enter" || e.key===" "){
 
 e.preventDefault();
 
-navigate(path);
+open();
 
 }
 
 }
 
 });
+
+
+// Opens a page through its own sidebar menu item, so the address used is
+// always the real one from the app's menu (a typed address that does not
+// exist shows the 404 page).
+
+const openSidebarPage = (label)=>{
+
+const wanted = label.toLowerCase();
+
+const matches = Array.from(
+
+document.querySelectorAll("a, button, li, span, div")
+
+).filter(el=>(el.textContent||"").trim().toLowerCase()===wanted);
+
+const target = matches[matches.length-1];
+
+if(target){
+
+target.click();
+
+}
+
+};
 
 
 const escapeCsv = (val)=>{
@@ -606,7 +631,7 @@ statusBreakdown.map((row,index)=>(
 
 <h2>Top Recruiting Companies</h2>
 
-<span {...viewAllProps("/placement/companies")}>View All</span>
+<span {...viewAllProps(()=>navigate("/placement/companies"))}>View All</span>
 
 </div>
 
@@ -653,7 +678,7 @@ companyReports.slice(0,5).map((c,index)=>(
 
 <h2>Recent Placement Activity</h2>
 
-<span {...viewAllProps("/placement/candidates/pipeline")}>View All</span>
+<span {...viewAllProps(()=>openSidebarPage("Candidate Pipeline"))}>View All</span>
 
 </div>
 
