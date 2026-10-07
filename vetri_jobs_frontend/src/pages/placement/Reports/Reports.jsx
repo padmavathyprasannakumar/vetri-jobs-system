@@ -9,6 +9,13 @@ import React, {
 
 import {
 
+    useNavigate
+
+} from "react-router-dom";
+
+
+import {
+
     getPlacementReports
 
 } from "../../../api/placementApi";
@@ -46,6 +53,9 @@ const STATUS_COLORS = ["#2563eb","#16a34a","#f59e0b","#dc2626","#94a3b8"];
 
 
 const Reports = ()=>{
+
+
+const navigate = useNavigate();
 
 
 const [reports,setReports] = useState(null);
@@ -103,6 +113,34 @@ const industryTotal = industryBreakdown.reduce((sum,r)=>sum+(r.count||0),0) || 1
 const trendMax = Math.max(...trend.map(t=>Math.max(t.applications||0,t.placed||0)), 1);
 
 
+// BUG_003 / BUG_004: "View All" opens the full list on its own page.
+// Works with a mouse click and with Enter / Space from the keyboard.
+
+const viewAllProps = (path)=>({
+
+role:"button",
+
+tabIndex:0,
+
+style:{cursor:"pointer"},
+
+onClick:()=>navigate(path),
+
+onKeyDown:(e)=>{
+
+if(e.key==="Enter" || e.key===" "){
+
+e.preventDefault();
+
+navigate(path);
+
+}
+
+}
+
+});
+
+
 const escapeCsv = (val)=>{
 
 const str = String(val ?? "");
@@ -140,7 +178,7 @@ lines.push(`Total Jobs,${reports?.total_jobs || 0}`);
 
 lines.push(`Total Applications,${reports?.total_applications || 0}`);
 
-lines.push(`Placement Rate,${reports?.placement_rate || 0}%`);
+lines.push(`Placement Rate,${reports?.placement_percentage ?? reports?.placement_rate ?? 0}%`);
 
 lines.push("");
 
@@ -156,7 +194,7 @@ escapeCsv(c.company_name || c.name || ""),
 
 escapeCsv(c.industry || ""),
 
-escapeCsv(c.hires || 0),
+escapeCsv(c.hired ?? c.hires ?? 0),
 
 escapeCsv(c.applications || 0),
 
@@ -568,7 +606,7 @@ statusBreakdown.map((row,index)=>(
 
 <h2>Top Recruiting Companies</h2>
 
-<span>View All</span>
+<span {...viewAllProps("/placement/companies")}>View All</span>
 
 </div>
 
@@ -615,7 +653,7 @@ companyReports.slice(0,5).map((c,index)=>(
 
 <h2>Recent Placement Activity</h2>
 
-<span>View All</span>
+<span {...viewAllProps("/placement/candidates/pipeline")}>View All</span>
 
 </div>
 
